@@ -228,6 +228,8 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/WebViewHelpers.cs` | CDP 응답 파싱 실패 | envelope/direct result tolerant parser |
 | `tools/verify-windows.ps1` | PowerShell 변수 충돌/Server 판정 | `$ciData`, Server 제외 windows_11, annotation |
 | `tools/windows-verify/Phase21Probes.cs` | popup probe 안정화 | trusted click 사용 |
+| `tools/windows-verify/VerifyForm.cs` | headless CDP click 실패 | 실제 client area 유지 |
+| `tools/windows-verify/WebViewHelpers.cs` | CDP click hit-test | WebView2 visible |
 
 ---
 

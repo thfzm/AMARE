@@ -30,7 +30,7 @@ internal static class WebViewHelpers
         {
             Width = 800,
             Height = 600,
-            Visible = false,
+            Visible = true,
         };
         host.Controls.Add(view);
         await view.EnsureCoreWebView2Async(env);

@@ -44,10 +44,12 @@ internal sealed class VerifyForm : Form
         if (Environment.GetEnvironmentVariable("AMARE_VERIFY_HEADLESS") == "1")
         {
             ShowInTaskbar = false;
-            WindowState = FormWindowState.Minimized;
+            WindowState = FormWindowState.Normal;
             FormBorderStyle = FormBorderStyle.None;
             Opacity = 0;
-            Size = new Size(1, 1);
+            // Keep a real client area so WebView2 can process CDP mouse input
+            // in headless CI; a 1x1 hidden form clips the hit-test area.
+            Size = new Size(1100, 780);
         }
 
         _run.Click += async (_, _) => await RunAllAsync();
