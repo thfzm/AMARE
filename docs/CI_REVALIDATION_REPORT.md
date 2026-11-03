@@ -1,10 +1,10 @@
 # AMARE CI 재검증 보고서
 
 - 작성일: 2026-11-03
-- 기준 commit: `9b4ac03db9acde2dea252434902d7ebf8b12820a` (CI fix + diagnostics)
+- 기준 commit: `610075808dba77438ea8cc53602ac820a49aab8c` (CI fixes + probes)
 - 저장소: `https://github.com/thfzm/AMARE`
 - branch: `master`
-- 이번 문서 갱신 시점: 추가 Windows 진단 수정은 local commit 예정, **push는 인증 없음으로 미실행**
+- 이번 문서 갱신 시점: 모든 수정 commit/push 완료
 
 ---
 
@@ -13,15 +13,15 @@
 | 항목 | 결과 |
 |---|---|
 | 실제 GitHub Actions 실행 확인 | **PASS (조회)** |
-| Linux CI | **PASS** — 재실행 run confirmed |
-| Windows CI | **FAIL** — 재실행 run still failure |
-| Android CI | **UNVERIFIED** — 수동 전용 workflow, 실행 없음 |
+| Linux CI | **PASS** — 최신 run confirmed |
+| Windows CI | **PASS** — 최신 Runner run confirmed |
+| Android CI | **UNVERIFIED** — manual workflow dispatch 404 |
 | Linux 로컬 재검증 | **PASS** |
 | Windows 로컬 재검증 | **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WebView2 실행 불가) |
 | 발견한 실제 CI 문제 | **5** |
 | 수정한 문제 | **5** |
-| 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **FAIL** |
-| Windows 내부 step 로그 | 인증 없음으로 Artifact/full log 확인 불가 |
+| 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **PASS** |
+| Windows artifact | PASS — `windows-verification.json` 확인 |
 
 실제 실행:
 
@@ -31,7 +31,9 @@
 - 1차 수정 후 Windows run `41669251131` — **failure**
 - 2차 수정 후 Linux run `41678971283` — **success**
 - 2차 수정 후 Windows run `41678971378` — **failure** (원인 확인)
-- Android run: **없음**
+- 최종 Linux run `41683684971` — **success**
+- 최종 Windows run `41683684726` — **success**
+- Android run: **없음** (`gh workflow run` → 404)
 
 ---
 
@@ -39,7 +41,7 @@
 
 ### B-1. Linux CI
 
-최신 결과: **PASS** (`41669251118`)
+최신 결과: **PASS** (`41683684971`)
 
 초기 실패 분석:
 
@@ -91,12 +93,12 @@ error: no bin target named `service-ci` in `amare-services` package
 
 - 깨끗한 archive + source bin을 포함한 임시 checkout에서 `service-ci`, `storage-ci`, `backup-ci` 모두 **PASS**
 - 로컬 `verify-linux.sh`: **EXIT 0**
-- GitHub Actions 재실행: **PASS** (`41669251118`)
+- GitHub Actions 재실행: **PASS** (`41683684971`)
 - backup tests/CI/benchmark도 수정 workflow에 포함되어 실행됨
 
 ### B-2. Windows CI
 
-최신 결과: **FAIL** (`41678971378`) — full log/artifact 인증 확보 후 내부 원인 확인
+최신 결과: **PASS** (`41683684726`) — Windows Server 2025, `windows_11=false`
 
 기존 설정:
 
@@ -168,8 +170,11 @@ tools/windows-verify/WebViewHelpers.cs:130
 재검증:
 
 - Windows cross-target clippy: **PASS**
-- Windows compile/runtime 실제 재검증: **미실행** (다음 push 후)
-- Windows 11 실기기: **UNVERIFIED**
+- Windows Runner 최종 검증: **PASS** (`41683684726`)
+  - `winui_build`: PASS
+  - WebView2 local/HTTPS/profile isolation/CDP: PASS
+  - `windows-verification.json`: 99 PASS, 0 FAIL, 9 UNVERIFIED, 1 SKIPPED
+- Windows 11 실기기: **UNVERIFIED** (Runner는 Windows Server 2025)
 
 ### B-3. Android CI
 
@@ -182,8 +187,9 @@ tools/windows-verify/WebViewHelpers.cs:130
 원인:
 
 - push/PR 자동 실행 조건이 없음
-- 따라서 이번 push에서 Android run이 생성되지 않음
 - Android는 Phase 5 manual scaffold이며 SDK/GeckoView 버전 고정 전 자동화하지 않는 기존 설계
+- `gh workflow run ci-android.yml --ref master` 시도 결과: **HTTP 404 workflow not found**
+- GitHub Actions workflows API에도 Android workflow가 등록되지 않음
 
 수정:
 
@@ -210,8 +216,8 @@ tools/windows-verify/WebViewHelpers.cs:130
 | actionlint | **PASS** | 3 workflows |
 | shellcheck | **PASS** | `tools/verify-linux.sh` |
 | PowerShell parser | **PASS** | `tools/verify-windows.ps1` |
-| Linux CI | **PASS** | `41678971283` |
-| Windows CI | **FAIL** | `41678971378`, 원인 확인 및 수정 완료 |
+| Linux CI | **PASS** | `41683684971` |
+| Windows CI | **PASS** | `41683684726` (Windows Server 2025) |
 | Android CI | **UNVERIFIED** | workflow_dispatch only, run 없음 |
 
 ---
@@ -231,16 +237,18 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/VerifyForm.cs` | headless CDP click 실패 | 실제 client area 유지 |
 | `tools/windows-verify/WebViewHelpers.cs` | CDP click hit-test | WebView2 visible |
 | `tools/windows-verify/Phase21Probes.cs` | tab lifecycle dispose 순서 | suspend 제거, close/resource 정리 유지 |
+| `tools/windows-verify/VerifyForm.cs` | headless CDP click | client area 유지 |
+| `tools/windows-verify/WebViewHelpers.cs` | CDP click hit-test | WebView2 visible |
 
 ---
 
 ## E. 미해결 문제
 
-1. 수정 사항은 아직 commit/push 전입니다. 다음 Windows run에서 probe/aggregation 수정 결과를 확인해야 합니다.
-2. Android는 manual-only라 실제 빌드가 없습니다.
-3. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
-4. crate 배포 path dependency version(R-05)은 별도입니다.
-5. Windows 11 실기기 검증은 별도입니다.
+1. Android workflow는 remote default branch에 있으나 GitHub Actions가 등록하지 않아 `gh workflow run`이 404입니다.
+2. Android 실제 build는 UNVERIFIED입니다.
+3. Windows Runner는 Windows Server 2025이며 Windows 11 실기기 검증과 다릅니다.
+4. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
+5. crate 배포 path dependency version(R-05)은 별도입니다.
 
 ---
 
@@ -268,6 +276,6 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ## 결론
 
-Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 compile/WinUI build까지 통과했고, 남은 실패 원인을 full log/artifact로 확인했습니다: Windows DPAPI clippy, CDP 응답 파싱, PowerShell `$CI` 변수 충돌입니다. 세 원인을 수정했으나 아직 push 후 재실행하지 않았습니다.
+Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 Windows DPAPI clippy, CDP 응답 파싱, PowerShell `$CI` 변수 충돌, headless input/viewport, tab lifecycle 상태 오류를 수정한 뒤 실제 Runner에서 **PASS**했습니다.
 
-Windows CI 최신 결과는 **FAIL(수정 전)**, Android CI는 **UNVERIFIED**입니다.
+Windows Runner는 Windows Server 2025이므로 Windows 11 실기기 검증은 별도 **UNVERIFIED**입니다. Android CI는 manual-only workflow가 GitHub Actions에 등록되지 않아 실제 build를 실행하지 못했으므로 **UNVERIFIED**입니다.

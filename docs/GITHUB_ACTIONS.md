@@ -5,7 +5,7 @@
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
 - 현재 상태: 2026-11-03 CI fix push 후 Linux는 **PASS**, Windows는 **FAIL** (내부 verification step). Android는 `workflow_dispatch` 전용이라 run이 없음.
-- 최신 run: [Linux #41678971283](https://github.com/thfzm/AMARE/actions/runs/41678971283) **success**, [Windows #41678971378](https://github.com/thfzm/AMARE/actions/runs/41678971378) **failure** (원인 수정 후 재실행 대기)
+- 최신 run: [Linux #41683684971](https://github.com/thfzm/AMARE/actions/runs/41683684971) **success**, [Windows #41683684726](https://github.com/thfzm/AMARE/actions/runs/41683684726) **success** (Windows Server 2025)
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---
