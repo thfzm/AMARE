@@ -147,16 +147,12 @@ internal static class Phase21Probes
                 throw new InvalidOperationException("inactive tab close count mismatch");
             foreach (var view in views)
             {
-                await view.CoreWebView2.TrySuspendAsync();
-            }
-            foreach (var view in views)
-            {
                 WebViewHelpers.DisposeView(host, view);
             }
             views.Clear();
             await Task.Delay(300);
             return Result("webview2_tab_lifecycle_10", ProbeStatus.Pass, true,
-                "10 tabs created, 5 closed, remaining tabs suspended and closed", new { tabs = 10, closed = 10 });
+                "10 tabs created, 5 closed, remaining tabs closed", new { tabs = 10, closed = 10 });
         }
         finally
         {

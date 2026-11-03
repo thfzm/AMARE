@@ -230,6 +230,7 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/Phase21Probes.cs` | popup probe 안정화 | trusted click 사용 |
 | `tools/windows-verify/VerifyForm.cs` | headless CDP click 실패 | 실제 client area 유지 |
 | `tools/windows-verify/WebViewHelpers.cs` | CDP click hit-test | WebView2 visible |
+| `tools/windows-verify/Phase21Probes.cs` | tab lifecycle dispose 순서 | suspend 제거, close/resource 정리 유지 |
 
 ---
 
