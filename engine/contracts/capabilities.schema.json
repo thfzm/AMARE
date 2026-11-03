@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amare.local/contracts/engine-capabilities.schema.json",
+  "title": "EngineCapabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "supports_cdp": { "type": "boolean" },
+    "supports_trusted_input": { "type": "boolean" },
+    "supports_extensions": { "type": "boolean" },
+    "supports_private_profile": { "type": "boolean" },
+    "supports_per_tab_profile": { "type": "boolean" },
+    "supports_download_pause": { "type": "boolean" },
+    "supports_pdf": { "type": "boolean" },
+    "supports_drm": { "type": "boolean" },
+    "supports_agent_input": { "type": "boolean" },
+    "max_tabs_hint": { "type": ["integer", "null"], "minimum": 0 }
+  }
+}

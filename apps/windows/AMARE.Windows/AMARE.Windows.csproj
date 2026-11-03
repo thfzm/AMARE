@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Amare.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AMARE.Windows.Core\AMARE.Windows.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
+  <Target Name="CopyAmareFfi" BeforeTargets="Build">
+    <ItemGroup>
+      <_AmareFfi Include="..\..\..\target\release\amare_ffi.dll" Condition="Exists('..\..\..\target\release\amare_ffi.dll')" />
+      <_AmareFfi Include="..\..\..\target\x86_64-pc-windows-msvc\release\amare_ffi.dll" Condition="Exists('..\..\..\target\x86_64-pc-windows-msvc\release\amare_ffi.dll') And !Exists('..\..\..\target\release\amare_ffi.dll')" />
+      <_AmareFfi Include="..\..\..\target\debug\amare_ffi.dll" Condition="Exists('..\..\..\target\debug\amare_ffi.dll') And !Exists('..\..\..\target\release\amare_ffi.dll') And !Exists('..\..\..\target\x86_64-pc-windows-msvc\release\amare_ffi.dll')" />
+      <_AmareFfi Include="..\..\..\target\x86_64-pc-windows-msvc\debug\amare_ffi.dll" Condition="Exists('..\..\..\target\x86_64-pc-windows-msvc\debug\amare_ffi.dll') And !Exists('..\..\..\target\release\amare_ffi.dll') And !Exists('..\..\..\target\x86_64-pc-windows-msvc\release\amare_ffi.dll') And !Exists('..\..\..\target\debug\amare_ffi.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AmareFfi)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="'@(_AmareFfi)' != ''" />
+    <Warning Text="amare_ffi.dll was not found. Build crates/amare-ffi for the Windows target before running AMARE." Condition="'@(_AmareFfi)' == ''" />
+  </Target>
+</Project>

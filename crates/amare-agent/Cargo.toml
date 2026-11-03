@@ -1,0 +1,6 @@
+[package]
+name = "amare-agent"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+rust-version.workspace = true

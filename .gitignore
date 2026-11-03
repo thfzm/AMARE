@@ -1,0 +1,69 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Android
+.gradle/
+local.properties
+**/build/
+*.apk
+*.aab
+*.keystore
+
+# Native outputs
+*.so
+*.dll
+*.dylib
+
+# Local secrets / credentials (never commit)
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+secrets.json
+appsettings.*.local.json
+
+# WebView2 / local browser data
+**/EBWebView/
+**/UserData/
+**/webview2/
+
+# Local data / artifacts
+/artifacts/
+/test-results/
+TestResults/
+*.log
+*.trx
+*.coverage
+*.nupkg
+*.snupkg
+*.msi
+*.msix
+*.appx
+*.zip
+*.7z
+*.dmp
+*.etl
+interop-results.json
+windows-verify-results.json
+*.db
+*.db-wal
+*.db-shm
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

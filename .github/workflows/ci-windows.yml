@@ -1,0 +1,104 @@
+name: ci-windows
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-windows-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-verify:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Verify .NET SDK
+        shell: pwsh
+        run: dotnet --info
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Ensure WebView2 Runtime
+        shell: pwsh
+        run: |
+          $candidates = @()
+          if (${env:ProgramFiles(x86)}) { $candidates += (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application") }
+          if ($env:ProgramFiles) { $candidates += (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application") }
+          $found = $candidates | Where-Object { Test-Path $_ } | ForEach-Object {
+            Get-ChildItem $_ -Filter msedgewebview2.exe -Recurse -ErrorAction SilentlyContinue
+          } | Select-Object -First 1
+          if (-not $found) {
+            Write-Host "WebView2 Runtime not found. Installing Evergreen Bootstrapper..."
+            $setup = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
+            Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $setup
+            Start-Process -FilePath $setup -ArgumentList "/silent /install" -Wait
+          }
+          $found = $candidates | Where-Object { Test-Path $_ } | ForEach-Object {
+            Get-ChildItem $_ -Filter msedgewebview2.exe -Recurse -ErrorAction SilentlyContinue
+          } | Select-Object -First 1
+          if (-not $found) { throw "WebView2 Runtime installation failed." }
+          Write-Host "WebView2:" $found.FullName
+
+      - name: Verify Visual Studio / Windows SDK / Rust
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere not found" }
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "Visual Studio C++ build tools not found" }
+          if (-not (Test-Path (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\Include"))) { throw "Windows SDK not found" }
+          cargo --version
+          rustc --version
+          Write-Host "Visual Studio:" $vs
+
+      - name: Run Windows verification
+        shell: pwsh
+        env:
+          AMARE_VERIFY_OUTPUT: ${{ github.workspace }}\artifacts\windows
+        run: |
+          .\tools\verify-windows.ps1 -CI
+
+      - name: Upload Windows artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-verification-${{ github.run_id }}
+          path: artifacts/windows
+          if-no-files-found: warn

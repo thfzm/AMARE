@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amare.local/contracts/engine-event.schema.json",
+  "title": "EngineEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind"],
+  "properties": {
+    "request_id": { "type": ["string", "null"] },
+    "tab_id": { "type": ["string", "null"] },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "tab_created",
+        "tab_closed",
+        "tab_activated",
+        "navigation_started",
+        "navigation_committed",
+        "navigation_completed",
+        "navigation_failed",
+        "title_changed",
+        "url_changed",
+        "favicon_changed",
+        "loading_changed",
+        "history_changed",
+        "download_started",
+        "download_progress",
+        "download_completed",
+        "download_failed",
+        "permission_requested",
+        "new_window_requested",
+        "process_failed",
+        "user_input_detected",
+        "result",
+        "error"
+      ]
+    },
+    "payload": { "type": "object", "default": {} },
+    "engine_version": { "type": ["string", "null"] },
+    "adapter_version": { "type": ["string", "null"] }
+  }
+}

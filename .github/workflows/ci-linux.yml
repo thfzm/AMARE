@@ -1,0 +1,199 @@
+name: ci-linux
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-linux-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-and-interop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Prepare logs
+        run: mkdir -p artifacts/linux
+
+      - name: Rust format
+        run: |
+          set -o pipefail
+          cargo fmt --all -- --check 2>&1 | tee artifacts/linux/rust-fmt.log
+
+      - name: Rust clippy
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee artifacts/linux/rust-clippy.log
+
+      - name: Rust workspace tests
+        run: |
+          set -o pipefail
+          cargo test --workspace 2>&1 | tee artifacts/linux/rust-tests.log
+
+      - name: Service layer tests
+        run: |
+          set -o pipefail
+          cargo test -p amare-services -- --test-threads=1 2>&1 | tee artifacts/linux/service-tests.log
+
+      - name: Service layer integration report
+        run: |
+          set -o pipefail
+          cargo run -p amare-services --bin service-ci --release -- \
+            --output artifacts/linux/service-ci.json 2>&1 | tee artifacts/linux/service-ci.log
+
+      - name: Service layer benchmark
+        run: |
+          set -o pipefail
+          cargo run -p amare-services --bin service-benchmark --release -- \
+            --output artifacts/linux/service-benchmark.json 2>&1 | tee artifacts/linux/service-benchmark.log
+
+      - name: Security and encryption tests
+        run: |
+          set -o pipefail
+          cargo test -p amare-security 2>&1 | tee artifacts/linux/security-tests.log
+
+      - name: Update signature and rollback tests
+        run: |
+          set -o pipefail
+          cargo test -p amare-update 2>&1 | tee artifacts/linux/update-tests.log
+
+      - name: SQLite storage tests
+        run: |
+          set -o pipefail
+          cargo test -p amare-store -- --test-threads=1 2>&1 | tee artifacts/linux/storage-tests.log
+
+      - name: SQLite storage integration report
+        run: |
+          set -o pipefail
+          cargo run -p amare-store --bin storage-ci --release --             --output artifacts/linux/storage-ci.json 2>&1 | tee artifacts/linux/storage-ci.log
+
+      - name: SQLite storage benchmark
+        run: |
+          set -o pipefail
+          cargo run -p amare-store --bin storage-benchmark --release --             --output artifacts/linux/storage-benchmark.json 2>&1 | tee artifacts/linux/storage-benchmark.log
+
+      - name: Build C ABI
+        run: |
+          set -o pipefail
+          cargo build -p amare-ffi 2>&1 | tee artifacts/linux/ffi-build.log
+
+      - name: C header link smoke test
+        run: |
+          set -o pipefail
+          gcc -I crates/amare-ffi/include \
+            crates/amare-ffi/tests/header_link_smoke.c \
+            -L target/debug -lamare_ffi \
+            -Wl,-rpath,"$PWD/target/debug" \
+            -o artifacts/linux/header_link_smoke 2>&1 | tee artifacts/linux/c-header.log
+          artifacts/linux/header_link_smoke 2>&1 | tee -a artifacts/linux/c-header.log
+
+      - name: C# <-> Rust interop
+        env:
+          AMARE_VERIFY_OUTPUT: ${{ github.workspace }}/artifacts/linux
+          LD_LIBRARY_PATH: ${{ github.workspace }}/target/debug
+        run: |
+          set -o pipefail
+          dotnet run --project apps/windows/AMARE.Interop.Tests/AMARE.Interop.Tests.csproj \
+            2>&1 | tee artifacts/linux/csharp-interop.log
+
+      - name: Write Linux CI summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, datetime
+          root = pathlib.Path('artifacts/linux')
+          storage = None
+          storage_path = root / 'storage-ci.json'
+          if storage_path.exists():
+              storage = json.loads(storage_path.read_text())
+          backup = None
+          backup_path = root / 'backup-ci.json'
+          if backup_path.exists():
+              backup = json.loads(backup_path.read_text())
+          service = None
+          service_path = root / 'service-ci.json'
+          if service_path.exists():
+              service = json.loads(service_path.read_text())
+          interop = None
+          interop_path = root / 'interop-results.json'
+          if interop_path.exists():
+              rows = json.loads(interop_path.read_text())
+              interop = {
+                  'passed': sum(1 for row in rows if row.get('Passed') or row.get('passed')),
+                  'failed': sum(1 for row in rows if not (row.get('Passed') or row.get('passed'))),
+                  'total': len(rows)
+              }
+          logs = sorted(str(p) for p in root.glob('*.log')) if root.exists() else []
+          summary = {
+              'runner_os': os.environ.get('RUNNER_OS'),
+              'job_status': os.environ.get('JOB_STATUS'),
+              'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'storage': storage.get('summary') if storage else None,
+              'backup': backup.get('summary') if backup else None,
+              'service': service.get('summary') if service else None,
+              'interop': interop,
+              'environment': storage.get('environment') if storage else None,
+              'logs': logs,
+              'note': 'Runner results are not a substitute for the target Windows 11 device.'
+          }
+          root.mkdir(parents=True, exist_ok=True)
+          (root / 'ci-summary.json').write_text(json.dumps(summary, indent=2))
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload Linux artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-phase0.5-${{ github.run_id }}
+          path: artifacts/linux
+          if-no-files-found: warn
+
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON schemas
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          for p in pathlib.Path('engine/contracts').glob('*.json'):
+              json.loads(p.read_text())
+              print('ok', p)
+          PY

@@ -1,0 +1,15 @@
+[package]
+name = "amare-services"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amare-core.workspace = true
+amare-store.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/amare-core",
+    "crates/amare-ffi",
+    "crates/amare-security",
+    "crates/amare-update",
+    "crates/amare-store",
+    "crates/amare-services",
+    "crates/amare-ai",
+    "crates/amare-agent",
+    "crates/amare-platform",
+    "crates/amare-testkit",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license-file = "COPYRIGHT.md"
+rust-version = "1.85"
+authors = ["AMARE Project"]
+
+[workspace.dependencies]
+amare-core = { path = "crates/amare-core" }
+amare-ffi = { path = "crates/amare-ffi" }
+amare-security = { path = "crates/amare-security" }
+amare-update = { path = "crates/amare-update" }
+amare-store = { path = "crates/amare-store" }
+amare-services = { path = "crates/amare-services" }
+amare-ai = { path = "crates/amare-ai" }
+amare-agent = { path = "crates/amare-agent" }
+amare-platform = { path = "crates/amare-platform" }
+amare-testkit = { path = "crates/amare-testkit" }
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+flate2 = "1.0"
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+argon2 = "0.5"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+rand = "0.8"
+zeroize = { version = "1.8", features = ["derive"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+sha2 = "0.10"
+hex = "0.4"

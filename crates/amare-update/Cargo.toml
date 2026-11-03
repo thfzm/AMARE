@@ -1,0 +1,13 @@
+[package]
+name = "amare-update"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+amare-security.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
