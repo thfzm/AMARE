@@ -10,8 +10,7 @@ internal static class WebViewHelpers
     public static Task<CoreWebView2Environment> CreateEnvironmentAsync(string userDataFolder)
     {
         Directory.CreateDirectory(userDataFolder);
-        return CoreWebView2Environment.CreateWithOptionsAsync(
-            null, userDataFolder, new CoreWebView2EnvironmentOptions());
+        return CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
     }
 
     public static async Task<(CoreWebView2Environment Env, WebView2 View)> CreateViewAsync(
@@ -125,14 +124,6 @@ internal static class WebViewHelpers
 
     public static void DisposeView(Control host, WebView2 view)
     {
-        try
-        {
-            view.CoreWebView2?.Close();
-        }
-        catch
-        {
-            // Best effort; the process may already be closing.
-        }
         host.Controls.Remove(view);
         view.Dispose();
     }

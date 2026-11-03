@@ -3,8 +3,10 @@
 **/*.rs.bk
 
 # .NET
-bin/
-obj/
+apps/**/bin/
+apps/**/obj/
+tools/**/bin/
+tools/**/obj/
 .vs/
 *.user
 *.suo

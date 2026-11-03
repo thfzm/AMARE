@@ -105,6 +105,21 @@ jobs:
           set -o pipefail
           cargo run -p amare-store --bin storage-benchmark --release --             --output artifacts/linux/storage-benchmark.json 2>&1 | tee artifacts/linux/storage-benchmark.log
 
+      - name: Backup/restore tests
+        run: |
+          set -o pipefail
+          cargo test -p amare-store --test backup -- --test-threads=1 2>&1 | tee artifacts/linux/backup-tests.log
+
+      - name: Backup/restore integration report
+        run: |
+          set -o pipefail
+          cargo run -p amare-store --bin backup-ci --release -- --output artifacts/linux/backup-ci.json 2>&1 | tee artifacts/linux/backup-ci.log
+
+      - name: Backup/restore benchmark
+        run: |
+          set -o pipefail
+          cargo run -p amare-store --bin backup-benchmark --release -- --output artifacts/linux/backup-benchmark.json 2>&1 | tee artifacts/linux/backup-benchmark.log
+
       - name: Build C ABI
         run: |
           set -o pipefail
