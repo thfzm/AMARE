@@ -20,7 +20,7 @@ impl KeyProtector for WindowsDpapiKeyProtector {
             return Err(KeyProtectionError::TooLarge);
         }
         let description = wide(context);
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: plaintext.len() as u32,
             pbData: plaintext.as_ptr().cast_mut(),
         };
@@ -36,7 +36,7 @@ impl KeyProtector for WindowsDpapiKeyProtector {
         // output is initialized by DPAPI on success.
         let ok = unsafe {
             CryptProtectData(
-                &mut input,
+                &input,
                 description.as_ptr(),
                 &entropy,
                 std::ptr::null(),
@@ -56,7 +56,7 @@ impl KeyProtector for WindowsDpapiKeyProtector {
         if protected.len() > u32::MAX as usize {
             return Err(KeyProtectionError::TooLarge);
         }
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: protected.len() as u32,
             pbData: protected.as_ptr().cast_mut(),
         };
@@ -72,7 +72,7 @@ impl KeyProtector for WindowsDpapiKeyProtector {
         // output is initialized by DPAPI on success.
         let ok = unsafe {
             CryptUnprotectData(
-                &mut input,
+                &input,
                 std::ptr::null_mut(),
                 &entropy,
                 std::ptr::null(),

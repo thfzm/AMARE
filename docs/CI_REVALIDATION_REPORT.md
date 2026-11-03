@@ -1,7 +1,7 @@
 # AMARE CI 재검증 보고서
 
 - 작성일: 2026-11-03
-- 기준 commit: `df5861fdee10c89458e804530579f19edccd60c4` (CI fix commit)
+- 기준 commit: `9b4ac03db9acde2dea252434902d7ebf8b12820a` (CI fix + diagnostics)
 - 저장소: `https://github.com/thfzm/AMARE`
 - branch: `master`
 - 이번 문서 갱신 시점: 추가 Windows 진단 수정은 local commit 예정, **push는 인증 없음으로 미실행**
@@ -18,8 +18,8 @@
 | Android CI | **UNVERIFIED** — 수동 전용 workflow, 실행 없음 |
 | Linux 로컬 재검증 | **PASS** |
 | Windows 로컬 재검증 | **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WebView2 실행 불가) |
-| 발견한 실제 CI 문제 | **3** |
-| 수정한 문제 | **3** |
+| 발견한 실제 CI 문제 | **5** |
+| 수정한 문제 | **5** |
 | 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **FAIL** |
 | Windows 내부 step 로그 | 인증 없음으로 Artifact/full log 확인 불가 |
 
@@ -27,8 +27,10 @@
 
 - 초기 Linux run: `41665695890` — failure
 - 초기 Windows run: `41665695751` — failure
-- 수정 후 Linux run `41669251118` — **success**
-- 수정 후 Windows run `41669251131` — **failure**
+- 1차 수정 후 Linux run `41669251118` — **success**
+- 1차 수정 후 Windows run `41669251131` — **failure**
+- 2차 수정 후 Linux run `41678971283` — **success**
+- 2차 수정 후 Windows run `41678971378` — **failure** (원인 확인)
 - Android run: **없음**
 
 ---
@@ -94,7 +96,7 @@ error: no bin target named `service-ci` in `amare-services` package
 
 ### B-2. Windows CI
 
-최신 결과: **FAIL** (`41669251131`) — compile annotations는 사라졌으나 `Run Windows verification` 내부 step 중 하나가 exit 1
+최신 결과: **FAIL** (`41678971378`) — full log/artifact 인증 확보 후 내부 원인 확인
 
 기존 설정:
 
@@ -135,18 +137,39 @@ tools/windows-verify/WebViewHelpers.cs:130
 - 초기 commit에서 누락된 `src/bin` 때문에 Windows 검증 스크립트의 service/storage/backup CI 단계도 실패할 상태였습니다.
 - `.gitignore` 수정으로 함께 해결했습니다.
 
-추가 진단:
+확인된 내부 실패:
 
-- 최신 Windows run에서 C# compile annotation은 **없음**
-- `Run Windows verification`은 5분 44초 후 exit 1
-- 전체 로그/Artifact는 GitHub 인증 없이 다운로드 불가
-- 실패한 내부 step을 공개 annotation으로 확인할 수 있도록 `::error title=Windows verification failures::...` 추가
-- local HTTP popup probe의 `window.open` eval을 trusted click으로 변경
+1. `rust_clippy` — Windows DPAPI `CryptProtectData`/`CryptUnprotectData`에 불필요한 `&mut input` 사용
+   - Windows target에서만 clippy `unnecessary_mut_passed` 발생
+2. `webview2_local_navigation`, `profile_isolation`, `cdp_dom_click_input_scroll`
+   - `WebViewHelpers.EvalAsync`가 CDP `Runtime.evaluate` 응답 구조를 잘못 가정
+   - `JsonElement.GetProperty` KeyNotFoundException
+3. PowerShell 최종 aggregation
+   - `[switch]$CI` 파라미터와 `$ci = Get-Content ...` 변수 이름이 충돌
+   - SwitchParameter 변환 오류로 trap 진입
+
+추가 확인:
+
+- `winui_restore` / `winui_build`: **PASS** (0 warnings, 0 errors)
+- `windows_probe_build`: **PASS**
+- C# interop: **46/46 PASS**
+- WebView2 HTTPS: PASS
+- 10-tab lifecycle: PASS
+- Windows Runner caption: **Microsoft Windows Server 2025 Datacenter** → Windows 11 실기기가 아님
+- `windows_11` 판정을 build만이 아니라 Server caption 제외로 수정
+
+수정:
+
+- DPAPI `&mut input` → `&input`
+- `EvalAsync`를 CDP 응답의 envelope/직접 result 양쪽을 처리하도록 수정
+- PowerShell `$ci` → `$ciData`로 변경
+- Windows Server를 Windows 11로 오인하지 않도록 `windows_11` 판정 수정
 
 재검증:
 
-- Windows compile/runtime: **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WindowsVerify 실행 불가)
-- 실제 Windows 11/Windows Runner 추가 재실행: **미실행**
+- Windows cross-target clippy: **PASS**
+- Windows compile/runtime 실제 재검증: **미실행** (다음 push 후)
+- Windows 11 실기기: **UNVERIFIED**
 
 ### B-3. Android CI
 
@@ -177,6 +200,7 @@ tools/windows-verify/WebViewHelpers.cs:130
 | Rust clippy | **PASS** | `-D warnings` |
 | Rust check | **PASS** | workspace |
 | Rust tests | **PASS** | **138 tests** |
+| Windows target clippy (`amare-platform`) | **PASS** | cross-target |
 | C# Core build | **PASS** | Linux |
 | C# Interop | **PASS** | **46/46** |
 | Storage | **PASS** | `storage-ci` 10/10 |
@@ -186,8 +210,8 @@ tools/windows-verify/WebViewHelpers.cs:130
 | actionlint | **PASS** | 3 workflows |
 | shellcheck | **PASS** | `tools/verify-linux.sh` |
 | PowerShell parser | **PASS** | `tools/verify-windows.ps1` |
-| Linux CI | **PASS** | `41669251118` |
-| Windows CI | **FAIL** | `41669251131`, internal step 확인 필요 |
+| Linux CI | **PASS** | `41678971283` |
+| Windows CI | **FAIL** | `41678971378`, 원인 확인 및 수정 완료 |
 | Android CI | **UNVERIFIED** | workflow_dispatch only, run 없음 |
 
 ---
@@ -200,18 +224,20 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/WebViewHelpers.cs` | WinForms WebView2 API compile error | `CreateAsync` 사용, `CoreWebView2.Close` 제거 |
 | `.github/workflows/ci-linux.yml` | backup CI 단계 누락 | backup tests/CI/benchmark 추가 |
 | `docs/CI_REVALIDATION_REPORT.md` | 결과 보고 | 이 문서 |
-| `tools/verify-windows.ps1` | 실패 내부 step 식별 | `::error` annotation 추가 |
+| `crates/amare-platform/src/windows_dpapi.rs` | Windows clippy 실패 | 불필요한 mutable reference 제거 |
+| `tools/windows-verify/WebViewHelpers.cs` | CDP 응답 파싱 실패 | envelope/direct result tolerant parser |
+| `tools/verify-windows.ps1` | PowerShell 변수 충돌/Server 판정 | `$ciData`, Server 제외 windows_11, annotation |
 | `tools/windows-verify/Phase21Probes.cs` | popup probe 안정화 | trusted click 사용 |
 
 ---
 
 ## E. 미해결 문제
 
-1. Windows CI는 최신 run에서도 실패했습니다. 내부 step 로그 확인에는 GitHub 인증이 필요합니다.
-2. Windows 진단/popup 수정은 아직 push되지 않았습니다. push 후 재실행 결과가 필요합니다.
-3. Android는 manual-only라 실제 빌드가 없습니다.
-4. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
-5. crate 배포 path dependency version(R-05)은 별도입니다.
+1. 수정 사항은 아직 commit/push 전입니다. 다음 Windows run에서 probe/aggregation 수정 결과를 확인해야 합니다.
+2. Android는 manual-only라 실제 빌드가 없습니다.
+3. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
+4. crate 배포 path dependency version(R-05)은 별도입니다.
+5. Windows 11 실기기 검증은 별도입니다.
 
 ---
 
@@ -239,6 +265,6 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ## 결론
 
-Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 compile 오류를 수정했지만 최신 run에서 내부 verification step이 여전히 실패했습니다. full log/Artifact 인증이 없어 정확한 내부 step을 확정하지 못했으며, 다음 push에서 `::error` annotation으로 식별할 수 있게 했습니다.
+Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 compile/WinUI build까지 통과했고, 남은 실패 원인을 full log/artifact로 확인했습니다: Windows DPAPI clippy, CDP 응답 파싱, PowerShell `$CI` 변수 충돌입니다. 세 원인을 수정했으나 아직 push 후 재실행하지 않았습니다.
 
-Windows CI 최신 결과는 **FAIL**, Android CI는 **UNVERIFIED**입니다.
+Windows CI 최신 결과는 **FAIL(수정 전)**, Android CI는 **UNVERIFIED**입니다.

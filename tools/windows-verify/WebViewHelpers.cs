@@ -66,13 +66,47 @@ internal static class WebViewHelpers
             "Runtime.evaluate",
             JsonSerializer.Serialize(new { expression, returnByValue = true, awaitPromise = true }));
         using var document = JsonDocument.Parse(response);
-        var result = document.RootElement.GetProperty("result");
-        if (result.TryGetProperty("exceptionDetails", out var exception))
+        var root = document.RootElement;
+        if (TryFindException(root, out var exception))
             throw new InvalidOperationException("JS exception: " + exception.GetRawText());
-        var value = result.GetProperty("result");
-        if (!value.TryGetProperty("value", out var valueElement))
-            throw new InvalidOperationException("CDP result has no value: " + value.GetRawText());
+        if (!TryExtractValue(root, out var valueElement))
+            throw new InvalidOperationException("CDP result has no value: " + root.GetRawText());
         return valueElement.Clone();
+    }
+
+    private static bool TryFindException(JsonElement element, out JsonElement exception)
+    {
+        if (element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("exceptionDetails", out exception))
+        {
+            return true;
+        }
+        if (element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("result", out var inner)
+            && inner.ValueKind == JsonValueKind.Object
+            && TryFindException(inner, out exception))
+        {
+            return true;
+        }
+        exception = default;
+        return false;
+    }
+
+    private static bool TryExtractValue(JsonElement element, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("value", out value))
+        {
+            return true;
+        }
+        if (element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("result", out var inner)
+            && inner.ValueKind == JsonValueKind.Object)
+        {
+            return TryExtractValue(inner, out value);
+        }
+        value = default;
+        return false;
     }
 
     public static async Task<string> EvalStringAsync(WebView2 view, string expression)

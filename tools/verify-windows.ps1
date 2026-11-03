@@ -177,7 +177,7 @@ $dotnetSdks = @(& dotnet --list-sdks 2>$null)
 $cargoVersion = (& cargo --version 2>$null)
 $rustcVersion = (& rustc --version 2>$null)
 
-$isWindows11 = [Environment]::OSVersion.Version.Build -ge 22000
+$isWindows11 = ($os.Caption -notmatch 'Server') -and ([Environment]::OSVersion.Version.Build -ge 22000)
 $envReport = [pscustomobject]@{
     captured_at = (Get-Date).ToUniversalTime().ToString("o")
     os = [pscustomobject]@{
@@ -413,8 +413,8 @@ if (Test-Path $interopPath) {
 foreach ($ciFile in @("service-ci.json", "storage-ci.json", "backup-ci.json")) {
     $ciPath = Join-Path $OutputDir $ciFile
     if (-not (Test-Path $ciPath)) { continue }
-    $ci = Get-Content $ciPath -Raw | ConvertFrom-Json
-    foreach ($case in $ci.cases) {
+    $ciData = Get-Content $ciPath -Raw | ConvertFrom-Json
+    foreach ($case in $ciData.cases) {
         $unifiedResults.Add([pscustomobject]@{
             name = [string]$case.id
             status = [string]$case.status
