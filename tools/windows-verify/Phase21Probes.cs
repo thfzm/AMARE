@@ -31,7 +31,7 @@ internal static class Phase21Probes
             view.CoreWebView2.NewWindowRequested += NewWindow;
             try
             {
-                await WebViewHelpers.EvalAsync(view, "window.open('/popup.html','_blank'); true");
+                await WebViewHelpers.ClickSelectorAsync(view, "#popup");
                 var uri = await popup.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 if (!uri.EndsWith("/popup.html", StringComparison.Ordinal))
                     throw new InvalidOperationException($"popup uri mismatch: {uri}");

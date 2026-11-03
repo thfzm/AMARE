@@ -4,8 +4,8 @@
 - 단계: Phase 2.2 Windows 검증 게이트/Release Candidate
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
-- 현재 상태: 2026-11-03 초기 push에서 `ci-linux`/`ci-windows`가 실제 실행되어 **failure**로 확인됨. Android는 `workflow_dispatch` 전용이라 run이 없음. 후속 수정 후 재실행은 아직 없음.
-- 실제 run: [Linux #41665695890](https://github.com/thfzm/AMARE/actions/runs/41665695890), [Windows #41665695751](https://github.com/thfzm/AMARE/actions/runs/41665695751)
+- 현재 상태: 2026-11-03 CI fix push 후 Linux는 **PASS**, Windows는 **FAIL** (내부 verification step). Android는 `workflow_dispatch` 전용이라 run이 없음.
+- 최신 run: [Linux #41669251118](https://github.com/thfzm/AMARE/actions/runs/41669251118) **success**, [Windows #41669251131](https://github.com/thfzm/AMARE/actions/runs/41669251131) **failure**
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---

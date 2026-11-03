@@ -121,6 +121,9 @@ function Invoke-Step {
     })
     if ($exitCode -ne 0) {
         $Failures.Add($Name)
+        # GitHub annotation makes the failing internal step visible without
+        # requiring access to the full job log.
+        Write-Host "::error title=Windows verification step failed::$Name (exit $exitCode). See $logPath"
         # Continue running independent steps so the unified report and logs are
         # produced even when one step fails. The script exits non-zero at the end.
     }
@@ -474,6 +477,7 @@ Write-Utf8Json (Join-Path $OutputDir "windows-verify-summary.json") $summary
 
 Write-Host ""
 if ($Failures.Count -gt 0) {
+    Write-Host "::error title=Windows verification failures::$($Failures -join ', ')"
     Write-Host "FAILURES: $($Failures -join ', ')" -ForegroundColor Red
     exit 1
 }

@@ -1,10 +1,10 @@
 # AMARE CI 재검증 보고서
 
 - 작성일: 2026-11-03
-- 기준 commit: `a7a2875af749e29e49391c7fb1b21f3c610c6e4f`
+- 기준 commit: `df5861fdee10c89458e804530579f19edccd60c4` (CI fix commit)
 - 저장소: `https://github.com/thfzm/AMARE`
 - branch: `master`
-- 이번 단계에서 commit/push/remote 변경: **수행하지 않음**
+- 이번 문서 갱신 시점: 추가 Windows 진단 수정은 local commit 예정, **push는 인증 없음으로 미실행**
 
 ---
 
@@ -13,19 +13,22 @@
 | 항목 | 결과 |
 |---|---|
 | 실제 GitHub Actions 실행 확인 | **PASS (조회)** |
-| Linux CI | **FAIL** — 실제 실행 |
-| Windows CI | **FAIL** — 실제 실행 |
+| Linux CI | **PASS** — 재실행 run confirmed |
+| Windows CI | **FAIL** — 재실행 run still failure |
 | Android CI | **UNVERIFIED** — 수동 전용 workflow, 실행 없음 |
 | Linux 로컬 재검증 | **PASS** |
 | Windows 로컬 재검증 | **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WebView2 실행 불가) |
 | 발견한 실제 CI 문제 | **3** |
 | 수정한 문제 | **3** |
-| 수정 후 GitHub Actions 재실행 | **미실행** (commit/push 금지) |
+| 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **FAIL** |
+| Windows 내부 step 로그 | 인증 없음으로 Artifact/full log 확인 불가 |
 
 실제 실행:
 
-- Linux run: `41665695890` — failure
-- Windows run: `41665695751` — failure
+- 초기 Linux run: `41665695890` — failure
+- 초기 Windows run: `41665695751` — failure
+- 수정 후 Linux run `41669251118` — **success**
+- 수정 후 Windows run `41669251131` — **failure**
 - Android run: **없음**
 
 ---
@@ -34,7 +37,9 @@
 
 ### B-1. Linux CI
 
-기존 설정:
+최신 결과: **PASS** (`41669251118`)
+
+초기 실패 분석:
 
 - `ubuntu-24.04`
 - Rust fmt/clippy/test
@@ -84,9 +89,12 @@ error: no bin target named `service-ci` in `amare-services` package
 
 - 깨끗한 archive + source bin을 포함한 임시 checkout에서 `service-ci`, `storage-ci`, `backup-ci` 모두 **PASS**
 - 로컬 `verify-linux.sh`: **EXIT 0**
-- GitHub Actions 재실행: **미실행** (commit/push 금지)
+- GitHub Actions 재실행: **PASS** (`41669251118`)
+- backup tests/CI/benchmark도 수정 workflow에 포함되어 실행됨
 
 ### B-2. Windows CI
+
+최신 결과: **FAIL** (`41669251131`) — compile annotations는 사라졌으나 `Run Windows verification` 내부 step 중 하나가 exit 1
 
 기존 설정:
 
@@ -127,10 +135,18 @@ tools/windows-verify/WebViewHelpers.cs:130
 - 초기 commit에서 누락된 `src/bin` 때문에 Windows 검증 스크립트의 service/storage/backup CI 단계도 실패할 상태였습니다.
 - `.gitignore` 수정으로 함께 해결했습니다.
 
+추가 진단:
+
+- 최신 Windows run에서 C# compile annotation은 **없음**
+- `Run Windows verification`은 5분 44초 후 exit 1
+- 전체 로그/Artifact는 GitHub 인증 없이 다운로드 불가
+- 실패한 내부 step을 공개 annotation으로 확인할 수 있도록 `::error title=Windows verification failures::...` 추가
+- local HTTP popup probe의 `window.open` eval을 trusted click으로 변경
+
 재검증:
 
 - Windows compile/runtime: **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WindowsVerify 실행 불가)
-- 실제 Windows 11/Windows Runner 재실행: **미실행**
+- 실제 Windows 11/Windows Runner 추가 재실행: **미실행**
 
 ### B-3. Android CI
 
@@ -170,8 +186,8 @@ tools/windows-verify/WebViewHelpers.cs:130
 | actionlint | **PASS** | 3 workflows |
 | shellcheck | **PASS** | `tools/verify-linux.sh` |
 | PowerShell parser | **PASS** | `tools/verify-windows.ps1` |
-| Linux CI | **FAIL (수정 전 실제 run)** / 재실행 UNVERIFIED | 빈 source bin 누락 |
-| Windows CI | **FAIL (수정 전 실제 run)** / 재실행 UNVERIFIED | WebViewHelpers compile error |
+| Linux CI | **PASS** | `41669251118` |
+| Windows CI | **FAIL** | `41669251131`, internal step 확인 필요 |
 | Android CI | **UNVERIFIED** | workflow_dispatch only, run 없음 |
 
 ---
@@ -184,17 +200,18 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/WebViewHelpers.cs` | WinForms WebView2 API compile error | `CreateAsync` 사용, `CoreWebView2.Close` 제거 |
 | `.github/workflows/ci-linux.yml` | backup CI 단계 누락 | backup tests/CI/benchmark 추가 |
 | `docs/CI_REVALIDATION_REPORT.md` | 결과 보고 | 이 문서 |
+| `tools/verify-windows.ps1` | 실패 내부 step 식별 | `::error` annotation 추가 |
+| `tools/windows-verify/Phase21Probes.cs` | popup probe 안정화 | trusted click 사용 |
 
 ---
 
 ## E. 미해결 문제
 
-1. 수정 사항이 아직 commit/push되지 않아 GitHub Actions 재실행 전입니다.
-2. Windows compile/runtime 결과는 Windows Runner에서 재검증해야 합니다.
+1. Windows CI는 최신 run에서도 실패했습니다. 내부 step 로그 확인에는 GitHub 인증이 필요합니다.
+2. Windows 진단/popup 수정은 아직 push되지 않았습니다. push 후 재실행 결과가 필요합니다.
 3. Android는 manual-only라 실제 빌드가 없습니다.
-4. 초기 commit 자체에는 `src/bin` 6개가 없습니다. 새 commit에 반드시 포함해야 합니다.
-5. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
-6. crate 배포 path dependency version(R-05)은 별도입니다.
+4. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
+5. crate 배포 path dependency version(R-05)은 별도입니다.
 
 ---
 
@@ -222,6 +239,6 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ## 결론
 
-Linux CI 실패의 직접 원인은 **초기 commit에서 `src/bin` source가 `.gitignore`의 `bin/` 규칙으로 누락된 것**입니다. Windows CI는 여기에 더해 **WinForms WebView2 API 사용 오류**가 있었습니다. 두 문제를 최소 수정했고 Linux 로컬 검증은 통과했습니다.
+Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 compile 오류를 수정했지만 최신 run에서 내부 verification step이 여전히 실패했습니다. full log/Artifact 인증이 없어 정확한 내부 step을 확정하지 못했으며, 다음 push에서 `::error` annotation으로 식별할 수 있게 했습니다.
 
-Windows CI와 Android CI는 실제 수정 후 재실행 결과가 없으므로 **UNVERIFIED**입니다.
+Windows CI 최신 결과는 **FAIL**, Android CI는 **UNVERIFIED**입니다.
