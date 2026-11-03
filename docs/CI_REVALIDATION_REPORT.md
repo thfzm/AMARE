@@ -190,11 +190,15 @@ tools/windows-verify/WebViewHelpers.cs:130
 - Android는 Phase 5 manual scaffold이며 SDK/GeckoView 버전 고정 전 자동화하지 않는 기존 설계
 - `gh workflow run ci-android.yml --ref master` 시도 결과: **HTTP 404 workflow not found**
 - GitHub Actions workflows API에도 Android workflow가 등록되지 않음
+- dispatch-only workflow가 workflow registry에 등록되지 않은 상태였음
 
 수정:
 
-- 없음. 수동 전용 정책 유지.
-- 실제 Android 빌드: **UNVERIFIED**
+- Android 관련 변경(`apps/android/**`, workflow 파일)에 push/PR trigger 추가
+- Gradle 8.13을 명시적으로 설치하도록 수정
+- `workflow_dispatch`는 유지
+- 최초 실행 결과는 다음 run에서 확인
+- 실제 Android 빌드: **UNVERIFIED** (run 결과 대기)
 
 ---
 
@@ -230,6 +234,7 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/WebViewHelpers.cs` | WinForms WebView2 API compile error | `CreateAsync` 사용, `CoreWebView2.Close` 제거 |
 | `.github/workflows/ci-linux.yml` | backup CI 단계 누락 | backup tests/CI/benchmark 추가 |
 | `docs/CI_REVALIDATION_REPORT.md` | 결과 보고 | 이 문서 |
+| `.github/workflows/ci-android.yml` | Android workflow registry/trigger | path trigger + Gradle 8.13 |
 | `crates/amare-platform/src/windows_dpapi.rs` | Windows clippy 실패 | 불필요한 mutable reference 제거 |
 | `tools/windows-verify/WebViewHelpers.cs` | CDP 응답 파싱 실패 | envelope/direct result tolerant parser |
 | `tools/verify-windows.ps1` | PowerShell 변수 충돌/Server 판정 | `$ciData`, Server 제외 windows_11, annotation |
