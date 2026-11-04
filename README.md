@@ -71,6 +71,8 @@ AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립�
 - [Android 기기 테스트](docs/ANDROID_DEVICE_TESTING.md)
 - [Android Release](docs/ANDROID_RELEASE.md)
 - [Android 비밀번호 관리자](docs/ANDROID_PASSWORD_MANAGER.md)
+- [Android 새 창/탭](docs/ANDROID_TABS.md)
+- [Android 웹 알림](docs/ANDROID_NOTIFICATIONS.md)
 - [GitHub Actions 자동 검증](docs/GITHUB_ACTIONS.md)
 - [저장소 아키텍처](docs/STORAGE_ARCHITECTURE.md)
 - [공통 서비스 아키텍처](docs/SERVICE_ARCHITECTURE.md)
@@ -104,7 +106,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Phase 2: **Windows WinUI 3 + WebView2 브라우저 본체 + C ABI/C# Adapter 구현** — Windows Runner/실기기 검증 UNVERIFIED
 - Phase 2.1: **Windows 안정화 + 프로필/세션/탭 검증 하네스 + WebView2 probe + 성능/체크리스트** — Windows 실행 UNVERIFIED
 - Phase 2.2: **Windows 검증 게이트 + 통합 결과 JSON + RC 빌드/실행 절차 + GitHub 연결 안내** — Windows 실행 UNVERIFIED
-- Android Phase 5: **GeckoView 셸 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED
+- Android Phase 5: **GeckoView 셸 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 

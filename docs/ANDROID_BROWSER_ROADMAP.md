@@ -1,6 +1,6 @@
 # Android 브라우저 완성도 및 다음 우선순위
 
-- 기준: Android 0.6.0
+- 기준: Android 0.7.0
 - 범위: 미구현 기능의 기존 구조 호환성 분석 및 우선순위 제안
 - 이번 단계에서는 아래 기능을 구현하지 않았습니다.
 
@@ -22,20 +22,19 @@
 - Android 시스템 AutofillService는 구현하지 않음
 - 실제 기기 GeckoView 로그인 감지/저장/자동완성 검증은 UNVERIFIED
 
-### 2.2 window.open 및 새 창
+### 2.2 window.open 및 새 창 — 0.7.0 구현
 
-- 관련 API: `GeckoSession.NavigationDelegate.onNewSession`
-- 현재 탭 모델을 재사용해 새 `GeckoSession`을 생성하고 새 탭으로 추가 가능
-- 팝업 차단 정책, 사용자 제스처, opener 관계, 새 창 크기/위치 정책 필요
-- Windows WebView2의 NewWindowRequested 처리와 사용자 경험을 맞춰야 함
-- 우선순위: **P2**
+- `onNewSession`으로 새 탭 생성
+- URL allowlist, rate limit, popup prompt 차단
+- opener와 새 세션 분리
+- 실제 GeckoView 동작은 UNVERIFIED
 
-### 2.3 웹 알림
+### 2.3 웹 알림 — 0.7.0 구현
 
-- 관련 API: `WebNotificationDelegate`, Android NotificationChannel
-- 사이트 권한은 이미 저장되지만 실제 알림 표시는 미구현
-- Android 13+ `POST_NOTIFICATIONS`, 채널, 탭/사이트별 그룹화, 클릭 시 탭 활성화 필요
-- 우선순위: **P2**
+- `WebNotificationDelegate`, Android NotificationChannel 구현
+- 사이트 권한 + Android 13+ runtime permission 연동
+- origin 검증, rate limit, 안전한 click Intent
+- 실제 알림 표시/클릭은 UNVERIFIED
 
 ### 2.4 WebExtension
 

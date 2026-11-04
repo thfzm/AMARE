@@ -1,6 +1,6 @@
 # Android 보안 설계 및 검증 상태
 
-- 기준: Android 0.6.0
+- 기준: Android 0.7.0
 - 관련 문서: [데이터 암호화](ANDROID_DATA_ENCRYPTION.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [Release](ANDROID_RELEASE.md)
 
 ## 1. 보호 대상과 저장 위치
@@ -15,6 +15,7 @@
 | 정렬/상태 메타데이터 | 각 테이블 | 평문 (민감 콘텐츠 아님) |
 | 다운로드 완료 파일 | MediaStore `Download/AMARE` | OS 미디어 저장소 |
 | 비밀번호/username | 별도 `amare_passwords.db` | AES-256-GCM, 별도 alias |
+| 웹 알림 표시 | Android NotificationManager | origin permission + rate limit + private visibility |
 | legacy URL 목록 | SharedPreferences | 마이그레이션 후 삭제 |
 
 ## 2. Android Keystore

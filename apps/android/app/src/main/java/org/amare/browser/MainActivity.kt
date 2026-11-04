@@ -1,5 +1,6 @@
 package org.amare.browser
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,6 +23,13 @@ class MainActivity : ComponentActivity() {
                 BrowserScreen(browserViewModel)
             }
         }
+        browserViewModel.handleNotificationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        browserViewModel.handleNotificationIntent(intent)
     }
 
     override fun onStop() {

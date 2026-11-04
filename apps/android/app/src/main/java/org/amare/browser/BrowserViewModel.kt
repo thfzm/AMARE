@@ -1,9 +1,15 @@
 package org.amare.browser
 
+import android.Manifest
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.SparseArray
@@ -17,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
+import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import org.amare.browser.data.Bookmark
@@ -32,7 +39,10 @@ import org.amare.browser.data.SessionTabDraft
 import org.amare.browser.data.SitePermissionRecord
 import org.amare.browser.data.StoredSession
 import org.amare.browser.security.SessionRecoveryPolicy
+import org.amare.browser.security.KeyedRateLimiter
+import org.amare.browser.security.NotificationRules
 import org.amare.browser.security.PasswordRules
+import org.amare.browser.security.PopupRules
 import org.json.JSONArray
 import org.mozilla.geckoview.Autocomplete
 import org.mozilla.geckoview.Autofill
@@ -42,6 +52,8 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptResponse
+import org.mozilla.geckoview.WebNotification
+import org.mozilla.geckoview.WebNotificationDelegate
 import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.WebResponse
 
@@ -97,6 +109,11 @@ data class AutofillPrompt(
     val accounts: List<PasswordSummary>,
 )
 
+data class NotificationTarget(
+    val notification: WebNotification,
+    val origin: String,
+)
+
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val HOME_URL = "https://duckduckgo.com/"
@@ -106,6 +123,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private const val MAX_RESTORED_TABS = 8
         private const val MAX_RECOVERY_ATTEMPTS = 3
         private const val TAG = "BrowserViewModel"
+        private const val NOTIFICATION_CHANNEL_ID = "amare_web_notifications"
+        private const val NOTIFICATION_ID = 1001
+        const val ACTION_OPEN_NOTIFICATION = "org.amare.browser.OPEN_NOTIFICATION"
+        const val EXTRA_NOTIFICATION_KEY = "notification_key"
 
         @Volatile
         private var sharedRuntime: GeckoRuntime? = null
@@ -130,6 +151,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val runtime = getRuntime(application)
     private val repository = BrowserRepository(application)
     private val passwordRepository = PasswordRepository(application)
+    private val notificationManager = application.getSystemService(NotificationManager::class.java)
     private val tabList = mutableStateListOf<BrowserTab>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val downloadExecutor = Executors.newFixedThreadPool(2)
@@ -139,6 +161,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val recoveryAttempts = mutableMapOf<Long, Int>()
     private val loginFields = mutableMapOf<Long, LoginFieldIds>()
     private val autofillOfferedFor = mutableMapOf<Long, String>()
+    private val popupLimiter = KeyedRateLimiter(5, 10_000)
+    private val notificationLimiter = KeyedRateLimiter(5, 60_000)
+    private val notificationTargets = mutableMapOf<String, NotificationTarget>()
     private var persistRunnable: Runnable? = null
     private var nextPromptId = 1L
 
@@ -170,12 +195,26 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var autofillPrompt by mutableStateOf<AutofillPrompt?>(null)
         private set
 
+    var pendingNotificationOsPermission by mutableStateOf(false)
+        private set
+
     private var nextTabId = 1L
 
     val activeTab: BrowserTab?
         get() = tabList.firstOrNull { it.id == activeTabId }
 
     init {
+        ensureNotificationChannel()
+        NotificationBridge.dismissHandler = { key -> closeNotificationByKey(key) }
+        runtime.webNotificationDelegate = object : WebNotificationDelegate {
+            override fun onShowNotification(notification: WebNotification) {
+                showWebNotification(notification)
+            }
+
+            override fun onCloseNotification(notification: WebNotification) {
+                closeWebNotification(notification)
+            }
+        }
         runtime.autocompleteStorageDelegate = object : Autocomplete.StorageDelegate {
             override fun onLoginFetch(domain: String): GeckoResult<Array<Autocomplete.LoginEntry>> =
                 GeckoResult.fromValue(emptyArray())
@@ -445,10 +484,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setSitePermission(origin: String, permission: String, decision: String) {
+        if (permission == PermissionRules.NOTIFICATIONS) {
+            if (decision == PermissionRules.ALLOW) requestNotificationOsPermissionIfNeeded()
+            else cancelNotificationsForOrigin(origin)
+        }
         repository.setPermission(origin, permission, decision) { refreshPermissions() }
     }
 
     fun removeSitePermission(origin: String, permission: String) {
+        if (permission == PermissionRules.NOTIFICATIONS) {
+            cancelNotificationsForOrigin(origin)
+        }
         repository.removePermission(origin, permission) { refreshPermissions() }
     }
 
@@ -464,6 +510,23 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         pendingPermission = permissionQueue.pollFirst()
         refreshPermissions()
+    }
+
+    fun completeNotificationOsPermission(granted: Boolean) {
+        pendingNotificationOsPermission = false
+        if (!granted) {
+            sessionNotice = "Android notifications are blocked. Enable them in system settings."
+        }
+    }
+
+    fun requestNotificationOsPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                getApplication<Application>(),
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) pendingNotificationOsPermission = true
+        }
     }
 
     fun completeAndroidPermission(result: Map<String, Boolean>) {
@@ -489,6 +552,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         tabList.forEach { runCatching { it.session.close() } }
         tabList.clear()
         repository.close()
+        NotificationBridge.dismissHandler = null
         passwordRepository.close()
         downloadExecutor.shutdownNow()
         super.onCleared()
@@ -635,6 +699,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(isLoading = false, error = describeError(error))
                 }
                 return null
+            }
+
+            override fun onNewSession(
+                session: GeckoSession,
+                uri: String,
+            ): GeckoResult<GeckoSession>? {
+                val popup = createPopupTab(uri, openerTabId = id) ?: return null
+                return GeckoResult.fromValue(popup)
             }
         }
 
@@ -811,6 +883,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
 
         session.promptDelegate = object : GeckoSession.PromptDelegate {
+            override fun onPopupPrompt(
+                session: GeckoSession,
+                prompt: GeckoSession.PromptDelegate.PopupPrompt,
+            ): GeckoResult<PromptResponse>? {
+                return GeckoResult.fromValue(prompt.dismiss())
+            }
+
             override fun onLoginSave(
                 session: GeckoSession,
                 request: GeckoSession.PromptDelegate.AutocompleteRequest<Autocomplete.LoginSaveOption>,
@@ -935,6 +1014,175 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             if (!PasswordRules.sameOrigin(origin, tab.currentUrl)) return@listForOrigin
             autofillPrompt = AutofillPrompt(tabId, origin, accounts)
         }
+    }
+
+    private fun createPopupTab(uri: String, openerTabId: Long): GeckoSession? {
+        if (!PopupRules.isAllowedPopupUri(uri)) {
+            sessionNotice = "A popup was blocked because its URL is not allowed."
+            return null
+        }
+        if (!popupLimiter.tryAcquire(PopupRules.popupMarker(openerTabId))) {
+            sessionNotice = "Popup blocked: too many popup requests."
+            return null
+        }
+        val id = nextTabId++
+        return try {
+            val session = newSession()
+            attachDelegates(session, id)
+            session.open(runtime)
+            val tab = BrowserTab(
+                id = id,
+                session = session,
+                currentUrl = uri,
+                title = "New tab",
+            )
+            tabList.add(tab)
+            activateTab(tab.id, persist = true)
+            scheduleSessionPersist()
+            session
+        } catch (_: Throwable) {
+            sessionNotice = "The requested popup could not be opened."
+            null
+        }
+    }
+
+    fun handleNotificationIntent(intent: Intent?) {
+        if (intent?.action != ACTION_OPEN_NOTIFICATION) return
+        val key = intent.getStringExtra(EXTRA_NOTIFICATION_KEY) ?: return
+        val target = notificationTargets.remove(key) ?: return
+        notificationManager.cancel(key, NOTIFICATION_ID)
+        target.notification.click()
+        target.notification.dismiss()
+        val url = NotificationRules.safeNavigationUrl(
+            target.origin,
+            target.notification.source,
+        )
+        val existing = tabList.firstOrNull {
+            PermissionRules.originFor(it.currentUrl) == target.origin
+        }
+        if (existing != null) {
+            activateTab(existing.id, persist = true)
+            existing.session.loadUri(url)
+        } else {
+            val tab = createTab(url)
+            activateTab(tab.id, persist = true)
+        }
+    }
+
+    private fun showWebNotification(notification: WebNotification) {
+        val origin = PermissionRules.originFor(notification.origin)
+        if (
+            origin == null ||
+            !NotificationRules.isAllowedOrigin(origin) ||
+            notification.privateBrowsing ||
+            repository.getPermission(origin, PermissionRules.NOTIFICATIONS) !=
+            PermissionRules.ALLOW ||
+            !notificationLimiter.tryAcquire(origin)
+        ) {
+            notification.dismiss()
+            return
+        }
+        if (!notificationManager.areNotificationsEnabled()) {
+            sessionNotice = "Android notifications are disabled for AMARE."
+            notification.dismiss()
+            return
+        }
+        ensureNotificationChannel()
+
+        val key = notificationKey(origin, notification.tag)
+        notificationTargets.remove(key)?.notification?.dismiss()
+        notificationTargets[key] = NotificationTarget(notification, origin)
+        val intent = Intent(getApplication(), MainActivity::class.java).apply {
+            action = ACTION_OPEN_NOTIFICATION
+            putExtra(EXTRA_NOTIFICATION_KEY, key)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            getApplication(),
+            key.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismissIntent = Intent(getApplication(), NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_DISMISS_NOTIFICATION
+            putExtra(EXTRA_NOTIFICATION_KEY, key)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            getApplication(),
+            key.hashCode() + 1,
+            dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val title = notification.title?.takeIf { it.isNotBlank() } ?: origin
+        val text = notification.text?.takeIf { it.isNotBlank() }
+            ?: "New notification from $origin"
+        val builder = Notification.Builder(getApplication(), NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(origin)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setDeleteIntent(dismissPendingIntent)
+            .setWhen(System.currentTimeMillis())
+        if (notification.silent) {
+            builder.setSound(null)
+            builder.setVibrate(null)
+        }
+        if (notification.requireInteraction) builder.setOngoing(true)
+        try {
+            notificationManager.notify(key, NOTIFICATION_ID, builder.build())
+            notification.show()
+        } catch (_: SecurityException) {
+            notificationTargets.remove(key)
+            notification.dismiss()
+            sessionNotice = "Notifications are blocked by Android."
+        } catch (_: Throwable) {
+            notificationTargets.remove(key)
+            notification.dismiss()
+            sessionNotice = "The web notification could not be displayed."
+        }
+    }
+
+    private fun closeWebNotification(notification: WebNotification) {
+        val key = notificationKey(
+            PermissionRules.originFor(notification.origin) ?: notification.origin,
+            notification.tag,
+        )
+        closeNotificationByKey(key)
+    }
+
+    private fun closeNotificationByKey(key: String) {
+        notificationTargets.remove(key)?.notification?.dismiss()
+        notificationManager.cancel(key, NOTIFICATION_ID)
+    }
+
+    private fun cancelNotificationsForOrigin(origin: String) {
+        val keys = notificationTargets.filterValues { it.origin == origin }.keys.toList()
+        keys.forEach { key ->
+            notificationTargets.remove(key)?.notification?.dismiss()
+            notificationManager.cancel(key, NOTIFICATION_ID)
+        }
+    }
+
+    private fun ensureNotificationChannel() {
+        val channel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            "Web notifications",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "Notifications from websites allowed in AMARE"
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun notificationKey(origin: String, tag: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$origin\u0000$tag".toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
     }
 
     private fun recoverCrashedSession(id: Long, reason: String) {

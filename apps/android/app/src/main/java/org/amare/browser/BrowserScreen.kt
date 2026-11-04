@@ -1,5 +1,8 @@
 package org.amare.browser
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,6 +76,7 @@ private enum class BrowserPanel(val title: String) {
     PASSWORDS("Passwords"),
 }
 
+@SuppressLint("InlinedApi")
 @Composable
 fun BrowserScreen(viewModel: BrowserViewModel) {
     val activeTab = viewModel.activeTab
@@ -91,6 +95,21 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     LaunchedEffect(viewModel.pendingAndroidPermission?.id) {
         viewModel.pendingAndroidPermission?.let { request ->
             permissionLauncher.launch(request.permissions.toTypedArray())
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.completeNotificationOsPermission(granted)
+    }
+
+    LaunchedEffect(viewModel.pendingNotificationOsPermission) {
+        if (
+            viewModel.pendingNotificationOsPermission &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
