@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.util.SparseArray
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -23,17 +24,24 @@ import org.amare.browser.data.BrowserRepository
 import org.amare.browser.data.DownloadRecord
 import org.amare.browser.data.DownloadStatus
 import org.amare.browser.data.HistoryEntry
+import org.amare.browser.data.PasswordRepository
+import org.amare.browser.data.PasswordSummary
 import org.amare.browser.data.SessionLoadResult
+import org.amare.browser.data.StoredLogin
 import org.amare.browser.data.SessionTabDraft
 import org.amare.browser.data.SitePermissionRecord
 import org.amare.browser.data.StoredSession
 import org.amare.browser.security.SessionRecoveryPolicy
+import org.amare.browser.security.PasswordRules
 import org.json.JSONArray
+import org.mozilla.geckoview.Autocomplete
+import org.mozilla.geckoview.Autofill
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptResponse
 import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.WebResponse
 
@@ -68,6 +76,27 @@ data class AndroidPermissionRequest(
     val callback: GeckoSession.PermissionDelegate.Callback,
 )
 
+data class LoginFieldIds(
+    val usernameId: Int = -1,
+    val passwordId: Int = -1,
+)
+
+data class LoginSavePrompt(
+    val request: GeckoSession.PromptDelegate.AutocompleteRequest<Autocomplete.LoginSaveOption>,
+    val option: Autocomplete.LoginSaveOption,
+    val origin: String,
+    val username: String,
+    val password: String,
+    val isUpdate: Boolean,
+    val result: GeckoResult<PromptResponse>,
+)
+
+data class AutofillPrompt(
+    val tabId: Long,
+    val origin: String,
+    val accounts: List<PasswordSummary>,
+)
+
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val HOME_URL = "https://duckduckgo.com/"
@@ -100,6 +129,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val runtime = getRuntime(application)
     private val repository = BrowserRepository(application)
+    private val passwordRepository = PasswordRepository(application)
     private val tabList = mutableStateListOf<BrowserTab>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val downloadExecutor = Executors.newFixedThreadPool(2)
@@ -107,6 +137,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val androidPermissionQueue = ArrayDeque<AndroidPermissionRequest>()
     private val sessionStates = mutableMapOf<Long, String>()
     private val recoveryAttempts = mutableMapOf<Long, Int>()
+    private val loginFields = mutableMapOf<Long, LoginFieldIds>()
+    private val autofillOfferedFor = mutableMapOf<Long, String>()
     private var persistRunnable: Runnable? = null
     private var nextPromptId = 1L
 
@@ -115,6 +147,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val history = mutableStateListOf<HistoryEntry>()
     val downloads = mutableStateListOf<DownloadRecord>()
     val sitePermissions = mutableStateListOf<SitePermissionRecord>()
+    val passwords = mutableStateListOf<PasswordSummary>()
 
     var activeTabId by mutableLongStateOf(0L)
         private set
@@ -131,16 +164,30 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var sessionNotice by mutableStateOf<String?>(null)
         private set
 
+    var pendingLoginSave by mutableStateOf<LoginSavePrompt?>(null)
+        private set
+
+    var autofillPrompt by mutableStateOf<AutofillPrompt?>(null)
+        private set
+
     private var nextTabId = 1L
 
     val activeTab: BrowserTab?
         get() = tabList.firstOrNull { it.id == activeTabId }
 
     init {
+        runtime.autocompleteStorageDelegate = object : Autocomplete.StorageDelegate {
+            override fun onLoginFetch(domain: String): GeckoResult<Array<Autocomplete.LoginEntry>> =
+                GeckoResult.fromValue(emptyArray())
+
+            override fun onLoginFetch(): GeckoResult<Array<Autocomplete.LoginEntry>> =
+                GeckoResult.fromValue(emptyArray())
+        }
         refreshBookmarks()
         refreshHistory("")
         refreshDownloads()
         refreshPermissions()
+        refreshPasswords()
         repository.loadSessionSnapshot { result ->
             restoreInitialSession(result)
             repository.markSessionRunning()
@@ -316,6 +363,87 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun refreshPasswords() {
+        passwordRepository.listAll { values ->
+            passwords.clear()
+            passwords.addAll(values)
+            passwordRepository.consumeNotice()?.let { sessionNotice = it }
+        }
+    }
+
+    fun loadPassword(id: Long, callback: (StoredLogin?) -> Unit) {
+        passwordRepository.load(id, callback)
+    }
+
+    fun savePassword(
+        id: Long?,
+        origin: String,
+        username: String,
+        password: String,
+        callback: (Boolean) -> Unit = {},
+    ) {
+        if (id == null) {
+            passwordRepository.save(origin, username, password) { saved ->
+                refreshPasswords()
+                callback(saved)
+            }
+        } else {
+            passwordRepository.update(id, origin, username, password) { saved ->
+                refreshPasswords()
+                callback(saved)
+            }
+        }
+    }
+
+    fun deletePassword(id: Long) {
+        passwordRepository.delete(id) { refreshPasswords() }
+    }
+
+    fun allowPasswordSaveForCurrentOrigin() {
+        val origin = PasswordRules.originFor(activeTab?.currentUrl) ?: return
+        passwordRepository.setSaveDisabled(origin, false)
+    }
+
+    fun resolveLoginSave(save: Boolean, never: Boolean) {
+        val prompt = pendingLoginSave ?: return
+        pendingLoginSave = null
+        if (never) {
+            passwordRepository.setSaveDisabled(prompt.origin, true)
+        }
+        if (save) {
+            passwordRepository.save(prompt.origin, prompt.username, prompt.password) {
+                refreshPasswords()
+            }
+        }
+        prompt.result.complete(
+            if (save) prompt.request.confirm(prompt.option) else prompt.request.dismiss(),
+        )
+    }
+
+    fun dismissAutofillPrompt() {
+        autofillPrompt = null
+    }
+
+    fun fillAutofill(accountId: Long) {
+        val prompt = autofillPrompt ?: return
+        val tab = tabList.firstOrNull { it.id == prompt.tabId } ?: return
+        if (!PasswordRules.sameOrigin(prompt.origin, tab.currentUrl)) {
+            autofillPrompt = null
+            return
+        }
+        val fields = loginFields[prompt.tabId] ?: return
+        passwordRepository.load(accountId) { login ->
+            if (login == null || login.origin != prompt.origin) return@load
+            if (!PasswordRules.sameOrigin(login.origin, tab.currentUrl)) return@load
+            val values = SparseArray<CharSequence>()
+            if (fields.usernameId >= 0) values.put(fields.usernameId, login.username)
+            if (fields.passwordId >= 0) values.put(fields.passwordId, login.password)
+            tab.session.autofillSession.autofill(values)
+            values.clear()
+            autofillPrompt = null
+        }
+    }
+
     fun setSitePermission(origin: String, permission: String, decision: String) {
         repository.setPermission(origin, permission, decision) { refreshPermissions() }
     }
@@ -361,6 +489,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         tabList.forEach { runCatching { it.session.close() } }
         tabList.clear()
         repository.close()
+        passwordRepository.close()
         downloadExecutor.shutdownNow()
         super.onCleared()
     }
@@ -483,6 +612,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             ) {
                 if (url.isNullOrBlank()) return
                 updateTab(id) { it.copy(currentUrl = url) }
+                loginFields.remove(id)
+                autofillOfferedFor.remove(id)
+                if (id == activeTabId) autofillPrompt = null
                 scheduleSessionPersist()
             }
 
@@ -676,6 +808,132 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     ),
                 )
             }
+        }
+
+        session.promptDelegate = object : GeckoSession.PromptDelegate {
+            override fun onLoginSave(
+                session: GeckoSession,
+                request: GeckoSession.PromptDelegate.AutocompleteRequest<Autocomplete.LoginSaveOption>,
+            ): GeckoResult<PromptResponse>? {
+                val option = request.options.firstOrNull()
+                    ?: return GeckoResult.fromValue(request.dismiss())
+                val entry = option.value
+                val origin = PasswordRules.originFor(entry.origin)
+                if (
+                    origin == null ||
+                    !PasswordRules.isSecureOrigin(origin) ||
+                    !PasswordRules.formOriginAllowed(origin, entry.formActionOrigin)
+                ) {
+                    return GeckoResult.fromValue(request.dismiss())
+                }
+
+                val result = GeckoResult<PromptResponse>()
+                passwordRepository.isSaveDisabled(origin) { disabled ->
+                    if (disabled) {
+                        result.complete(request.dismiss())
+                        return@isSaveDisabled
+                    }
+                    passwordRepository.listForOrigin(origin) { accounts ->
+                        val update = accounts.any {
+                            it.username == PasswordRules.normalizeUsername(entry.username)
+                        }
+                        if (pendingLoginSave != null) {
+                            result.complete(request.dismiss())
+                        } else {
+                            pendingLoginSave = LoginSavePrompt(
+                                request = request,
+                                option = option,
+                                origin = origin,
+                                username = PasswordRules.normalizeUsername(entry.username),
+                                password = entry.password,
+                                isUpdate = update,
+                                result = result,
+                            )
+                        }
+                    }
+                }
+                return result
+            }
+
+            override fun onLoginSelect(
+                session: GeckoSession,
+                request: GeckoSession.PromptDelegate.AutocompleteRequest<Autocomplete.LoginSelectOption>,
+            ): GeckoResult<PromptResponse>? {
+                return GeckoResult.fromValue(request.dismiss())
+            }
+        }
+
+        session.autofillDelegate = object : Autofill.Delegate {
+            override fun onSessionStart(session: GeckoSession) {
+                loginFields.remove(id)
+                autofillOfferedFor.remove(id)
+                if (id == activeTabId) autofillPrompt = null
+            }
+
+            override fun onSessionCancel(session: GeckoSession) {
+                loginFields.remove(id)
+                autofillOfferedFor.remove(id)
+                if (id == activeTabId) autofillPrompt = null
+            }
+
+            override fun onNodeAdd(
+                session: GeckoSession,
+                node: Autofill.Node,
+                data: Autofill.NodeData,
+            ) {
+                updateLoginField(id, node, data)
+            }
+
+            override fun onNodeUpdate(
+                session: GeckoSession,
+                node: Autofill.Node,
+                data: Autofill.NodeData,
+            ) {
+                updateLoginField(id, node, data)
+            }
+
+            override fun onNodeFocus(
+                session: GeckoSession,
+                focused: Autofill.Node,
+                data: Autofill.NodeData,
+            ) {
+                updateLoginField(id, focused, data)
+            }
+        }
+    }
+
+    private fun updateLoginField(
+        id: Long,
+        node: Autofill.Node,
+        data: Autofill.NodeData,
+    ) {
+        val tab = tabList.firstOrNull { it.id == id } ?: return
+        val origin = PasswordRules.originFor(tab.currentUrl) ?: return
+        if (!PasswordRules.isSecureOrigin(origin)) return
+        if (!PasswordRules.nodeDomainMatches(node.domain, origin)) return
+
+        val current = loginFields[id] ?: LoginFieldIds()
+        loginFields[id] = when (node.hint) {
+            Autofill.Hint.USERNAME, Autofill.Hint.EMAIL_ADDRESS ->
+                current.copy(usernameId = data.id)
+            Autofill.Hint.PASSWORD ->
+                current.copy(passwordId = data.id)
+            else -> return
+        }
+        maybeOfferAutofill(id, origin)
+    }
+
+    private fun maybeOfferAutofill(tabId: Long, origin: String) {
+        val fields = loginFields[tabId] ?: return
+        if (fields.usernameId < 0 || fields.passwordId < 0) return
+        if (tabId != activeTabId) return
+        if (autofillOfferedFor[tabId] == origin) return
+        autofillOfferedFor[tabId] = origin
+        passwordRepository.listForOrigin(origin) { accounts ->
+            val tab = tabList.firstOrNull { it.id == tabId } ?: return@listForOrigin
+            if (accounts.isEmpty()) return@listForOrigin
+            if (!PasswordRules.sameOrigin(origin, tab.currentUrl)) return@listForOrigin
+            autofillPrompt = AutofillPrompt(tabId, origin, accounts)
         }
     }
 

@@ -50,6 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -57,7 +59,10 @@ import org.amare.browser.data.Bookmark
 import org.amare.browser.data.DownloadRecord
 import org.amare.browser.data.DownloadStatus
 import org.amare.browser.data.HistoryEntry
+import org.amare.browser.data.PasswordSummary
 import org.amare.browser.data.SitePermissionRecord
+import org.amare.browser.data.StoredLogin
+import org.amare.browser.security.PasswordRules
 import org.mozilla.geckoview.GeckoView
 
 private enum class BrowserPanel(val title: String) {
@@ -65,6 +70,7 @@ private enum class BrowserPanel(val title: String) {
     HISTORY("History"),
     DOWNLOADS("Downloads"),
     PERMISSIONS("Site permissions"),
+    PASSWORDS("Passwords"),
 }
 
 @Composable
@@ -112,12 +118,22 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onHistory = { panel = BrowserPanel.HISTORY },
             onDownloads = { panel = BrowserPanel.DOWNLOADS },
             onPermissions = { panel = BrowserPanel.PERMISSIONS },
+            onPasswords = { panel = BrowserPanel.PASSWORDS },
         )
 
         viewModel.sessionNotice?.let { notice ->
             SessionNoticeBanner(
                 message = notice,
                 onDismiss = viewModel::dismissSessionNotice,
+            )
+        }
+
+        val autofill = viewModel.autofillPrompt
+        if (autofill != null && autofill.tabId == activeTab?.id) {
+            AutofillBanner(
+                prompt = autofill,
+                onFill = viewModel::fillAutofill,
+                onDismiss = viewModel::dismissAutofillPrompt,
             )
         }
 
@@ -163,6 +179,16 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onDeny = { viewModel.resolvePermission(false) },
         )
     }
+
+    viewModel.pendingLoginSave?.let { prompt ->
+        LoginSaveDialog(
+            prompt = prompt,
+            onSave = { viewModel.resolveLoginSave(true, false) },
+            onNotNow = { viewModel.resolveLoginSave(false, false) },
+            onNever = { viewModel.resolveLoginSave(false, true) },
+        )
+    }
+
 }
 
 @Composable
@@ -249,6 +275,7 @@ private fun LibraryBar(
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
     onPermissions: () -> Unit,
+    onPasswords: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -262,6 +289,7 @@ private fun LibraryBar(
         TextButton(onClick = onHistory) { Text("History") }
         TextButton(onClick = onDownloads) { Text("Downloads") }
         TextButton(onClick = onPermissions) { Text("Permissions") }
+        TextButton(onClick = onPasswords) { Text("Passwords") }
     }
 }
 
@@ -394,6 +422,7 @@ private fun BrowserPanelOverlay(
                     onSet = viewModel::setSitePermission,
                     onRemove = viewModel::removeSitePermission,
                 )
+                BrowserPanel.PASSWORDS -> PasswordsPanel(viewModel)
             }
         }
     }
@@ -630,6 +659,291 @@ private fun EmptyPanelText(message: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
         style = MaterialTheme.typography.bodyMedium,
     )
+}
+
+@Composable
+private fun PasswordsPanel(viewModel: BrowserViewModel) {
+    var query by remember { mutableStateOf("") }
+    var sortByName by remember { mutableStateOf(false) }
+    var editorVisible by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<StoredLogin?>(null) }
+    var defaultOrigin by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) { viewModel.refreshPasswords() }
+
+    val filtered = viewModel.passwords
+        .filter {
+            query.isBlank() ||
+                it.origin.contains(query, ignoreCase = true) ||
+                it.username.contains(query, ignoreCase = true)
+        }
+        .let { list ->
+            if (sortByName) list.sortedBy { it.username.lowercase() } else list
+        }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+            singleLine = true,
+            placeholder = { Text("Search saved logins") },
+        )
+        TextButton(onClick = { sortByName = !sortByName }) {
+            Text(if (sortByName) "Sort: A-Z" else "Sort: Recent")
+        }
+    }
+    Button(
+        onClick = {
+            editing = null
+            defaultOrigin = PasswordRules.originFor(viewModel.activeTab?.currentUrl).orEmpty()
+            editorVisible = true
+        },
+    ) {
+        Text("Add login")
+    }
+    TextButton(onClick = viewModel::allowPasswordSaveForCurrentOrigin) {
+        Text("Reset save prompt for current site")
+    }
+
+    if (filtered.isEmpty()) {
+        EmptyPanelText("No saved logins found.")
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(filtered, key = { it.id }) { summary ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.loadPassword(summary.id) { login ->
+                                if (login != null) {
+                                    editing = login
+                                    defaultOrigin = login.origin
+                                    editorVisible = true
+                                }
+                            }
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = summary.username.ifBlank { "(no username)" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = summary.origin,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (editorVisible) {
+        PasswordEditorDialog(
+            initial = editing,
+            defaultOrigin = defaultOrigin,
+            onDismiss = { editorVisible = false },
+            onSave = { id, origin, username, password, onResult ->
+                viewModel.savePassword(id, origin, username, password) { saved ->
+                    onResult(saved)
+                    if (saved) editorVisible = false
+                }
+            },
+            onDelete = { id ->
+                viewModel.deletePassword(id)
+                editorVisible = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun PasswordEditorDialog(
+    initial: StoredLogin?,
+    defaultOrigin: String,
+    onDismiss: () -> Unit,
+    onSave: (Long?, String, String, String, (Boolean) -> Unit) -> Unit,
+    onDelete: (Long) -> Unit,
+) {
+    var origin by remember(initial?.id) { mutableStateOf(initial?.origin ?: defaultOrigin) }
+    var username by remember(initial?.id) { mutableStateOf(initial?.username.orEmpty()) }
+    var password by remember(initial?.id) { mutableStateOf(initial?.password.orEmpty()) }
+    var showPassword by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initial == null) "Add login" else "Edit login") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = origin,
+                    onValueChange = { origin = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("HTTPS origin") },
+                    placeholder = { Text("https://example.com") },
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    singleLine = true,
+                    label = { Text("Username or email") },
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    singleLine = true,
+                    label = { Text("Password") },
+                    visualTransformation = if (showPassword) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                )
+                TextButton(onClick = { showPassword = !showPassword }) {
+                    Text(if (showPassword) "Hide password" else "Show password")
+                }
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val normalizedOrigin = PasswordRules.originFor(origin)
+                    if (!PasswordRules.isSecureOrigin(normalizedOrigin)) {
+                        error = "Enter a valid HTTPS origin."
+                        return@TextButton
+                    }
+                    onSave(initial?.id, normalizedOrigin!!, username, password) { saved ->
+                        if (!saved) error = "Could not save. Check the fields and try again."
+                    }
+                },
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (initial != null) {
+                    TextButton(onClick = { onDelete(initial.id) }) { Text("Delete") }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun LoginSaveDialog(
+    prompt: LoginSavePrompt,
+    onSave: () -> Unit,
+    onNotNow: () -> Unit,
+    onNever: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onNotNow,
+        title = { Text(if (prompt.isUpdate) "Update saved login?" else "Save login?") },
+        text = {
+            Column {
+                Text(prompt.origin)
+                Text(
+                    text = prompt.username.ifBlank { "(no username)" },
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Password is protected by Android Keystore. It is not shown here.",
+                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text(if (prompt.isUpdate) "Update" else "Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onNotNow) { Text("Not now") }
+                TextButton(onClick = onNever) { Text("Never") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun AutofillBanner(
+    prompt: AutofillPrompt,
+    onFill: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var choose by remember(prompt.origin, prompt.accounts.size) { mutableStateOf(false) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Saved login for ${prompt.origin}", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    if (prompt.accounts.size == 1) prompt.accounts[0].username else
+                        "${prompt.accounts.size} accounts",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (prompt.accounts.size == 1) {
+                TextButton(onClick = { onFill(prompt.accounts[0].id) }) { Text("Fill") }
+            } else {
+                TextButton(onClick = { choose = true }) { Text("Choose") }
+            }
+            TextButton(onClick = onDismiss) { Text("Dismiss") }
+        }
+    }
+
+    if (choose) {
+        AlertDialog(
+            onDismissRequest = { choose = false },
+            title = { Text("Choose saved login") },
+            text = {
+                Column {
+                    prompt.accounts.forEach { account ->
+                        TextButton(
+                            onClick = {
+                                choose = false
+                                onFill(account.id)
+                            },
+                        ) {
+                            Text("${account.username} — ${account.origin}")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { choose = false }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable

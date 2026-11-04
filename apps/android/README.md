@@ -21,6 +21,10 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - `GeckoSession.SessionState` 기반 전체 탭/back-forward 히스토리 복원
 - clean shutdown marker 및 비정상 종료 복구 알림
 - 세션 payload Android Keystore AES-256-GCM 암호화
+- 별도 `amare_passwords.db` + `amare_passwords_v1` alias 기반 비밀번호 저장소
+- GeckoView Autofill 기반 로그인 필드 감지 및 사용자 선택형 자동완성
+- 로그인 저장/업데이트/Not now/Never prompt
+- Passwords 목록/검색/정렬/추가/수정/삭제/Show/Hide
 - `GeckoSession` crash/kill 시 새 세션 생성 + 마지막 SessionState/URL 복구(반복 crash 제한)
 - SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
 - SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
@@ -35,7 +39,7 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 ### 미구현 또는 미검증
 
 - 실제 기기에서의 GeckoView 초기화/렌더링/입력: **UNVERIFIED**
-- 비밀번호/자동완성 저장
+- 실제 기기에서의 로그인 폼 감지/저장 prompt/자동완성 동작
 - 웹 알림 실제 표시(사이트 권한 저장/요청은 구현됨)
 - `window.open()`/새 창 처리, WebExtension, AI 계층
 - Rust AndroidKeystore JNI 연결(Rust Android 런타임 미탑재)
@@ -81,15 +85,15 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.6.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.6.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.6.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.5.0` (`versionCode 5`)
+- Version: `0.6.0` (`versionCode 6`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -110,7 +114,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.6.0-debug.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -137,13 +141,14 @@ Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다
 ## 테스트
 
 ```text
-Android JVM unit tests: 19/19 PASS
+Android JVM unit tests: 23/23 PASS
   UrlNormalizerTest: 5
   DownloadNamingTest: 4
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
+  PasswordRulesTest: 4
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: compile PASS, 실행 UNVERIFIED (8 tests, hosted CI에 KVM 없음)
+Android instrumentation tests: compile PASS, 실행 UNVERIFIED (12 tests, hosted CI에 KVM 없음)
 Android lint: 0 errors / 6 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
@@ -160,7 +165,8 @@ software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation �
 [Android 브라우저 다음 우선순위](../docs/ANDROID_BROWSER_ROADMAP.md),
 [Android 보안](../docs/ANDROID_SECURITY.md),
 [Android 기기 테스트](../docs/ANDROID_DEVICE_TESTING.md),
-[Android Release](../docs/ANDROID_RELEASE.md)에 정리했습니다.
+[Android Release](../docs/ANDROID_RELEASE.md),
+[Android 비밀번호 관리자](../docs/ANDROID_PASSWORD_MANAGER.md)에 정리했습니다.
 
 ## 아키텍처 경계
 

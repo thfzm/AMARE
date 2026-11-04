@@ -1,6 +1,6 @@
 # Android 브라우저 완성도 및 다음 우선순위
 
-- 기준: Android 0.5.0
+- 기준: Android 0.6.0
 - 범위: 미구현 기능의 기존 구조 호환성 분석 및 우선순위 제안
 - 이번 단계에서는 아래 기능을 구현하지 않았습니다.
 
@@ -14,14 +14,13 @@
 
 ## 2. 기능별 분석
 
-### 2.1 비밀번호 및 자동완성
+### 2.1 비밀번호 및 자동완성 — 0.6.0 구현
 
-- 관련 API: GeckoView Autofill/Login APIs, Android Autofill Framework
-- 저장 위치: GeckoView profile에 맡기지 않고 AMARE 자체 Secret 저장소를 사용할 경우
-  Keystore AES-GCM + row 단위 key version 필요
-- Windows의 `amare-security` SecretRepository/KeyProtector 의미론과 맞춰야 함
-- 위험: credential 평문 로그/백업, 잘못된 자동 채움, 사이트 오인
-- 우선순위: **P1** (보안 민감도 높음)
+- GeckoView Autofill/Login APIs 기반 브라우저 내부 자동완성
+- 별도 `amare_passwords.db` + Android Keystore alias로 저장 경계 분리
+- 사용자 선택 없는 자동 입력/제출 없음
+- Android 시스템 AutofillService는 구현하지 않음
+- 실제 기기 GeckoView 로그인 감지/저장/자동완성 검증은 UNVERIFIED
 
 ### 2.2 window.open 및 새 창
 
