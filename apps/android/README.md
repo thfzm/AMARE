@@ -143,7 +143,7 @@ Android JVM unit tests: 19/19 PASS
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: compile PASS, 실행 UNVERIFIED (7 tests, hosted CI에 KVM 없음)
+Android instrumentation tests: compile PASS, 실행 UNVERIFIED (8 tests, hosted CI에 KVM 없음)
 Android lint: 0 errors / 6 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```

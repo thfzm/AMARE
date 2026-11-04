@@ -11,6 +11,21 @@ import org.junit.Test
 
 class EncryptedDatabaseMigrationTest {
     @Test
+    fun newInstallDoesNotCreateLegacyPlaintextTables() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase("amare_browser.db")
+        val db = BrowserDatabase(context).writableDatabase
+        try {
+            val legacy = listOf("bookmarks", "history", "downloads", "site_permissions")
+                .filter { tableExists(db, it) }
+            assertTrue("legacy tables were created: $legacy", legacy.isEmpty())
+        } finally {
+            db.close()
+            context.deleteDatabase("amare_browser.db")
+        }
+    }
+
+    @Test
     fun legacyPlaintextTablesAreMigratedAndDropped() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase("amare_browser.db")
@@ -161,6 +176,12 @@ class EncryptedDatabaseMigrationTest {
         )
     }
 
+    private fun tableExists(db: SQLiteDatabase, table: String): Boolean =
+        db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            arrayOf(table),
+        ).use { it.moveToFirst() }
+
     private fun tableExists(table: String): Boolean {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = SQLiteDatabase.openDatabase(
@@ -169,10 +190,7 @@ class EncryptedDatabaseMigrationTest {
             SQLiteDatabase.OPEN_READONLY,
         )
         return try {
-            db.rawQuery(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                arrayOf(table),
-            ).use { it.moveToFirst() }
+            tableExists(db, table)
         } finally {
             db.close()
         }
