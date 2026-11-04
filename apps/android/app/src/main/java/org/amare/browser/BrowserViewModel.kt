@@ -260,6 +260,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         repository.loadAllBookmarks { values ->
             bookmarks.clear()
             bookmarks.addAll(values)
+            showDataNotice()
         }
     }
 
@@ -267,6 +268,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         repository.loadHistory(query) { values ->
             history.clear()
             history.addAll(values)
+            showDataNotice()
         }
     }
 
@@ -282,6 +284,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         repository.loadDownloads { values ->
             downloads.clear()
             downloads.addAll(values)
+            showDataNotice()
         }
     }
 
@@ -309,6 +312,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         repository.loadPermissions { values ->
             sitePermissions.clear()
             sitePermissions.addAll(values)
+            showDataNotice()
         }
     }
 
@@ -814,6 +818,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (drafts.isEmpty()) return
         val activeIndex = tabList.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
         repository.saveSessionSnapshot(drafts, activeIndex, cleanShutdown)
+    }
+
+    private fun showDataNotice() {
+        repository.consumeDataNotice()?.let { sessionNotice = it }
     }
 
     private fun clearLegacyPrefs() {

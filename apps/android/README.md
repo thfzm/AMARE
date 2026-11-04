@@ -81,15 +81,15 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.4.0` (`versionCode 4`)
+- Version: `0.5.0` (`versionCode 5`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -110,7 +110,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-debug.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -144,7 +144,7 @@ Android JVM unit tests: 19/19 PASS
   KeystoreBlobTest: 3
   SessionRecoveryPolicyTest: 2
 Android instrumentation tests: compile PASS, 실행 UNVERIFIED (7 tests)
-Android lint: 0 errors / 5 warnings
+Android lint: 0 errors / 6 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
@@ -157,7 +157,10 @@ Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
 [Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md),
 [Android Keystore/JNI 분석](../docs/ANDROID_KEYSTORE.md),
 [Android 데이터 암호화](../docs/ANDROID_DATA_ENCRYPTION.md),
-[Android 브라우저 다음 우선순위](../docs/ANDROID_BROWSER_ROADMAP.md)에 정리했습니다.
+[Android 브라우저 다음 우선순위](../docs/ANDROID_BROWSER_ROADMAP.md),
+[Android 보안](../docs/ANDROID_SECURITY.md),
+[Android 기기 테스트](../docs/ANDROID_DEVICE_TESTING.md),
+[Android Release](../docs/ANDROID_RELEASE.md)에 정리했습니다.
 
 ## 아키텍처 경계
 

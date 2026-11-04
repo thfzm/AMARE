@@ -16,7 +16,7 @@ on:
 jobs:
   android-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -35,19 +35,44 @@ jobs:
       - name: Test and assemble debug
         working-directory: apps/android
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease
-      - name: Upload debug APKs
+      - name: Verify APK/AAB artifacts
+        working-directory: apps/android
+        run: ../../tools/verify-android-artifacts.sh
+      - name: Run instrumentation tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: cd apps/android && ./gradlew :app:connectedDebugAndroidTest --no-daemon
+      - name: Upload instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amare-android-instrumentation
+          path: |
+            apps/android/app/build/reports/androidTests/connected
+            apps/android/app/build/outputs/androidTest-results/connected
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload debug APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amare-android-debug
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
       - name: Upload unsigned release artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amare-android-release-unsigned
           path: |
             apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
             apps/android/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

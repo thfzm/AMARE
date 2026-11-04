@@ -33,6 +33,8 @@ class BrowserRepository(context: Context) {
     @Volatile
     private var closed = false
 
+    private var pendingDataNotice: String? = null
+
     init {
         executor.execute {
             runCatching {
@@ -40,9 +42,16 @@ class BrowserRepository(context: Context) {
                 markInterruptedDownloadsFailed()
                 loadPermissionCache()
             }.onFailure {
+                setDataNotice(
+                    "Encrypted browser data could not be initialized. Existing data was left in place.",
+                )
                 Log.e(TAG, "Encrypted repository initialization failed")
             }
         }
+    }
+
+    fun consumeDataNotice(): String? = synchronized(this) {
+        pendingDataNotice.also { pendingDataNotice = null }
     }
 
     fun saveSessionSnapshot(
@@ -828,6 +837,7 @@ class BrowserRepository(context: Context) {
                     record.decision
             }
         }.onFailure {
+            setDataNotice("Saved site permissions could not be decrypted.")
             Log.e(TAG, "Permission cache load failed")
         }
     }
@@ -845,9 +855,8 @@ class BrowserRepository(context: Context) {
             READ_LIMIT.toString(),
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val json = runCatching {
-                    decryptJson(BOOKMARK_AAD, cursor.getBlob(1))
-                }.getOrNull() ?: continue
+                val json = decryptJsonOrNull(BOOKMARK_AAD, cursor.getBlob(1), "bookmarks")
+                    ?: continue
                 val url = json.optString("url")
                 if (url.isBlank()) continue
                 result.add(
@@ -876,9 +885,8 @@ class BrowserRepository(context: Context) {
             HISTORY_CACHE_LIMIT.toString(),
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val json = runCatching {
-                    decryptJson(HISTORY_AAD, cursor.getBlob(1))
-                }.getOrNull() ?: continue
+                val json = decryptJsonOrNull(HISTORY_AAD, cursor.getBlob(1), "history")
+                    ?: continue
                 val url = json.optString("url")
                 if (url.isBlank()) continue
                 result.add(
@@ -914,9 +922,8 @@ class BrowserRepository(context: Context) {
             DOWNLOAD_CACHE_LIMIT.toString(),
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val json = runCatching {
-                    decryptJson(DOWNLOAD_AAD, cursor.getBlob(1))
-                }.getOrNull() ?: continue
+                val json = decryptJsonOrNull(DOWNLOAD_AAD, cursor.getBlob(1), "downloads")
+                    ?: continue
                 result.add(
                     DownloadRecord(
                         id = cursor.getLong(0),
@@ -972,9 +979,11 @@ class BrowserRepository(context: Context) {
             PERMISSION_CACHE_LIMIT.toString(),
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val json = runCatching {
-                    decryptJson(PERMISSION_AAD, cursor.getBlob(1))
-                }.getOrNull() ?: continue
+                val json = decryptJsonOrNull(
+                    PERMISSION_AAD,
+                    cursor.getBlob(1),
+                    "site permissions",
+                ) ?: continue
                 val origin = json.optString("origin")
                 if (origin.isBlank()) continue
                 val record = SitePermissionRecord(
@@ -989,6 +998,32 @@ class BrowserRepository(context: Context) {
             }
         }
         return result
+    }
+
+    private fun decryptJsonOrNull(
+        context: String,
+        payload: ByteArray,
+        dataLabel: String,
+    ): JSONObject? = try {
+        decryptJson(context, payload)
+    } catch (error: AndroidKeystoreProtector.KeystoreException) {
+        if (error.kind == AndroidKeystoreProtector.ErrorKind.KEY_INVALIDATED) {
+            setDataNotice(
+                "Saved $dataLabel could not be decrypted because the Android Keystore key is unavailable.",
+            )
+        } else {
+            setDataNotice("Some saved $dataLabel could not be authenticated.")
+        }
+        null
+    } catch (_: Throwable) {
+        setDataNotice("Some saved $dataLabel could not be decoded.")
+        null
+    }
+
+    private fun setDataNotice(message: String) {
+        synchronized(this) {
+            if (pendingDataNotice == null) pendingDataNotice = message
+        }
     }
 
     private fun encryptJson(context: String, json: JSONObject): ByteArray =

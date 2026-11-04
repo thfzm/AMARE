@@ -1,0 +1,94 @@
+# Android Release 및 서명
+
+- 기준: Android 0.5.0
+- 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
+
+## 1. 빌드
+
+```bash
+cd apps/android
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+export ANDROID_HOME=/home/ubuntu/android-sdk
+./gradlew :app:testDebugUnitTest :app:assembleDebug \
+  :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease :app:lintDebug
+```
+
+- Debug APK: universal, debug signed
+- Release APK: R8 + resource shrinking, unsigned unless signing env is present
+- Release AAB: unsigned unless signing env is present
+- Release `debuggable=false`
+- R8 mapping: `app/build/outputs/mapping/release/mapping.txt`
+
+ABI splits는 Android App Bundle과 함께 사용할 때 AGP 충돌이 있어 제거했습니다.
+현재 APK는 모든 ABI를 포함하는 universal APK입니다.
+
+## 2. 로컬 서명
+
+다음 환경변수가 모두 설정된 경우에만 release signingConfig가 생성됩니다.
+
+```text
+AMARE_ANDROID_KEYSTORE
+AMARE_ANDROID_KEYSTORE_PASSWORD
+AMARE_ANDROID_KEY_ALIAS
+AMARE_ANDROID_KEY_PASSWORD
+```
+
+예시는 값이 아닌 변수 이름만 문서화합니다. 키와 비밀번호를 Git, 로그, 채팅, 스크린샷에
+포함하지 마십시오.
+
+## 3. GitHub Actions Secrets 설계
+
+권장 secret:
+
+```text
+AMARE_ANDROID_KEYSTORE_BASE64
+AMARE_ANDROID_KEYSTORE_PASSWORD
+AMARE_ANDROID_KEY_ALIAS
+AMARE_ANDROID_KEY_PASSWORD
+```
+
+CI에서는 base64 keystore를 runner 임시 파일로 decode한 뒤 `AMARE_ANDROID_KEYSTORE`에
+그 경로를 지정합니다. 임시 파일은 job 종료 시 삭제합니다. 실제 secret 등록은 저장소
+소유자의 승인 없이 수행하지 않습니다.
+
+## 4. 서명 검증
+
+Debug APK:
+
+```bash
+apksigner verify --verbose app-debug.apk
+```
+
+Release APK가 unsigned인 경우 `DOES NOT VERIFY`가 정상입니다.
+
+```bash
+apksigner verify --verbose app-release-unsigned.apk
+jarsigner -verify app-release.aab
+```
+
+자동 검증:
+
+```bash
+tools/verify-android-artifacts.sh \
+  apps/android/app/build/outputs/apk/debug/app-debug.apk \
+  apps/android/app/build/outputs/apk/release/app-release-unsigned.apk \
+  apps/android/app/build/outputs/bundle/release/app-release.aab
+```
+
+서명된 release를 기대할 때는 `EXPECT_SIGNED_RELEASE=1`을 설정합니다.
+
+## 5. 산출물 구분
+
+| 산출물 | 현재 상태 | 배포 가능 여부 |
+|---|---|---|
+| `app-debug.apk` | Debug key 서명 | 개발 설치용 |
+| `app-release-unsigned.apk` | 서명 없음 | 배포 불가 |
+| `app-release.aab` | 서명 없음 | 배포 불가 |
+| signing env가 있는 release | 환경변수 키로 서명 | 검증 후 배포 가능 |
+
+## 6. 주의
+
+- 실제 배포용 키를 임의로 생성/등록/업로드하지 않음
+- Release unsigned 파일을 배포 가능한 파일로 표현하지 않음
+- key password가 Gradle 로그에 노출되지 않도록 `--info`/`--debug` 로그 공유 금지
+- 실제 서명 키 백업/복구 정책은 저장소 소유자가 별도로 관리
