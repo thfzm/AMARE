@@ -64,8 +64,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          disk-size: 8192
-          ram-size: 3072
+          emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
             adb shell df -h /data
