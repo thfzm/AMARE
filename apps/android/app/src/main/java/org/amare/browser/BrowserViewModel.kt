@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.util.SparseArray
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -39,11 +40,13 @@ import org.amare.browser.data.SessionTabDraft
 import org.amare.browser.data.SitePermissionRecord
 import org.amare.browser.data.StoredSession
 import org.amare.browser.security.SessionRecoveryPolicy
+import org.amare.browser.security.AndroidKeystoreProtector
 import org.amare.browser.security.KeyedRateLimiter
 import org.amare.browser.security.NotificationRules
 import org.amare.browser.security.PasswordRules
 import org.amare.browser.security.PopupRules
 import org.json.JSONArray
+import org.json.JSONObject
 import org.mozilla.geckoview.Autocomplete
 import org.mozilla.geckoview.Autofill
 import org.mozilla.geckoview.GeckoResult
@@ -120,13 +123,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private const val PREFS = "amare_android_browser"
         private const val KEY_URLS = "open_urls"
         private const val KEY_ACTIVE = "active_index"
+        private const val KEY_HTTPS_ONLY = "https_only"
         private const val MAX_RESTORED_TABS = 8
         private const val MAX_RECOVERY_ATTEMPTS = 3
         private const val TAG = "BrowserViewModel"
         private const val NOTIFICATION_CHANNEL_ID = "amare_web_notifications"
         private const val NOTIFICATION_ID = 1001
+        private const val NOTIFICATION_CLICK_AAD = "amare.notification.click.v1"
         const val ACTION_OPEN_NOTIFICATION = "org.amare.browser.OPEN_NOTIFICATION"
         const val EXTRA_NOTIFICATION_KEY = "notification_key"
+        const val EXTRA_NOTIFICATION_PAYLOAD = "notification_payload"
 
         @Volatile
         private var sharedRuntime: GeckoRuntime? = null
@@ -135,11 +141,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             sharedRuntime?.let { return it }
             synchronized(this) {
                 sharedRuntime?.let { return it }
+                val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val httpsOnly = preferences.getBoolean(KEY_HTTPS_ONLY, true)
                 val settings = GeckoRuntimeSettings.Builder()
                     .globalPrivacyControlEnabled(true)
                     .remoteDebuggingEnabled(false)
                     .consoleOutput(false)
                     .aboutConfigEnabled(false)
+                    .allowInsecureConnections(
+                        if (httpsOnly) {
+                            GeckoRuntimeSettings.HTTPS_ONLY
+                        } else {
+                            GeckoRuntimeSettings.ALLOW_ALL
+                        },
+                    )
                     .build()
                 return GeckoRuntime.create(context.applicationContext, settings)
                     .also { sharedRuntime = it }
@@ -152,6 +167,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = BrowserRepository(application)
     private val passwordRepository = PasswordRepository(application)
     private val notificationManager = application.getSystemService(NotificationManager::class.java)
+    private val notificationClickProtector = AndroidKeystoreProtector()
     private val tabList = mutableStateListOf<BrowserTab>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val downloadExecutor = Executors.newFixedThreadPool(2)
@@ -198,12 +214,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var pendingNotificationOsPermission by mutableStateOf(false)
         private set
 
+    var httpsOnly by mutableStateOf(prefs.getBoolean(KEY_HTTPS_ONLY, true))
+        private set
+
     private var nextTabId = 1L
 
     val activeTab: BrowserTab?
         get() = tabList.firstOrNull { it.id == activeTabId }
 
     init {
+        applyHttpsOnly()
         ensureNotificationChannel()
         NotificationBridge.dismissHandler = { key -> closeNotificationByKey(key) }
         runtime.webNotificationDelegate = object : WebNotificationDelegate {
@@ -518,6 +538,36 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         pendingNotificationOsPermission = false
         if (!granted) {
             sessionNotice = "Android notifications are blocked. Enable them in system settings."
+        }
+    }
+
+    fun updateHttpsOnly(enabled: Boolean) {
+        httpsOnly = enabled
+        prefs.edit { putBoolean(KEY_HTTPS_ONLY, enabled) }
+        runCatching {
+            runtime.settings.setAllowInsecureConnections(
+                if (enabled) {
+                    GeckoRuntimeSettings.HTTPS_ONLY
+                } else {
+                    GeckoRuntimeSettings.ALLOW_ALL
+                },
+            )
+        }.onFailure {
+            sessionNotice = "보안 설정을 적용하지 못했습니다."
+        }
+    }
+
+    private fun applyHttpsOnly() {
+        runCatching {
+            runtime.settings.setAllowInsecureConnections(
+                if (httpsOnly) {
+                    GeckoRuntimeSettings.HTTPS_ONLY
+                } else {
+                    GeckoRuntimeSettings.ALLOW_ALL
+                },
+            )
+        }.onFailure {
+            sessionNotice = "보안 설정을 적용하지 못했습니다."
         }
     }
 
@@ -1051,16 +1101,26 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun handleNotificationIntent(intent: Intent?) {
         if (intent?.action != ACTION_OPEN_NOTIFICATION) return
         val key = intent.getStringExtra(EXTRA_NOTIFICATION_KEY) ?: return
-        val target = notificationTargets.remove(key) ?: return
-        notificationManager.cancel(key, NOTIFICATION_ID)
-        target.notification.click()
-        target.notification.dismiss()
-        val url = NotificationRules.safeNavigationUrl(
-            target.origin,
-            target.notification.source,
-        )
+        val target = notificationTargets.remove(key)
+        if (target != null) {
+            notificationManager.cancel(key, NOTIFICATION_ID)
+            target.notification.click()
+            target.notification.dismiss()
+        }
+
+        val payload = intent.getStringExtra(EXTRA_NOTIFICATION_PAYLOAD)
+            ?.let { decodeNotificationClickPayload(it) }
+        if (payload == null && target == null) return
+        val origin = payload?.optString("origin")?.takeIf { it.isNotBlank() }
+            ?: target?.origin
+            ?: return
+        if (!NotificationRules.isAllowedOrigin(origin)) return
+        if (target != null && origin != target.origin) return
+        val source = payload?.optString("source")?.takeIf { it.isNotBlank() && it != "null" }
+            ?: target?.notification?.source
+        val url = NotificationRules.safeNavigationUrl(origin, source)
         val existing = tabList.firstOrNull {
-            PermissionRules.originFor(it.currentUrl) == target.origin
+            PermissionRules.originFor(it.currentUrl) == origin
         }
         if (existing != null) {
             activateTab(existing.id, persist = true)
@@ -1070,6 +1130,32 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             activateTab(tab.id, persist = true)
         }
     }
+
+    private fun encodeNotificationClickPayload(
+        origin: String,
+        source: String?,
+        tag: String,
+    ): String? = runCatching {
+        val json = JSONObject()
+            .put("origin", origin)
+            .put("source", source ?: JSONObject.NULL)
+            .put("tag", tag)
+        val encrypted = notificationClickProtector.protect(
+            NOTIFICATION_CLICK_AAD,
+            json.toString().toByteArray(Charsets.UTF_8),
+        )
+        Base64.encodeToString(encrypted, Base64.NO_WRAP)
+    }.getOrNull()
+
+    private fun decodeNotificationClickPayload(value: String): JSONObject? = runCatching {
+        val encrypted = Base64.decode(value, Base64.NO_WRAP)
+        JSONObject(
+            String(
+                notificationClickProtector.unprotect(NOTIFICATION_CLICK_AAD, encrypted),
+                Charsets.UTF_8,
+            ),
+        )
+    }.getOrNull()
 
     private fun showWebNotification(notification: WebNotification) {
         val origin = PermissionRules.originFor(notification.origin)
@@ -1091,12 +1177,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         ensureNotificationChannel()
 
+        val clickPayload = encodeNotificationClickPayload(
+            origin,
+            notification.source,
+            notification.tag,
+        )
+        if (clickPayload == null) {
+            notification.dismiss()
+            sessionNotice = "알림 클릭 정보를 안전하게 준비하지 못했습니다."
+            return
+        }
+
         val key = notificationKey(origin, notification.tag)
         notificationTargets.remove(key)?.notification?.dismiss()
         notificationTargets[key] = NotificationTarget(notification, origin)
         val intent = Intent(getApplication(), MainActivity::class.java).apply {
             action = ACTION_OPEN_NOTIFICATION
             putExtra(EXTRA_NOTIFICATION_KEY, key)
+            putExtra(EXTRA_NOTIFICATION_PAYLOAD, clickPayload)
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val pendingIntent = PendingIntent.getActivity(

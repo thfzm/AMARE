@@ -1,6 +1,6 @@
 # Android 새 창 및 탭 관리
 
-- 기준: Android 0.7.0
+- 기준: Android 0.9.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 기존 탭 구조
@@ -54,7 +54,15 @@ window.open() / target="_blank"
 - cross-origin form/node domain은 기존과 동일하게 차단
 - 새 창이 기존 탭의 비밀번호 prompt state를 공유하지 않음
 
-## 6. 검증 상태
+## 6. 메모리/탭 정책
+
+- 탭 수 제한으로 강제 종료하지 않음
+- 비활성 탭은 `setActive(false)`로 GeckoView 메모리 사용을 줄임
+- 탭 전환/종료/백그라운드에서 session snapshot 저장
+- 다수 탭/저메모리 측정은 실기기 UNVERIFIED
+- 세션 데이터가 큰 경우 크기 제한/정리 정책은 아직 없음
+
+## 7. 검증 상태
 
 | 항목 | 상태 |
 |---|---|

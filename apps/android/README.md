@@ -9,7 +9,8 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 
 - Jetpack Compose 단일 Activity 브라우저 UI
 - GeckoView `GeckoRuntime` 프로세스 싱글턴 및 `GeckoSession` 수명주기
-- HTTPS/HTTP 페이지 로드, 로딩 진행률, 페이지 제목 표시
+- HTTPS 페이지 로드, 로딩 진행률, 페이지 제목 표시
+- HTTPS-only 기본 정책(HTTP는 보안 패널에서 명시적으로 해제해야 허용)
 - 뒤로 가기, 앞으로 가기, 새로고침/중지
 - 주소창 입력, URL 정규화, HTTPS DuckDuckGo 검색 fallback
 - 여러 탭 생성/선택/종료
@@ -28,7 +29,10 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - `window.open()`/`target="_blank"` 새 탭 생성, URL allowlist, rate limit
 - 사이트별 웹 알림 권한, Android 13+ OS 알림 권한, NotificationChannel
 - 알림 클릭 시 origin 검증 후 기존 탭/새 탭 이동
-- Debug 전용 Diagnostics 화면(Release에는 미노출): GeckoRuntime/Keystore/DB/알림 권한 상태
+- Debug 전용 Diagnostics 화면(Release에는 미노출): GeckoRuntime/Keystore/DB/알림 권한/HTTPS-only 상태
+- 보안 패널의 HTTPS-only 모드(기본 켜짐)와 HTTP 차단/해제 설정
+- 다운로드 위험 파일 형식 경고
+- Android 알림 채널/앱 알림 차단 상태 안내
 - `GeckoSession` crash/kill 시 새 세션 생성 + 마지막 SessionState/URL 복구(반복 crash 제한)
 - SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
 - SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
@@ -89,15 +93,15 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.8.0` (`versionCode 8`)
+- Version: `0.9.0` (`versionCode 9`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -118,7 +122,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -145,11 +149,12 @@ Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다
 ## 테스트
 
 ```text
-Android JVM unit tests: 28/28 PASS
+Android JVM unit tests: 31/31 PASS
   UrlNormalizerTest: 5
   DownloadNamingTest: 4
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
+  DownloadSafetyTest: 3
   PasswordRulesTest: 4
   KeyedRateLimiterTest: 2
   NotificationRulesTest: 2
@@ -162,6 +167,7 @@ Android release: assembleRelease / bundleRelease PASS, unsigned
 
 실제 기기에서 GeckoView 다운로드/권한/DB/세션 복구/Keystore 동작은 아직 **UNVERIFIED**입니다.
 Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
+HTTPS-only 기본값은 켜짐이며, 보안 패널에서 사용자가 해제할 수 있습니다.
 로컬 호스트는 aarch64이며 `/dev/kvm`이 없습니다. GitHub hosted runner도 KVM 권한이 없어
 software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation 실행은 UNVERIFIED입니다.
 

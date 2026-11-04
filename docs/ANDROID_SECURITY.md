@@ -1,6 +1,6 @@
 # Android 보안 설계 및 검증 상태
 
-- 기준: Android 0.8.0
+- 기준: Android 0.9.0
 - 관련 문서: [데이터 암호화](ANDROID_DATA_ENCRYPTION.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [Release](ANDROID_RELEASE.md)
 
 ## 1. 보호 대상과 저장 위치
@@ -90,7 +90,62 @@ AMARE가 복구할 수 없습니다.
 - DB migration은 transaction + 이전 평문 table rollback 보존
 - 탭/웹 알림 메모리 사용량과 장시간 성능은 실기기 UNVERIFIED
 
-## 8. 검증 상태
+## 8. 0.9.0 네트워크 보안 정책
+
+### HTTPS-only
+
+GeckoRuntimeSettings의 `allowInsecureConnections`를 사용합니다.
+
+- 기본값: `HTTPS_ONLY` (HTTP 차단)
+- 사용자가 보안 패널에서 HTTPS-only를 끌 수 있음
+- 설정은 `amare_android_browser` SharedPreferences에 저장
+- 런타임 변경은 `setAllowInsecureConnections`로 적용
+- HTTPS-only가 켜져 있으면 HTTP 주소는 로드되지 않음
+- HTTPS-only를 끄면 HTTP 사이트를 열 수 있으며 보안 수준이 낮아짐
+
+HTTP-only 사이트 호환성 영향:
+
+- 기본 설정에서는 HTTP-only 사이트가 열리지 않음
+- 사용자가 명시적으로 해제해야 함
+- 인증서 오류와 별개이며 인증서 오류 우회는 제공하지 않음
+
+### Mixed Content
+
+GeckoView의 기본 Mixed Content 보호 정책을 사용합니다. AMARE가 별도로 active
+content를 자동 허용하거나 우회하지 않습니다. GeckoView가 제공하는 mixed-content
+우회 UI는 이번 버전에서 추가하지 않았습니다. 실제 사이트별 동작은 기기에서 UNVERIFIED입니다.
+
+### 인증서 오류
+
+- `onLoadError`에서 로드를 중단
+- 인증서 예외를 자동 허용하지 않음
+- 별도의 "위험 감수하고 계속" UI 없음
+
+### 알림 클릭 프로세스 복원
+
+알림 클릭 데이터는 Android Keystore AES-GCM으로 암호화한 payload로 PendingIntent에
+포함합니다. 프로세스가 재시작되어도 암호화 payload를 검증한 뒤 HTTPS origin/source만
+이동할 수 있습니다. 외부 앱이 Intent를 위조해도 복호화/검증을 통과할 수 없습니다.
+암호화 실패 시 알림을 표시하지 않습니다.
+
+## 9. 현재 설정 UI 범위
+
+실제 기능과 연결된 설정:
+
+- HTTPS-only On/Off
+- 사이트별 카메라/마이크/위치/알림/저장소 권한 Allow/Deny/Reset
+- 비밀번호 저장/수정/삭제 및 현재 사이트 저장 제안 재활성화
+- 다운로드 Open/Remove 및 위험 파일 경고
+- Debug 빌드 Diagnostics
+
+아직 제공하지 않는 설정(가짜 토글을 추가하지 않음):
+
+- 전체 방문 기록/쿠키/사이트 데이터 일괄 삭제 UI
+- 기본 브라우저 역할 설정 UI
+- Mixed Content 상세 정책 선택
+- 다운로드 자동 재시도/중복 파일명 사용자 정책
+
+## 10. 검증 상태
 
 | 항목 | 상태 |
 |---|---|

@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.8.0
+- 기준: Android 0.9.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -61,9 +61,9 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
 
-Debug APK SHA-256: `5a19c4e054aa8e67731f73dc13b813cb5cf4136949619ba18ccad238aa514fe3`
+Debug APK SHA-256: `88411e4bfa13ea9b71e3564899b348e1ced7543d1e953f46180b750c9204a6ea`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
@@ -83,8 +83,11 @@ Release APK/AAB는 현재 unsigned이므로 실제 배포 전 서명이 필요�
 8. 기기 잠금 방식 변경 후 Keystore 데이터 접근 안내
 9. 앱 데이터 삭제 후 새 세션 시작
 10. 백업/기기 이전에서 앱 데이터 제외 확인
-11. Debug 전용 Diagnostics에서 GeckoRuntime/Keystore/DB/알림 권한 상태 확인
+11. Debug 전용 Diagnostics에서 GeckoRuntime/Keystore/DB/알림 권한/HTTPS-only 상태 확인
 12. Release APK에서는 Diagnostics 버튼이 보이지 않는지 확인
+13. 보안 패널에서 HTTPS-only On/Off 후 HTTP/HTTPS 동작 차이 확인
+14. 알림 클릭을 앱 프로세스 종료 후에도 확인
+15. 다운로드 목록에서 위험 파일 경고 표시 확인
 
 ## 5.1 실기기 결과 기록
 
@@ -121,7 +124,7 @@ credential, notification body를 로그에 기록하지 않습니다.
 
 ```bash
 tools/run-android-device-tests.sh \
-  artifacts/android/AMARE-0.8.0-debug.apk \
+  artifacts/android/AMARE-0.9.0-debug.apk \
   artifacts/android/AMARE-0.8.0-debug-androidTest.apk
 ```
 

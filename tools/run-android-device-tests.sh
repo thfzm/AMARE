@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APK="${1:-artifacts/android/AMARE-0.8.0-debug.apk}"
-TEST_APK="${2:-artifacts/android/AMARE-0.8.0-debug-androidTest.apk}"
+APK="${1:-artifacts/android/AMARE-0.9.0-debug.apk}"
+TEST_APK="${2:-artifacts/android/AMARE-0.9.0-debug-androidTest.apk}"
 ADB="${ADB:-${ANDROID_HOME:-/home/ubuntu/android-sdk}/platform-tools/adb}"
 
 if [ ! -x "$ADB" ]; then

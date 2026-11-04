@@ -41,6 +41,7 @@ private data class DiagnosticsSnapshot(
     val postNotificationsGranted: Boolean?,
     val notificationPermissions: Int,
     val lastNotice: String?,
+    val httpsOnly: Boolean,
 )
 
 @Composable
@@ -57,6 +58,7 @@ fun DiagnosticsPanel(viewModel: BrowserViewModel, onClose: () -> Unit) {
             it.permission == PermissionRules.NOTIFICATIONS
         }
         val lastNotice = viewModel.sessionNotice
+        val httpsOnly = viewModel.httpsOnly
         Thread {
             val result = collectDiagnostics(
                 context = context,
@@ -64,6 +66,7 @@ fun DiagnosticsPanel(viewModel: BrowserViewModel, onClose: () -> Unit) {
                 tabCount = tabCount,
                 notificationPermissions = notificationPermissions,
                 lastNotice = lastNotice,
+                httpsOnly = httpsOnly,
             )
             mainHandler.post { snapshot = result }
         }.start()
@@ -102,6 +105,7 @@ fun DiagnosticsPanel(viewModel: BrowserViewModel, onClose: () -> Unit) {
                 current.postNotificationsGranted?.toString() ?: "not applicable",
             )
             DiagnosticRow("Stored site notification permissions", current.notificationPermissions.toString())
+            DiagnosticRow("HTTPS only", current.httpsOnly.toString())
             DiagnosticRow("Last notice", current.lastNotice ?: "none")
         }
         Button(onClick = { refresh() }, modifier = Modifier.padding(top = 12.dp)) {
@@ -127,6 +131,7 @@ private fun collectDiagnostics(
     tabCount: Int,
     notificationPermissions: Int,
     lastNotice: String?,
+    httpsOnly: Boolean,
 ): DiagnosticsSnapshot {
     val browserProtector = AndroidKeystoreProtector()
     val passwordProtector = AndroidKeystoreProtector("amare_passwords_v1")
@@ -163,6 +168,7 @@ private fun collectDiagnostics(
         postNotificationsGranted = postGranted,
         notificationPermissions = notificationPermissions,
         lastNotice = lastNotice,
+        httpsOnly = httpsOnly,
     )
 }
 

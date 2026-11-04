@@ -1,6 +1,6 @@
 # Android Release 및 서명
 
-- 기준: Android 0.8.0
+- 기준: Android 0.9.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 빌드
@@ -86,7 +86,15 @@ tools/verify-android-artifacts.sh \
 | `app-release.aab` | 서명 없음 | 배포 불가 |
 | signing env가 있는 release | 환경변수 키로 서명 | 검증 후 배포 가능 |
 
-## 6. 실제 배포 키 준비 절차 (사용자 승인 필요)
+## 6. 1.0.0 전 필수 확인
+
+- 실제 기기에서 Keystore/DB migration/instrumentation 실행
+- Release signing key 등록 및 signed APK/AAB 검증
+- HTTPS-only/Mixed Content 실제 사이트 호환성 확인
+- 알림 프로세스 재시작 클릭 동작 확인
+- 다운로드 중복 파일명/재시도 정책 확정
+
+## 7. 실제 배포 키 준비 절차 (사용자 승인 필요)
 
 아래 작업은 저장소 소유자의 승인 없이 실행하지 않았습니다.
 
@@ -111,7 +119,7 @@ keytool -genkeypair -v \
 업로드하면 Play App Signing을 사용해 앱 서명 키를 Google이 관리하도록 선택할 수 있습니다.
 등록 키/업로드 키/keystore를 Git, CI 로그, 채팅에 포함하지 마십시오.
 
-## 7. 주의
+## 8. 주의
 
 - 실제 배포용 키를 임의로 생성/등록/업로드하지 않음
 - Release unsigned 파일을 배포 가능한 파일로 표현하지 않음

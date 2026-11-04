@@ -1,6 +1,6 @@
 # Android 통합 테스트 계획
 
-- 기준: Android 0.8.0
+- 기준: Android 0.9.0
 - 원칙: 실제 실행하지 않은 항목은 PASS로 표시하지 않음
 - 관련 문서: [기기 테스트](ANDROID_DEVICE_TESTING.md), [보안](ANDROID_SECURITY.md), [Release](ANDROID_RELEASE.md)
 
@@ -16,7 +16,7 @@
 
 현재 환경:
 
-- JVM tests: 실행 가능
+- JVM tests: 31/31 PASS
 - Instrumentation: compile-only
 - 실제 기기: 없음
 - hosted CI emulator: KVM 없음, ADB 불안정
@@ -39,6 +39,7 @@
 - 탭/세션 정책과 SessionRecoveryPolicy: JVM PASS
 - Session snapshot DB: Instrumentation compile
 - 실제 GeckoView 렌더링/입력/복구: Device UNVERIFIED
+- HTTPS-only 실제 차단/해제: Device UNVERIFIED
 
 ### B. 새 창
 
@@ -88,7 +89,20 @@
 - PasswordRepository encryption/list/update/delete: Instrumentation compile
 - GeckoView Autofill/Login prompt: Device UNVERIFIED
 
-### E. 보안/데이터
+### E. HTTPS/설정
+
+1. 기본 HTTPS-only 상태에서 HTTP 주소 차단
+2. 보안 패널에서 HTTPS-only 해제 후 HTTP 접속
+3. HTTPS-only 재활성화
+4. 인증서 오류 사이트가 자동 우회되지 않는지 확인
+5. Mixed Content 페이지 동작 확인
+
+자동화:
+
+- 설정 저장/런타임 API 호출: 코드 수준 확인
+- 실제 HTTP/HTTPS/Mixed Content/인증서 동작: Device UNVERIFIED
+
+### F. 보안/데이터
 
 1. Keystore AES-GCM round-trip
 2. IV/ciphertext/AAD 변조
@@ -139,7 +153,7 @@ cd apps/android
 실기기에서 수동 설치:
 
 ```bash
-adb install -r artifacts/android/AMARE-0.8.0-debug.apk
+adb install -r artifacts/android/AMARE-0.9.0-debug.apk
 ```
 
 ## 5. 성능 측정 준비

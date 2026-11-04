@@ -39,6 +39,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,6 +75,7 @@ private enum class BrowserPanel(val title: String) {
     DOWNLOADS("Downloads"),
     PERMISSIONS("Site permissions"),
     PASSWORDS("Passwords"),
+    SECURITY("보안"),
     DIAGNOSTICS("Diagnostics"),
 }
 
@@ -139,6 +141,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onDownloads = { panel = BrowserPanel.DOWNLOADS },
             onPermissions = { panel = BrowserPanel.PERMISSIONS },
             onPasswords = { panel = BrowserPanel.PASSWORDS },
+            onSecurity = { panel = BrowserPanel.SECURITY },
             onDiagnostics = if (BuildConfig.DEBUG) {
                 { panel = BrowserPanel.DIAGNOSTICS }
             } else {
@@ -301,6 +304,7 @@ private fun LibraryBar(
     onDownloads: () -> Unit,
     onPermissions: () -> Unit,
     onPasswords: () -> Unit,
+    onSecurity: () -> Unit,
     onDiagnostics: (() -> Unit)?,
 ) {
     Row(
@@ -316,6 +320,7 @@ private fun LibraryBar(
         TextButton(onClick = onDownloads) { Text("Downloads") }
         TextButton(onClick = onPermissions) { Text("Permissions") }
         TextButton(onClick = onPasswords) { Text("Passwords") }
+        TextButton(onClick = onSecurity) { Text("보안") }
         onDiagnostics?.let { onClick ->
             TextButton(onClick = onClick) { Text("Diagnostics") }
         }
@@ -452,6 +457,10 @@ private fun BrowserPanelOverlay(
                     onRemove = viewModel::removeSitePermission,
                 )
                 BrowserPanel.PASSWORDS -> PasswordsPanel(viewModel)
+                BrowserPanel.SECURITY -> SecurityPanel(
+                    httpsOnly = viewModel.httpsOnly,
+                    onHttpsOnlyChange = viewModel::updateHttpsOnly,
+                )
                 BrowserPanel.DIAGNOSTICS -> DiagnosticsPanel(
                     viewModel = viewModel,
                     onClose = onClose,
@@ -578,6 +587,13 @@ private fun DownloadsPanel(
                     text = downloadStatusText(download),
                     style = MaterialTheme.typography.labelSmall,
                 )
+                DownloadSafety.warning(download.fileName, download.mimeType)?.let { warning ->
+                    Text(
+                        text = warning,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
                 if (download.status == DownloadStatus.RUNNING) {
                     if (download.totalBytes > 0) {
                         LinearProgressIndicator(
@@ -975,6 +991,35 @@ private fun AutofillBanner(
             confirmButton = {
                 TextButton(onClick = { choose = false }) { Text("Cancel") }
             },
+        )
+    }
+}
+
+@Composable
+private fun SecurityPanel(
+    httpsOnly: Boolean,
+    onHttpsOnlyChange: (Boolean) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("HTTPS만 허용", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "HTTP 주소를 차단하고 HTTPS 연결만 허용합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = httpsOnly, onCheckedChange = onHttpsOnlyChange)
+        }
+        Text(
+            "인증서 오류는 자동으로 무시하지 않습니다. " +
+                "Mixed Content는 GeckoView의 보안 정책을 따릅니다. " +
+                "HTTPS-only를 끄면 HTTP 사이트도 열 수 있지만 보안 수준이 낮아집니다.",
+            modifier = Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

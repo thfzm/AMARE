@@ -1,6 +1,6 @@
 # Android 웹 알림
 
-- 기준: Android 0.7.0
+- 기준: Android 0.9.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. API
@@ -57,8 +57,12 @@ Android:
 - Android 알림 스와이프 삭제는 `NotificationActionReceiver`의 deleteIntent로
   WebNotification에 전달
 
-프로세스가 종료된 뒤 알림을 누르면 opaque key map이 없으므로 사이트로 이동하지 않고
-앱만 열립니다. 이는 임의 URL 실행을 막기 위한 보수적 동작입니다.
+0.9.0에서는 PendingIntent에 Android Keystore AES-GCM으로 보호한 click payload
+(origin/source/tag)를 함께 넣습니다. 프로세스가 재시작되어도 payload를 검증한 뒤
+같은 HTTPS origin/source로만 이동합니다. 위조 Intent는 복호화/검증을 통과할 수 없습니다.
+프로세스가 살아 있을 때는 기존 opaque key map으로 `WebNotification.click()`도 호출합니다.
+프로세스 재시작 후에는 WebNotification 객체가 없으므로 사이트로 이동만 하며 웹 콘텐츠에
+click 이벤트를 전달하지 못합니다.
 
 ## 5. 보안 검토
 
@@ -75,5 +79,5 @@ Android:
 - Android OS AutofillService와 무관
 - 알림 action 버튼 UI는 표시하지 않음
 - 알림 그룹화/사이트별 channel은 단일 channel 정책
-- 프로세스 종료 후 클릭 복원은 미지원
+- 프로세스 종료 후 클릭 시 사이트 이동은 지원하지만 WebNotification.click() 전달은 미지원
 - 실제 기기 알림 표시/클릭은 UNVERIFIED
