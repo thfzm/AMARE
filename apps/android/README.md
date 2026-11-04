@@ -143,15 +143,15 @@ Android JVM unit tests: 19/19 PASS
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: compile PASS, 실행 UNVERIFIED (7 tests)
+Android instrumentation tests: compile PASS, 실행 UNVERIFIED (7 tests, hosted CI에 KVM 없음)
 Android lint: 0 errors / 6 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
 실제 기기에서 GeckoView 다운로드/권한/DB/세션 복구/Keystore 동작은 아직 **UNVERIFIED**입니다.
 Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
-에뮬레이터는 호스트가 aarch64이고 `/dev/kvm`이 없으며 공식 emulator 패키지가 x86_64이므로
-이 환경에서 실행할 수 없습니다.
+로컬 호스트는 aarch64이며 `/dev/kvm`이 없습니다. GitHub hosted runner도 KVM 권한이 없어
+software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation 실행은 UNVERIFIED입니다.
 
 세션/Keystore 구현과 JNI 경계는
 [Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md),

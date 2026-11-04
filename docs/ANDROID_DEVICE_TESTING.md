@@ -13,14 +13,25 @@
 로컬에서 `./gradlew :app:connectedDebugAndroidTest`를 실행하면
 `No connected devices!`로 실패합니다. 이는 테스트 실패가 아니라 실행 환경 부재입니다.
 
-## 2. GitHub Actions Emulator
+## 2. GitHub Actions Emulator 시도 결과
 
-Android CI workflow는 `reactivecircus/android-emulator-runner@v2`를 사용해
-API 34 `google_apis` x86_64 Pixel 6 AVD에서 instrumentation 테스트를 실행하도록 구성했습니다.
+Android CI에서 `reactivecircus/android-emulator-runner@v2`로 API 34 x86_64 AVD 실행을
+시도했습니다. 결과:
 
-- JVM/compile-only와 execution 결과를 구분
-- Emulator 실행 성공 시에만 instrumentation PASS로 표기
-- Emulator의 Android Keystore는 실제 기기의 StrongBox/TEE와 동일하지 않음
+- GitHub hosted Ubuntu runner에 `/dev/kvm` 접근 권한 없음
+- action이 자동으로 `-accel off`(software emulation)로 전환
+- 부팅에 약 13~16분 소요
+- 부팅 직후 `adb shell input keyevent 82`에서 `Broken pipe (32)` / exit 224 발생
+- 테스트 APK 설치 전에 emulator 연결이 불안정해짐
+
+따라서 hosted runner에서 instrumentation 실행은 신뢰할 수 없으며, CI는 현재
+**test APK compile-only**로 유지합니다. 실행 결과는 UNVERIFIED입니다.
+
+실행 가능한 대안:
+
+1. `/dev/kvm`이 있는 self-hosted Linux runner + x86_64 AVD
+2. USB/원격 ADB로 연결된 실제 기기
+3. Android Studio/실기기에서 instrumentation APK 수동 실행
 
 실행 대상:
 
@@ -30,7 +41,7 @@ SessionSnapshotRepositoryTest
 EncryptedDatabaseMigrationTest
 ```
 
-## 3. 실제 기기에서만 검증 가능한 항목
+## 3. 실제 기기에서만 검증 가능한 항목## 3. 실제 기기에서만 검증 가능한 항목
 
 - GeckoView 초기화/렌더링/입력
 - 실제 TEE/StrongBox-backed Keystore

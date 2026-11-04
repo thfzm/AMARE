@@ -79,7 +79,7 @@ AMARE가 복구할 수 없습니다.
 | 항목 | 상태 |
 |---|---|
 | JVM Keystore blob format/version | PASS |
-| AES-GCM round-trip | instrumentation, 실행 결과는 CI/기기 환경에 따름 |
+| AES-GCM round-trip | instrumentation compile PASS, 실행 UNVERIFIED (KVM/기기 없음) |
 | 잘못된 키/IV/ciphertext/AAD 거부 | instrumentation |
 | 키 삭제/무효화 | instrumentation |
 | DB migration transaction | instrumentation |
