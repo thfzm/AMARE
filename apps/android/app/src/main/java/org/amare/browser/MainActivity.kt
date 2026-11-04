@@ -3,26 +3,35 @@ package org.amare.browser
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 
 class MainActivity : ComponentActivity() {
+    private val browserViewModel: BrowserViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Text(
-                        text = "AMARE Android scaffold — GeckoView integration is Phase 5.",
-                        modifier = Modifier.padding(24.dp)
-                    )
-                }
+            AmareTheme {
+                BrowserScreen(browserViewModel)
             }
         }
     }
+
+    override fun onStop() {
+        browserViewModel.onHostStop()
+        super.onStop()
+    }
+}
+
+@Composable
+private fun AmareTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+        content = content,
+    )
 }

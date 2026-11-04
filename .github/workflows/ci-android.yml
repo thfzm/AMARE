@@ -32,6 +32,16 @@ jobs:
       - name: Generate wrapper
         working-directory: apps/android
         run: gradle wrapper
-      - name: Assemble debug
+      - name: Test and assemble debug
         working-directory: apps/android
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: amare-android-debug
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+            apps/android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
+            apps/android/app/build/outputs/apk/debug/app-universal-debug.apk
+          if-no-files-found: error
+          retention-days: 14
