@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.11.0
+- 기준: Android 0.12.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -61,9 +61,9 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
 
-Debug APK SHA-256: `974acaf0d05b0b6e052eaa19f2b8c3263fe606d9cd9a0380bea182ae2e22a2a3`
+Debug APK SHA-256: `a91782adea3bdc81ab2361294b8941a826040a168beb0db0daca1902e0cf6222`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
@@ -128,11 +128,21 @@ credential, notification body를 로그에 기록하지 않습니다.
 
 ```bash
 tools/run-android-device-tests.sh \
-  artifacts/android/AMARE-0.11.0-debug-arm64.apk \
+  artifacts/android/AMARE-0.12.0-debug-arm64.apk \
   artifacts/android/AMARE-0.8.0-debug-androidTest.apk
 ```
 
 이 스크립트는 ADB 기기가 없으면 실패를 명확히 표시하고 UNVERIFIED로 남깁니다.
+
+## 5.4 0.12.0 실행 결과
+
+- ADB 연결 기기: 없음
+- 자동 스크립트 결과: **UNVERIFIED**
+- 결과 보고서: `artifacts/android/device-test/results/`
+- 원인: USB/무선 ADB 기기 미연결
+- 실제 기기 테스트: **UNVERIFIED**
+
+Instrumentation 테스트는 정상 앱 데이터를 지우지 않도록 격리 DB 이름과 테스트 전용 Keystore alias를 사용합니다.
 
 ## 6. 결과 표기 원칙
 

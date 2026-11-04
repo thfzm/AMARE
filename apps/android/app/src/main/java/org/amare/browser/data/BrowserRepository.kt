@@ -14,8 +14,11 @@ import org.amare.browser.security.AndroidKeystoreProtector
 import org.amare.browser.security.SessionRecoveryPolicy
 import org.json.JSONObject
 
-class BrowserRepository(context: Context) {
-    private val database = BrowserDatabase(context.applicationContext)
+class BrowserRepository(
+    context: Context,
+    databaseName: String = "amare_browser.db",
+) {
+    private val database = BrowserDatabase(context.applicationContext, databaseName)
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val permissionCache = ConcurrentHashMap<String, String>()

@@ -97,25 +97,25 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-universal.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned-arm64.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned-universal.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.11.0` (`versionCode 11`)
+- Version: `0.12.0` (`versionCode 12`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
-- Debug arm64 APK: 129,788,383 bytes
-- Debug universal APK: 291,409,957 bytes
+- Debug arm64 APK: 129,789,047 bytes
+- Debug universal APK: 291,410,621 bytes
 - Release arm64 APK: 92,637,924 bytes, unsigned
-- Release universal APK: 243,196,270 bytes, unsigned
-- Release AAB: 244,159,217 bytes, unsigned
+- Release universal APK: 243,196,266 bytes, unsigned
+- Release AAB: 244,159,368 bytes, unsigned
 - 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
 - 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치, Android 13+ 알림 권한 및 GeckoView가 병합한 권한
 - 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
@@ -130,7 +130,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.

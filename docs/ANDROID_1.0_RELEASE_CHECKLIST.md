@@ -1,7 +1,7 @@
 # Android 1.0.0 출시 기준 및 체크리스트
 
-- 기준: Android 0.11.0
-- 현재 판정: **출시 불가 / UNVERIFIED 항목 존재**
+- 기준: Android 0.12.0
+- 현재 판정: **출시 불가 / UNVERIFIED·BLOCKED 항목 존재**
 
 ## 1. 필수 기능
 
@@ -21,30 +21,41 @@
 - [x] Instrumentation 12 tests compile
 - [x] Linux/Windows/Android CI
 
-## 2. 출시 전 실제 실행 필수
+## 2. 출시 전 실제 실행 필수 및 상태
 
-- [ ] Keystore AES-GCM 실제 round-trip/변조/키 무효화
-- [ ] DB v1/v2 → v3 migration 실제 실행/rollback
-- [ ] GeckoView 렌더링/입력/SSL 오류
-- [ ] HTTPS-only/Mixed Content 실제 사이트
-- [ ] window.open/target=_blank/팝업 차단
-- [ ] 비밀번호 로그인 감지/저장/자동완성/cross-origin
-- [ ] 웹 알림 권한/표시/클릭/프로세스 재시작/채널 비활성
-- [ ] 데이터 삭제 각 범위/부분 실패
-- [ ] 기본 브라우저 role/외부 링크
-- [ ] 다운로드 완료/실패/중복 파일명/실제 파일 열기
-- [ ] 세션 복구/백그라운드/강제 종료
-- [ ] 실제 기기 성능 측정
-- [ ] Release 서명 키로 signed APK/AAB 검증
-- [ ] 설치/업데이트/서명 키 호환성
+| 항목 | 상태 | 근거 |
+|---|---|---|
+| 실기기 연결 | **BLOCKED** | ADB 기기 없음 |
+| GeckoView 렌더링/입력/SSL | UNVERIFIED | 실기기 필요 |
+| HTTPS-only/Mixed Content | UNVERIFIED | 실기기 필요 |
+| window.open/target=_blank | UNVERIFIED | 실기기 필요 |
+| 비밀번호 감지/자동완성 | UNVERIFIED | 실기기 필요 |
+| 웹 알림/클릭/재시작 | UNVERIFIED | 실기기 필요 |
+| 데이터 삭제 각 범위 | UNVERIFIED | 실기기 필요 |
+| 기본 브라우저 role/외부 링크 | UNVERIFIED | 실기기 필요 |
+| 다운로드 파일 열기/중복명 | UNVERIFIED | 실기기 필요 |
+| 세션 복구/백그라운드/강제 종료 | UNVERIFIED | 실기기 필요 |
+| Keystore 실제 AES-GCM/키 무효화 | UNVERIFIED | instrumentation compile-only |
+| DB migration/rollback 실제 실행 | UNVERIFIED | instrumentation compile-only |
+| 실제 기기 성능 측정 | UNVERIFIED | 실기기 없음 |
+| Release 서명 | **BLOCKED** | 배포 키 없음/사용자 승인 필요 |
+| signed APK/AAB 검증 | BLOCKED | Release unsigned |
+| 설치/업데이트 호환성 | BLOCKED | signed release 없음 |
 
-## 3. 출시 차단 조건
+Instrumentation:
 
-- 실제 Android 기기 통합 테스트 미완료
-- Keystore/DB migration 실제 실행 미완료
-- Release 서명 미완료
-- 치명적 보안 이슈 존재
-- 알림/자동완성/팝업/데이터 삭제의 실기기 동작 미확인
+- 테스트 APK compile: **PASS**
+- 실제 실행: **UNVERIFIED**
+- isolated test DB/alias: 코드상 PASS
+- `tools/run-android-device-tests.sh`는 기기 미연결 시 UNVERIFIED report 생성
+
+## 3. 출시 차단 요소
+
+- 실기기 통합 테스트
+- Keystore/DB migration 실제 실행
+- Release 서명
+- 성능 측정
+- 설치/업데이트 검증
 
 ## 4. 1.0.0 제외 범위
 

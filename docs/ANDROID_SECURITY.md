@@ -1,6 +1,6 @@
 # Android 보안 설계 및 검증 상태
 
-- 기준: Android 0.11.0
+- 기준: Android 0.12.0
 - 관련 문서: [데이터 암호화](ANDROID_DATA_ENCRYPTION.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [Release](ANDROID_RELEASE.md)
 
 ## 1. 보호 대상과 저장 위치
@@ -90,7 +90,7 @@ AMARE가 복구할 수 없습니다.
 - DB migration은 transaction + 이전 평문 table rollback 보존
 - 탭/웹 알림 메모리 사용량과 장시간 성능은 실기기 UNVERIFIED
 
-## 8. 0.10.0 네트워크 보안 정책
+## 8. 네트워크 보안 정책
 
 ### HTTPS-only
 
@@ -145,7 +145,7 @@ content를 자동 허용하거나 우회하지 않습니다. GeckoView가 제공
 - Mixed Content 상세 정책 선택
 - 다운로드 자동 재시도/중복 파일명 사용자 정책
 
-## 10. 0.10.0 데이터/외부 Intent 보안
+## 10. 데이터/외부 Intent 보안
 
 - 외부 Intent는 `ACTION_VIEW` + http/https + host 검증
 - javascript/file/content/data URI 거부

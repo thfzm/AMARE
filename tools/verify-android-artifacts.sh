@@ -9,7 +9,7 @@ BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-${ANDROID_HOME:-/home/ubuntu/android-sdk}/bu
 APKSIGNER="$BUILD_TOOLS/apksigner"
 AAPT="$BUILD_TOOLS/aapt"
 EXPECTED_PACKAGE="org.amare.browser"
-EXPECTED_VERSION_NAME="0.11.0"
+EXPECTED_VERSION_NAME="0.12.0"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -25,9 +25,9 @@ fail() {
 
 DEBUG_BADGING="$("$AAPT" dump badging "$DEBUG_APK")"
 RELEASE_BADGING="$("$AAPT" dump badging "$RELEASE_APK")"
-grep -q "package: name='$EXPECTED_PACKAGE' versionCode='11' versionName='$EXPECTED_VERSION_NAME'" \
+grep -q "package: name='$EXPECTED_PACKAGE' versionCode='12' versionName='$EXPECTED_VERSION_NAME'" \
   <<<"$DEBUG_BADGING" || fail "debug package/version mismatch"
-grep -q "package: name='$EXPECTED_PACKAGE' versionCode='11' versionName='$EXPECTED_VERSION_NAME'" \
+grep -q "package: name='$EXPECTED_PACKAGE' versionCode='12' versionName='$EXPECTED_VERSION_NAME'" \
   <<<"$RELEASE_BADGING" || fail "release package/version mismatch"
 grep -q "application-debuggable" <<<"$DEBUG_BADGING" \
   || fail "debug build is not marked debuggable"

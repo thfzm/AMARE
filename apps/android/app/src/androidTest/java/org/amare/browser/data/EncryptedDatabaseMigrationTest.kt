@@ -10,31 +10,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EncryptedDatabaseMigrationTest {
+    private val TEST_DATABASE = "amare_browser_test_migration.db"
+
     @Test
     fun newInstallDoesNotCreateLegacyPlaintextTables() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        context.deleteDatabase("amare_browser.db")
-        val db = BrowserDatabase(context).writableDatabase
+        context.deleteDatabase(TEST_DATABASE)
+        val db = BrowserDatabase(context, TEST_DATABASE).writableDatabase
         try {
             val legacy = listOf("bookmarks", "history", "downloads", "site_permissions")
                 .filter { tableExists(db, it) }
             assertTrue("legacy tables were created: $legacy", legacy.isEmpty())
         } finally {
             db.close()
-            context.deleteDatabase("amare_browser.db")
+            context.deleteDatabase(TEST_DATABASE)
         }
     }
 
     @Test
     fun legacyPlaintextTablesAreMigratedAndDropped() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        context.deleteDatabase("amare_browser.db")
+        context.deleteDatabase(TEST_DATABASE)
 
-        val bootstrap = BrowserDatabase(context).writableDatabase
+        val bootstrap = BrowserDatabase(context, TEST_DATABASE).writableDatabase
         createLegacyTables(bootstrap)
         bootstrap.close()
 
-        val repository = BrowserRepository(context)
+        val repository = BrowserRepository(context, TEST_DATABASE)
         try {
             val bookmarksLatch = CountDownLatch(1)
             var bookmarks: List<Bookmark> = emptyList()
@@ -83,7 +85,7 @@ class EncryptedDatabaseMigrationTest {
             assertFalse(tableExists("site_permissions"))
 
             val db = SQLiteDatabase.openDatabase(
-                context.getDatabasePath("amare_browser.db").path,
+                context.getDatabasePath(TEST_DATABASE).path,
                 null,
                 SQLiteDatabase.OPEN_READONLY,
             )
@@ -98,7 +100,7 @@ class EncryptedDatabaseMigrationTest {
             }
         } finally {
             repository.close()
-            context.deleteDatabase("amare_browser.db")
+            context.deleteDatabase(TEST_DATABASE)
         }
     }
 
@@ -185,7 +187,7 @@ class EncryptedDatabaseMigrationTest {
     private fun tableExists(table: String): Boolean {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = SQLiteDatabase.openDatabase(
-            context.getDatabasePath("amare_browser.db").path,
+            context.getDatabasePath(TEST_DATABASE).path,
             null,
             SQLiteDatabase.OPEN_READONLY,
         )

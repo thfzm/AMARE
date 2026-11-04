@@ -13,11 +13,15 @@ import org.amare.browser.security.AndroidKeystoreProtector
 import org.amare.browser.security.PasswordRules
 import org.json.JSONObject
 
-class PasswordRepository(context: Context) {
-    private val database = PasswordDatabase(context.applicationContext)
+class PasswordRepository(
+    context: Context,
+    databaseName: String = "amare_passwords.db",
+    keystoreAlias: String = PASSWORD_ALIAS,
+) {
+    private val database = PasswordDatabase(context.applicationContext, databaseName)
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val protector = AndroidKeystoreProtector(PASSWORD_ALIAS)
+    private val protector = AndroidKeystoreProtector(keystoreAlias)
 
     @Volatile
     private var closed = false

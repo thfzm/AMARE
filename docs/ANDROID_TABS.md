@@ -1,6 +1,6 @@
 # Android 새 창 및 탭 관리
 
-- 기준: Android 0.11.0
+- 기준: Android 0.12.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 기존 탭 구조

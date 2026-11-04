@@ -1,6 +1,6 @@
 # Android 성능 측정 준비
 
-- 기준: Android 0.11.0
+- 기준: Android 0.12.0
 - 실제 성능 수치: **UNVERIFIED**
 - 원칙: 측정하지 않은 값을 추정하지 않음
 
@@ -11,7 +11,7 @@
 Android 버전:
 SoC/RAM:
 GeckoView 버전: 152.0.20260713164047
-AMARE 버전: 0.11.0
+AMARE 버전: 0.12.0
 APK ABI: arm64-v8a
 네트워크:
 화면 밀도/해상도:

@@ -1,6 +1,6 @@
 # Android 통합 테스트 계획
 
-- 기준: Android 0.11.0
+- 기준: Android 0.12.0
 - 원칙: 실제 실행하지 않은 항목은 PASS로 표시하지 않음
 - 관련 문서: [기기 테스트](ANDROID_DEVICE_TESTING.md), [보안](ANDROID_SECURITY.md), [Release](ANDROID_RELEASE.md)
 
@@ -170,7 +170,7 @@ cd apps/android
 실기기에서 수동 설치:
 
 ```bash
-adb install -r artifacts/android/AMARE-0.11.0-debug-arm64.apk
+adb install -r artifacts/android/AMARE-0.12.0-debug-arm64.apk
 ```
 
 ## 5. 성능 측정 준비

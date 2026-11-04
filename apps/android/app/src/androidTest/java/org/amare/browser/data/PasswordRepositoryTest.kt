@@ -16,24 +16,26 @@ import org.junit.Test
 
 class PasswordRepositoryTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val TEST_DATABASE = "amare_passwords_test.db"
+    private val TEST_ALIAS = "amare_passwords_test_v1"
     private var repository: PasswordRepository? = null
 
     @Before
     fun reset() {
-        context.deleteDatabase("amare_passwords.db")
-        AndroidKeystoreProtector("amare_passwords_v1").deleteKey()
+        context.deleteDatabase(TEST_DATABASE)
+        AndroidKeystoreProtector(TEST_ALIAS).deleteKey()
     }
 
     @After
     fun cleanup() {
         repository?.close()
-        context.deleteDatabase("amare_passwords.db")
-        AndroidKeystoreProtector("amare_passwords_v1").deleteKey()
+        context.deleteDatabase(TEST_DATABASE)
+        AndroidKeystoreProtector(TEST_ALIAS).deleteKey()
     }
 
     @Test
     fun saveListUpdateDeleteAndOriginIsolation() {
-        val repo = PasswordRepository(context).also { repository = it }
+        val repo = PasswordRepository(context, TEST_DATABASE, TEST_ALIAS).also { repository = it }
         assertTrue(save(repo, "https://example.com", "alice", "first-secret"))
         assertTrue(save(repo, "https://example.com", "bob", "second-secret"))
         assertTrue(save(repo, "https://other.example", "alice", "third-secret"))
@@ -63,10 +65,10 @@ class PasswordRepositoryTest {
 
     @Test
     fun encryptedRowsDoNotContainPlaintext() {
-        val repo = PasswordRepository(context).also { repository = it }
+        val repo = PasswordRepository(context, TEST_DATABASE, TEST_ALIAS).also { repository = it }
         assertTrue(save(repo, "https://example.com", "alice", "super-secret"))
         val db = SQLiteDatabase.openDatabase(
-            context.getDatabasePath("amare_passwords.db").path,
+            context.getDatabasePath(TEST_DATABASE).path,
             null,
             SQLiteDatabase.OPEN_READONLY,
         )
@@ -85,9 +87,9 @@ class PasswordRepositoryTest {
 
     @Test
     fun corruptedPayloadIsSkippedAndReported() {
-        val repo = PasswordRepository(context).also { repository = it }
+        val repo = PasswordRepository(context, TEST_DATABASE, TEST_ALIAS).also { repository = it }
         val db = SQLiteDatabase.openDatabase(
-            context.getDatabasePath("amare_passwords.db").path,
+            context.getDatabasePath(TEST_DATABASE).path,
             null,
             SQLiteDatabase.OPEN_READWRITE,
         )
@@ -112,9 +114,9 @@ class PasswordRepositoryTest {
 
     @Test
     fun missingKeyReportsNoticeWithoutPlaintextFallback() {
-        val repo = PasswordRepository(context).also { repository = it }
+        val repo = PasswordRepository(context, TEST_DATABASE, TEST_ALIAS).also { repository = it }
         assertTrue(save(repo, "https://example.com", "alice", "secret"))
-        AndroidKeystoreProtector("amare_passwords_v1").deleteKey()
+        AndroidKeystoreProtector(TEST_ALIAS).deleteKey()
         val rows = list(repo)
         assertTrue(rows.isEmpty())
         assertNotNull(repo.consumeNotice())

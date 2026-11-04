@@ -12,7 +12,9 @@ class SessionSnapshotRepositoryTest {
     @Test
     fun encryptedSnapshotRoundTripPreservesTabsAndActiveIndex() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val repository = BrowserRepository(context)
+        val databaseName = "amare_browser_test_session.db"
+        context.deleteDatabase(databaseName)
+        val repository = BrowserRepository(context, databaseName)
         try {
             val saveLatch = CountDownLatch(1)
             repository.saveSessionSnapshot(
@@ -47,6 +49,7 @@ class SessionSnapshotRepositoryTest {
             repository.clearSessionSnapshot { clearLatch.countDown() }
             clearLatch.await(10, TimeUnit.SECONDS)
             repository.close()
+            context.deleteDatabase(databaseName)
         }
     }
 }
