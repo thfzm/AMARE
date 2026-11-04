@@ -1,6 +1,6 @@
 # Android 통합 테스트 계획
 
-- 기준: Android 0.9.0
+- 기준: Android 0.10.0
 - 원칙: 실제 실행하지 않은 항목은 PASS로 표시하지 않음
 - 관련 문서: [기기 테스트](ANDROID_DEVICE_TESTING.md), [보안](ANDROID_SECURITY.md), [Release](ANDROID_RELEASE.md)
 
@@ -16,7 +16,7 @@
 
 현재 환경:
 
-- JVM tests: 31/31 PASS
+- JVM tests: 33/33 PASS
 - Instrumentation: compile-only
 - 실제 기기: 없음
 - hosted CI emulator: KVM 없음, ADB 불안정
@@ -102,7 +102,24 @@
 - 설정 저장/런타임 API 호출: 코드 수준 확인
 - 실제 HTTP/HTTPS/Mixed Content/인증서 동작: Device UNVERIFIED
 
-### F. 보안/데이터
+### F. 데이터 관리/기본 브라우저
+
+1. 방문 기록만 삭제하고 쿠키가 유지되는지 확인
+2. 쿠키/캐시/사이트 저장 데이터를 각각 삭제
+3. 사이트 권한 초기화
+4. 현재 사이트 데이터 삭제
+5. 비밀번호 전체 삭제
+6. 전체 브라우저 데이터 삭제 후 새 홈 탭
+7. 기본 브라우저 role 요청
+8. 외부 https/http Intent 처리
+9. 최근 닫은 탭 Reopen
+
+자동화:
+
+- 외부 URL scheme/host 검증: JVM PASS
+- 데이터 삭제/default browser role/reopen: Device UNVERIFIED
+
+### G. 보안/데이터
 
 1. Keystore AES-GCM round-trip
 2. IV/ciphertext/AAD 변조
@@ -153,7 +170,7 @@ cd apps/android
 실기기에서 수동 설치:
 
 ```bash
-adb install -r artifacts/android/AMARE-0.9.0-debug.apk
+adb install -r artifacts/android/AMARE-0.10.0-debug.apk
 ```
 
 ## 5. 성능 측정 준비

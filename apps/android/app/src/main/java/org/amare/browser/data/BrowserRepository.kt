@@ -378,6 +378,76 @@ class BrowserRepository(context: Context) {
         )
     }
 
+    fun clearHistoryData(callback: (Boolean) -> Unit) {
+        backgroundResult(
+            work = {
+                database.writableDatabase.delete("history_enc", null, null)
+                historyCache = emptyList()
+            },
+            callback = callback,
+        )
+    }
+
+    fun clearAllBookmarks(callback: (Boolean) -> Unit) {
+        backgroundResult(
+            work = {
+                database.writableDatabase.delete("bookmarks_enc", null, null)
+                bookmarksCache = emptyList()
+            },
+            callback = callback,
+        )
+    }
+
+    fun clearAllPermissions(callback: (Boolean) -> Unit) {
+        backgroundResult(
+            work = {
+                database.writableDatabase.delete("site_permissions_enc", null, null)
+                permissionCache.clear()
+            },
+            callback = callback,
+        )
+    }
+
+    fun removePermissionsForOrigin(origin: String, callback: (Boolean) -> Unit) {
+        backgroundResult(
+            work = {
+                database.writableDatabase.delete(
+                    "site_permissions_enc",
+                    "origin_key = ?",
+                    arrayOf(originKey(origin)),
+                )
+                permissionCache.keys
+                    .filter { it.startsWith("$origin|") }
+                    .forEach { permissionCache.remove(it) }
+            },
+            callback = callback,
+        )
+    }
+
+    fun clearAllUserData(callback: (Boolean) -> Unit) {
+        backgroundResult(
+            work = {
+                val db = database.writableDatabase
+                db.beginTransaction()
+                try {
+                    db.delete("bookmarks_enc", null, null)
+                    db.delete("history_enc", null, null)
+                    db.delete("downloads_enc", null, null)
+                    db.delete("site_permissions_enc", null, null)
+                    clearSessionSnapshotLocked(db)
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+                bookmarksCache = emptyList()
+                historyCache = emptyList()
+                downloadsCache = emptyList()
+                permissionCache.clear()
+            },
+            callback = callback,
+        )
+    }
+
     fun clearHistory(callback: () -> Unit = {}) {
         background(
             work = {
@@ -1066,6 +1136,21 @@ class BrowserRepository(context: Context) {
     private fun clearSessionSnapshotLocked(db: SQLiteDatabase) {
         db.delete("session_tabs", "snapshot_id = ?", arrayOf(SNAPSHOT_ID.toString()))
         db.delete("session_snapshots", "id = ?", arrayOf(SNAPSHOT_ID.toString()))
+    }
+
+    private fun backgroundResult(work: () -> Unit, callback: (Boolean) -> Unit) {
+        if (closed) {
+            callback(false)
+            return
+        }
+        executor.execute {
+            val ok = runCatching(work).onFailure {
+                Log.e(TAG, "Encrypted browser database operation failed")
+            }.isSuccess
+            mainHandler.post {
+                if (!closed) callback(ok)
+            }
+        }
     }
 
     private fun <T> background(work: () -> T, callback: ((T) -> Unit)? = null) {

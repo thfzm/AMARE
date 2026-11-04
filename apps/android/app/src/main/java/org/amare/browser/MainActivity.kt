@@ -23,12 +23,14 @@ class MainActivity : ComponentActivity() {
                 BrowserScreen(browserViewModel)
             }
         }
+        browserViewModel.handleExternalIntent(intent)
         browserViewModel.handleNotificationIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        browserViewModel.handleExternalIntent(intent)
         browserViewModel.handleNotificationIntent(intent)
     }
 

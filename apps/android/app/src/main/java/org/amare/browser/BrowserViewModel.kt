@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
+import java.net.URI
 import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
@@ -41,6 +42,7 @@ import org.amare.browser.data.SitePermissionRecord
 import org.amare.browser.data.StoredSession
 import org.amare.browser.security.SessionRecoveryPolicy
 import org.amare.browser.security.AndroidKeystoreProtector
+import org.amare.browser.security.ExternalUrlPolicy
 import org.amare.browser.security.KeyedRateLimiter
 import org.amare.browser.security.NotificationRules
 import org.amare.browser.security.PasswordRules
@@ -54,6 +56,7 @@ import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptResponse
 import org.mozilla.geckoview.WebNotification
 import org.mozilla.geckoview.WebNotificationDelegate
@@ -115,6 +118,12 @@ data class AutofillPrompt(
 data class NotificationTarget(
     val notification: WebNotification,
     val origin: String,
+)
+
+data class ClosedTabSnapshot(
+    val url: String,
+    val title: String,
+    val sessionState: String?,
 )
 
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
@@ -180,7 +189,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val popupLimiter = KeyedRateLimiter(5, 10_000)
     private val notificationLimiter = KeyedRateLimiter(5, 60_000)
     private val notificationTargets = mutableMapOf<String, NotificationTarget>()
+    private val recentlyClosed = mutableStateListOf<ClosedTabSnapshot>()
     private var persistRunnable: Runnable? = null
+    private var pendingExternalUrl: String? = null
     private var nextPromptId = 1L
 
     val tabs: List<BrowserTab> get() = tabList
@@ -255,6 +266,215 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun runtimeInitialized(): Boolean = sharedRuntime != null
 
+    fun handleExternalIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val url = intent.data?.toString() ?: return
+        if (!ExternalUrlPolicy.isWebUrl(url)) {
+            sessionNotice = "지원하지 않는 외부 링크입니다."
+            return
+        }
+        if (ExternalUrlPolicy.blockedByHttpsOnly(url, httpsOnly)) {
+            sessionNotice = "HTTPS-only 보안 설정으로 HTTP 링크를 열지 않았습니다."
+            return
+        }
+        if (isRestoring) {
+            pendingExternalUrl = url
+        } else {
+            openExternalUrl(url)
+        }
+    }
+
+    fun openExternalUrl(url: String) {
+        if (!ExternalUrlPolicy.isWebUrl(url)) return
+        if (ExternalUrlPolicy.blockedByHttpsOnly(url, httpsOnly)) {
+            sessionNotice = "HTTPS-only 보안 설정으로 HTTP 링크를 열지 않았습니다."
+            return
+        }
+        val tab = createTab(url)
+        activateTab(tab.id, persist = true)
+        scheduleSessionPersist()
+    }
+
+    fun closeAllTabs() {
+        val sessions = tabList.toList()
+        tabList.clear()
+        activeTabId = 0
+        sessionStates.clear()
+        loginFields.clear()
+        autofillOfferedFor.clear()
+        autofillPrompt = null
+        sessions.forEach { runCatching { it.session.close() } }
+        val tab = createTab(HOME_URL)
+        activateTab(tab.id, persist = false)
+        scheduleSessionPersist(delayMs = 0)
+    }
+
+    fun deleteHistoryData() {
+        repository.clearHistoryData { success ->
+            if (success) {
+                history.clear()
+                sessionNotice = "방문 기록을 삭제했습니다. 열린 탭의 뒤로/앞으로 기록은 유지됩니다."
+            } else {
+                sessionNotice = "방문 기록 삭제에 실패했습니다."
+            }
+        }
+    }
+
+    fun deleteCookies() {
+        clearGeckoData(StorageController.ClearFlags.COOKIES, "쿠키를 삭제했습니다.")
+    }
+
+    fun deleteCache() {
+        clearGeckoData(StorageController.ClearFlags.ALL_CACHES, "캐시를 삭제했습니다.")
+    }
+
+    fun deleteSiteStorage() {
+        clearGeckoData(
+            StorageController.ClearFlags.DOM_STORAGES,
+            "사이트 저장 데이터를 삭제했습니다.",
+        )
+    }
+
+    fun deleteAllPermissions() {
+        repository.clearAllPermissions { dbOk ->
+            if (!dbOk) {
+                sessionNotice = "사이트 권한 삭제에 실패했습니다."
+                return@clearAllPermissions
+            }
+            runtime.storageController.clearData(
+                StorageController.ClearFlags.PERMISSIONS or
+                    StorageController.ClearFlags.SITE_SETTINGS,
+            ).accept(
+                {
+                    refreshPermissions()
+                    sessionNotice = "사이트 권한을 초기화했습니다."
+                },
+                {
+                    sessionNotice = "일부 GeckoView 권한을 삭제하지 못했습니다."
+                },
+            )
+        }
+    }
+
+    fun deletePasswords() {
+        passwordRepository.clearAll { success ->
+            if (success) {
+                passwords.clear()
+                sessionNotice = "저장된 비밀번호를 모두 삭제했습니다."
+            } else {
+                sessionNotice = "비밀번호 삭제에 실패했습니다."
+            }
+        }
+    }
+
+    fun deleteCurrentSiteData() {
+        val origin = PermissionRules.originFor(activeTab?.currentUrl) ?: run {
+            sessionNotice = "현재 사이트의 origin을 확인할 수 없습니다."
+            return
+        }
+        val host = runCatching { URI(origin).host }.getOrNull() ?: run {
+            sessionNotice = "현재 사이트의 host를 확인할 수 없습니다."
+            return
+        }
+        runtime.storageController.clearDataFromHost(
+            host,
+            StorageController.ClearFlags.SITE_DATA,
+        ).accept(
+            {
+                repository.removePermissionsForOrigin(origin) { removed ->
+                    if (removed) {
+                        refreshPermissions()
+                        sessionNotice = "현재 사이트의 데이터와 권한을 삭제했습니다."
+                    } else {
+                        sessionNotice = "사이트 데이터는 삭제했지만 권한 기록 삭제에 실패했습니다."
+                    }
+                }
+            },
+            {
+                sessionNotice = "현재 사이트 데이터 삭제에 실패했습니다."
+            },
+        )
+    }
+
+    fun deleteAllBrowserData() {
+        persistRunnable?.let { mainHandler.removeCallbacks(it) }
+        persistRunnable = null
+        val sessions = tabList.toList()
+        tabList.clear()
+        activeTabId = 0
+        sessionStates.clear()
+        loginFields.clear()
+        autofillOfferedFor.clear()
+        autofillPrompt = null
+        notificationTargets.values.forEach { runCatching { it.notification.dismiss() } }
+        notificationTargets.clear()
+        notificationManager.cancelAll()
+        sessions.forEach { runCatching { it.session.close() } }
+
+        repository.clearAllUserData { dbOk ->
+            passwordRepository.clearAll { passwordOk ->
+                runtime.storageController.clearData(StorageController.ClearFlags.ALL).accept(
+                    {
+                        finishAllDataDeletion(dbOk && passwordOk, null)
+                    },
+                    {
+                        finishAllDataDeletion(false, it)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun finishAllDataDeletion(success: Boolean, error: Throwable?) {
+        pendingLoginSave?.let { it.result.complete(it.request.dismiss()) }
+        pendingPermission?.let { prompt ->
+            prompt.contentResult?.complete(PermissionRules.decisionValue(PermissionRules.DENY))
+            prompt.mediaCallback?.reject()
+        }
+        pendingAndroidPermission?.callback?.reject()
+        pendingLoginSave = null
+        pendingPermission = null
+        pendingAndroidPermission = null
+        pendingExternalUrl = null
+        pendingNotificationOsPermission = false
+        permissionQueue.clear()
+        androidPermissionQueue.clear()
+        recentlyClosed.clear()
+        bookmarks.clear()
+        history.clear()
+        downloads.clear()
+        sitePermissions.clear()
+        passwords.clear()
+        loginFields.clear()
+        autofillOfferedFor.clear()
+        recoveryAttempts.clear()
+        autofillPrompt = null
+        val tab = createTab(HOME_URL)
+        activateTab(tab.id, persist = false)
+        scheduleSessionPersist(delayMs = 0)
+        sessionNotice = if (success) {
+            "모든 브라우저 데이터를 삭제했습니다. 다운로드 파일은 Android Downloads에 남아 있습니다."
+        } else {
+            "일부 데이터를 삭제하지 못했습니다. 오류: ${error?.javaClass?.simpleName ?: "unknown"}"
+        }
+    }
+
+    private fun clearGeckoData(flags: Long, successMessage: String) {
+        runtime.storageController.clearData(flags).accept(
+            { sessionNotice = successMessage },
+            { sessionNotice = "데이터 삭제에 실패했습니다." },
+        )
+    }
+
+    fun canReopenClosedTab(): Boolean = recentlyClosed.isNotEmpty()
+
+    fun reopenLastClosedTab() {
+        val snapshot = recentlyClosed.removeLastOrNull() ?: return
+        val tab = createTab(snapshot.url, snapshot.sessionState, snapshot.title)
+        activateTab(tab.id, persist = true)
+        scheduleSessionPersist()
+    }
+
     fun newTab() {
         val tab = createTab(HOME_URL)
         activateTab(tab.id, persist = true)
@@ -272,6 +492,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (index < 0) return
 
         val closed = tabList.removeAt(index)
+        recentlyClosed.add(
+            ClosedTabSnapshot(
+                url = closed.currentUrl,
+                title = closed.title,
+                sessionState = sessionStates[id],
+            ),
+        )
+        if (recentlyClosed.size > 10) recentlyClosed.removeAt(0)
         sessionStates.remove(id)
         closed.session.setActive(false)
         Handler(Looper.getMainLooper()).postDelayed({
@@ -634,6 +862,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         isRestoring = false
         scheduleSessionPersist(delayMs = 0)
+        pendingExternalUrl?.let { url ->
+            pendingExternalUrl = null
+            openExternalUrl(url)
+        }
     }
 
     private fun restoreSession(session: StoredSession): Boolean {

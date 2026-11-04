@@ -2,6 +2,7 @@ package org.amare.browser
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.role.RoleManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -51,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,6 +79,7 @@ private enum class BrowserPanel(val title: String) {
     PERMISSIONS("Site permissions"),
     PASSWORDS("Passwords"),
     SECURITY("보안"),
+    SETTINGS("설정"),
     DIAGNOSTICS("Diagnostics"),
 }
 
@@ -133,20 +137,15 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onSelect = viewModel::selectTab,
             onClose = viewModel::closeTab,
             onNew = viewModel::newTab,
+            canReopen = viewModel.canReopenClosedTab(),
+            onReopen = viewModel::reopenLastClosedTab,
         )
 
         LibraryBar(
             onBookmarks = { panel = BrowserPanel.BOOKMARKS },
             onHistory = { panel = BrowserPanel.HISTORY },
             onDownloads = { panel = BrowserPanel.DOWNLOADS },
-            onPermissions = { panel = BrowserPanel.PERMISSIONS },
-            onPasswords = { panel = BrowserPanel.PASSWORDS },
-            onSecurity = { panel = BrowserPanel.SECURITY },
-            onDiagnostics = if (BuildConfig.DEBUG) {
-                { panel = BrowserPanel.DIAGNOSTICS }
-            } else {
-                null
-            },
+            onSettings = { panel = BrowserPanel.SETTINGS },
         )
 
         viewModel.sessionNotice?.let { notice ->
@@ -191,6 +190,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     panel = selectedPanel,
                     viewModel = viewModel,
                     onClose = { panel = null },
+                    onOpenPanel = { nextPanel -> panel = nextPanel },
                     onOpenUrl = { url ->
                         viewModel.openUrl(url)
                         panel = null
@@ -302,10 +302,7 @@ private fun LibraryBar(
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
-    onPermissions: () -> Unit,
-    onPasswords: () -> Unit,
-    onSecurity: () -> Unit,
-    onDiagnostics: (() -> Unit)?,
+    onSettings: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -318,12 +315,7 @@ private fun LibraryBar(
         TextButton(onClick = onBookmarks) { Text("Bookmarks") }
         TextButton(onClick = onHistory) { Text("History") }
         TextButton(onClick = onDownloads) { Text("Downloads") }
-        TextButton(onClick = onPermissions) { Text("Permissions") }
-        TextButton(onClick = onPasswords) { Text("Passwords") }
-        TextButton(onClick = onSecurity) { Text("보안") }
-        onDiagnostics?.let { onClick ->
-            TextButton(onClick = onClick) { Text("Diagnostics") }
-        }
+        TextButton(onClick = onSettings) { Text("설정") }
     }
 }
 
@@ -334,6 +326,8 @@ private fun TabStrip(
     onSelect: (Long) -> Unit,
     onClose: (Long) -> Unit,
     onNew: () -> Unit,
+    canReopen: Boolean,
+    onReopen: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -384,6 +378,11 @@ private fun TabStrip(
         TextButton(onClick = onNew) {
             Text("+ Tab")
         }
+        if (canReopen) {
+            TextButton(onClick = onReopen) {
+                Text("Reopen")
+            }
+        }
     }
 }
 
@@ -410,6 +409,7 @@ private fun BrowserPanelOverlay(
     panel: BrowserPanel,
     viewModel: BrowserViewModel,
     onClose: () -> Unit,
+    onOpenPanel: (BrowserPanel) -> Unit,
     onOpenUrl: (String) -> Unit,
 ) {
     Surface(
@@ -460,6 +460,15 @@ private fun BrowserPanelOverlay(
                 BrowserPanel.SECURITY -> SecurityPanel(
                     httpsOnly = viewModel.httpsOnly,
                     onHttpsOnlyChange = viewModel::updateHttpsOnly,
+                )
+                BrowserPanel.SETTINGS -> SettingsPanel(
+                    viewModel = viewModel,
+                    onOpenPanel = onOpenPanel,
+                    onDiagnostics = if (BuildConfig.DEBUG) {
+                        { onOpenPanel(BrowserPanel.DIAGNOSTICS) }
+                    } else {
+                        null
+                    },
                 )
                 BrowserPanel.DIAGNOSTICS -> DiagnosticsPanel(
                     viewModel = viewModel,
@@ -582,6 +591,10 @@ private fun DownloadsPanel(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = download.mimeType,
+                    style = MaterialTheme.typography.labelSmall,
                 )
                 Text(
                     text = downloadStatusText(download),
@@ -992,6 +1005,186 @@ private fun AutofillBanner(
                 TextButton(onClick = { choose = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun SettingsPanel(
+    viewModel: BrowserViewModel,
+    onOpenPanel: (BrowserPanel) -> Unit,
+    onDiagnostics: (() -> Unit)?,
+) {
+    val context = LocalContext.current
+    val roleManager = remember { context.getSystemService(RoleManager::class.java) }
+    var isDefaultBrowser by remember {
+        mutableStateOf(roleManager?.isRoleHeld(RoleManager.ROLE_BROWSER) == true)
+    }
+    var pendingAction by remember { mutableStateOf<DataAction?>(null) }
+    val roleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        isDefaultBrowser = roleManager?.isRoleHeld(RoleManager.ROLE_BROWSER) == true
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(top = 8.dp),
+    ) {
+        SettingsSection("보안")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("HTTPS만 허용", style = MaterialTheme.typography.bodyLarge)
+                Text("HTTP 주소를 차단합니다.", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = viewModel.httpsOnly,
+                onCheckedChange = viewModel::updateHttpsOnly,
+            )
+        }
+        SettingsButton("사이트 권한 관리") { onOpenPanel(BrowserPanel.PERMISSIONS) }
+        SettingsButton("비밀번호 관리") { onOpenPanel(BrowserPanel.PASSWORDS) }
+
+        SettingsSection("데이터 관리")
+        SettingsButton("방문 기록 삭제") {
+            pendingAction = DataAction(
+                title = "방문 기록 삭제",
+                message = "AMARE에 저장된 방문 기록을 삭제합니다. 열린 탭의 뒤로/앞으로 기록은 유지됩니다.",
+                action = viewModel::deleteHistoryData,
+            )
+        }
+        SettingsButton("쿠키 삭제") {
+            pendingAction = DataAction(
+                title = "쿠키 삭제",
+                message = "모든 사이트의 쿠키를 삭제합니다. 열린 탭은 다시 쿠키를 만들 수 있습니다.",
+                action = viewModel::deleteCookies,
+            )
+        }
+        SettingsButton("캐시 삭제") {
+            pendingAction = DataAction(
+                title = "캐시 삭제",
+                message = "네트워크 및 이미지 캐시를 삭제합니다.",
+                action = viewModel::deleteCache,
+            )
+        }
+        SettingsButton("사이트 저장 데이터 삭제") {
+            pendingAction = DataAction(
+                title = "사이트 저장 데이터 삭제",
+                message = "LocalStorage, IndexedDB 등 GeckoView DOM 저장 데이터를 삭제합니다.",
+                action = viewModel::deleteSiteStorage,
+            )
+        }
+        SettingsButton("사이트 권한 초기화") {
+            pendingAction = DataAction(
+                title = "사이트 권한 초기화",
+                message = "저장된 사이트 권한을 모두 초기화합니다.",
+                action = viewModel::deleteAllPermissions,
+            )
+        }
+        SettingsButton("현재 사이트 데이터 삭제") {
+            pendingAction = DataAction(
+                title = "현재 사이트 데이터 삭제",
+                message = "현재 탭 사이트의 쿠키/저장소/권한을 삭제합니다.",
+                action = viewModel::deleteCurrentSiteData,
+            )
+        }
+        SettingsButton("저장된 비밀번호 삭제") {
+            pendingAction = DataAction(
+                title = "저장된 비밀번호 삭제",
+                message = "AMARE 비밀번호 저장소의 모든 계정을 삭제합니다.",
+                action = viewModel::deletePasswords,
+            )
+        }
+        SettingsButton("모든 브라우저 데이터 삭제") {
+            pendingAction = DataAction(
+                title = "모든 브라우저 데이터 삭제",
+                message = "탭을 닫고 방문 기록, 북마크, 사이트 데이터, 권한, 비밀번호, 다운로드 기록을 삭제합니다. Android Downloads의 파일은 남습니다.",
+                action = viewModel::deleteAllBrowserData,
+            )
+        }
+
+        SettingsSection("일반")
+        val roleAvailable = roleManager?.isRoleAvailable(RoleManager.ROLE_BROWSER) == true
+        Text(
+            "기본 브라우저: ${if (!roleAvailable) "지원 안 함" else if (isDefaultBrowser) "예" else "아니오"}",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (roleAvailable) {
+            Button(
+                onClick = {
+                    runCatching {
+                        roleLauncher.launch(
+                            roleManager!!.createRequestRoleIntent(RoleManager.ROLE_BROWSER),
+                        )
+                    }.onFailure {
+                        // The role UI may be unavailable in a managed device.
+                    }
+                },
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(if (isDefaultBrowser) "기본 브라우저 설정 확인" else "기본 브라우저로 설정")
+            }
+        }
+        SettingsButton("모든 탭 닫기") { viewModel.closeAllTabs() }
+        SettingsButton("정보") {
+            pendingAction = DataAction(
+                title = "정보",
+                message = "AMARE Android ${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})",
+                action = null,
+            )
+        }
+        onDiagnostics?.let { open ->
+            SettingsButton("Debug Diagnostics") { open() }
+        }
+    }
+
+    pendingAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(action.title) },
+            text = { Text(action.message) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingAction = null
+                        action.action?.invoke()
+                    },
+                ) {
+                    Text(if (action.action == null) "확인" else "삭제")
+                }
+            },
+            dismissButton = if (action.action != null) {
+                { TextButton(onClick = { pendingAction = null }) { Text("취소") } }
+            } else {
+                null
+            },
+        )
+    }
+}
+
+private data class DataAction(
+    val title: String,
+    val message: String,
+    val action: (() -> Unit)?,
+)
+
+@Composable
+private fun SettingsSection(title: String) {
+    Text(
+        title,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+        style = MaterialTheme.typography.titleSmall,
+    )
+}
+
+@Composable
+private fun SettingsButton(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Text(label, modifier = Modifier.fillMaxWidth())
     }
 }
 

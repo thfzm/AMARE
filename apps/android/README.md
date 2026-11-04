@@ -31,6 +31,10 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 알림 클릭 시 origin 검증 후 기존 탭/새 탭 이동
 - Debug 전용 Diagnostics 화면(Release에는 미노출): GeckoRuntime/Keystore/DB/알림 권한/HTTPS-only 상태
 - 보안 패널의 HTTPS-only 모드(기본 켜짐)와 HTTP 차단/해제 설정
+- 설정 통합: HTTPS-only, 데이터 관리, 기본 브라우저, 정보
+- 방문 기록/쿠키/캐시/사이트 저장 데이터/사이트 권한/비밀번호/전체 데이터 삭제
+- http/https 외부 Intent 기본 브라우저 후보 및 RoleManager 요청
+- 최근 닫은 탭 10개 복구 및 모든 탭 닫기
 - 다운로드 위험 파일 형식 경고
 - Android 알림 채널/앱 알림 차단 상태 안내
 - `GeckoSession` crash/kill 시 새 세션 생성 + 마지막 SessionState/URL 복구(반복 crash 제한)
@@ -93,15 +97,15 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.9.0` (`versionCode 9`)
+- Version: `0.10.0` (`versionCode 10`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -122,7 +126,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -149,19 +153,20 @@ Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다
 ## 테스트
 
 ```text
-Android JVM unit tests: 31/31 PASS
+Android JVM unit tests: 33/33 PASS
   UrlNormalizerTest: 5
   DownloadNamingTest: 4
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
   DownloadSafetyTest: 3
+  ExternalUrlPolicyTest: 2
   PasswordRulesTest: 4
   KeyedRateLimiterTest: 2
   NotificationRulesTest: 2
   PopupRulesTest: 1
   SessionRecoveryPolicyTest: 2
 Android instrumentation tests: compile PASS, 실행 UNVERIFIED (12 tests, hosted CI에 KVM 없음)
-Android lint: 0 errors / 6 warnings
+Android lint: 0 errors / 7 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
@@ -182,7 +187,8 @@ software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation �
 [Android 비밀번호 관리자](../docs/ANDROID_PASSWORD_MANAGER.md),
 [Android 새 창/탭](../docs/ANDROID_TABS.md),
 [Android 웹 알림](../docs/ANDROID_NOTIFICATIONS.md),
-[Android 통합 테스트](../docs/ANDROID_INTEGRATION_TESTS.md)에 정리했습니다.
+[Android 통합 테스트](../docs/ANDROID_INTEGRATION_TESTS.md),
+[Android 데이터 관리](../docs/ANDROID_DATA_MANAGEMENT.md)에 정리했습니다.
 
 실기기 테스트 패키지는
 `/home/ubuntu/AMARE/artifacts/android/device-test/`에 준비되어 있습니다.

@@ -245,6 +245,24 @@ class PasswordRepository(context: Context) {
         )
     }
 
+    fun clearAll(callback: (Boolean) -> Unit) {
+        if (closed) {
+            callback(false)
+            return
+        }
+        executor.execute {
+            val ok = runCatching {
+                database.writableDatabase.delete("credentials", null, null)
+                database.writableDatabase.delete("site_settings", null, null)
+            }.onFailure {
+                Log.e(TAG, "Password store clear failed")
+            }.isSuccess
+            mainHandler.post {
+                if (!closed) callback(ok)
+            }
+        }
+    }
+
     fun close() {
         closed = true
         executor.execute { runCatching { database.close() } }

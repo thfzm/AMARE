@@ -1,6 +1,6 @@
 # Android Release 및 서명
 
-- 기준: Android 0.9.0
+- 기준: Android 0.10.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 빌드

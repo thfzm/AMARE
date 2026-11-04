@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.9.0
+- 기준: Android 0.10.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -61,9 +61,9 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.9.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
 
-Debug APK SHA-256: `88411e4bfa13ea9b71e3564899b348e1ced7543d1e953f46180b750c9204a6ea`
+Debug APK SHA-256: `9387daeb552c3cc3f3eeda7d24137ed61f8737d681e500a8729bcf3c7cbf7222`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
@@ -88,6 +88,10 @@ Release APK/AAB는 현재 unsigned이므로 실제 배포 전 서명이 필요�
 13. 보안 패널에서 HTTPS-only On/Off 후 HTTP/HTTPS 동작 차이 확인
 14. 알림 클릭을 앱 프로세스 종료 후에도 확인
 15. 다운로드 목록에서 위험 파일 경고 표시 확인
+16. 설정에서 방문 기록/쿠키/캐시/사이트 데이터/권한/비밀번호/전체 데이터 삭제
+17. 기본 브라우저 role 설정 및 외부 HTTPS 링크 열기
+18. 외부 HTTP 링크가 HTTPS-only에서 차단되는지 확인
+19. 최근 닫은 탭 Reopen 및 모든 탭 닫기 확인
 
 ## 5.1 실기기 결과 기록
 
@@ -124,7 +128,7 @@ credential, notification body를 로그에 기록하지 않습니다.
 
 ```bash
 tools/run-android-device-tests.sh \
-  artifacts/android/AMARE-0.9.0-debug.apk \
+  artifacts/android/AMARE-0.10.0-debug.apk \
   artifacts/android/AMARE-0.8.0-debug-androidTest.apk
 ```
 
