@@ -38,26 +38,6 @@ jobs:
       - name: Verify APK/AAB artifacts
         working-directory: apps/android
         run: ../../tools/verify-android-artifacts.sh
-      - name: Run instrumentation tests on emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: cd apps/android && ./gradlew :app:connectedDebugAndroidTest --no-daemon
-      - name: Upload instrumentation reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: amare-android-instrumentation
-          path: |
-            apps/android/app/build/reports/androidTests/connected
-            apps/android/app/build/outputs/androidTest-results/connected
-          if-no-files-found: warn
-          retention-days: 14
       - name: Upload debug APK
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,5 +54,30 @@ jobs:
           path: |
             apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
             apps/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Run instrumentation tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          disk-size: 8192
+          ram-size: 3072
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            adb shell df -h /data
+            cd apps/android
+            ./gradlew :app:connectedDebugAndroidTest -PamareAbiSplits=true --no-daemon
+      - name: Upload instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amare-android-instrumentation
+          path: |
+            apps/android/app/build/reports/androidTests/connected
+            apps/android/app/build/outputs/androidTest-results/connected
           if-no-files-found: warn
           retention-days: 14
