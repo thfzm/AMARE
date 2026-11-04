@@ -39,8 +39,7 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 웹 알림 실제 표시(사이트 권한 저장/요청은 구현됨)
 - `window.open()`/새 창 처리, WebExtension, AI 계층
 - Rust AndroidKeystore JNI 연결(Rust Android 런타임 미탑재)
-- 릴리스 서명, Play Store/AAB 배포, Android Keystore 연동
-- 북마크/방문 기록의 DB 암호화
+- 실제 배포 서명 키 적용 및 Play Store 업로드
 
 ## 빌드 환경
 
@@ -56,37 +55,53 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
 export ANDROID_HOME=/home/ubuntu/android-sdk
 cd apps/android
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug \
+  :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease :app:lintDebug
 ```
 
-ABI split 결과:
+Release 서명은 환경변수 4개가 모두 있을 때만 활성화됩니다. 없으면 unsigned로 빌드됩니다.
 
 ```text
-app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
-app/build/outputs/apk/debug/app-x86_64-debug.apk
-app/build/outputs/apk/debug/app-universal-debug.apk
+AMARE_ANDROID_KEYSTORE
+AMARE_ANDROID_KEYSTORE_PASSWORD
+AMARE_ANDROID_KEY_ALIAS
+AMARE_ANDROID_KEY_PASSWORD
+```
+
+서명 키/비밀번호는 저장소에 포함하지 않습니다.
+
+빌드 결과:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/release/app-release-unsigned.apk
+app/build/outputs/bundle/release/app-release.aab
 ```
 
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-arm64-v8a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-armeabi-v7a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-universal-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.3.0` (`versionCode 3`)
+- Version: `0.4.0` (`versionCode 4`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
-- arm64 APK: 약 124 MiB, 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
+- Debug APK: 약 278 MiB (모든 ABI 포함 universal)
+- Release APK: 약 232 MiB, unsigned
+- Release AAB: 약 233 MiB, unsigned
+- 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
 - 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치 런타임 권한 및 GeckoView가 병합한 권한
 - 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
 - 완료된 다운로드 파일: Android MediaStore `Download/AMARE`
+- 북마크/방문 기록/다운로드/사이트 권한/세션 payload: AES-256-GCM 암호화 BLOB
+  - 정렬/크기/상태 필드만 평문
 
 ## 설치
 
@@ -95,10 +110,10 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-arm64-v8a-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.4.0-debug.apk
 ```
 
-`INSTALL_FAILED_NO_MATCHING_ABIS`가 나오면 universal APK를 사용합니다.
+Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
 
 ## 실기기 체크리스트
 
@@ -128,17 +143,21 @@ Android JVM unit tests: 19/19 PASS
   PermissionRulesTest: 5
   KeystoreBlobTest: 3
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: compile PASS, 실행 UNVERIFIED
-Android lint: 0 errors / 4 warnings
+Android instrumentation tests: compile PASS, 실행 UNVERIFIED (7 tests)
+Android lint: 0 errors / 5 warnings
+Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
 실제 기기에서 GeckoView 다운로드/권한/DB/세션 복구/Keystore 동작은 아직 **UNVERIFIED**입니다.
+Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
 에뮬레이터는 호스트가 aarch64이고 `/dev/kvm`이 없으며 공식 emulator 패키지가 x86_64이므로
 이 환경에서 실행할 수 없습니다.
 
 세션/Keystore 구현과 JNI 경계는
 [Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md),
-[Android Keystore/JNI 분석](../docs/ANDROID_KEYSTORE.md)에 정리했습니다.
+[Android Keystore/JNI 분석](../docs/ANDROID_KEYSTORE.md),
+[Android 데이터 암호화](../docs/ANDROID_DATA_ENCRYPTION.md),
+[Android 브라우저 다음 우선순위](../docs/ANDROID_BROWSER_ROADMAP.md)에 정리했습니다.
 
 ## 아키텍처 경계
 

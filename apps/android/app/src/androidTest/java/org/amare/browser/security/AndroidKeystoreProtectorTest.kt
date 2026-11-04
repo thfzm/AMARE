@@ -35,6 +35,42 @@ class AndroidKeystoreProtectorTest {
     }
 
     @Test
+    fun wrongKeyCannotDecrypt() {
+        val other = AndroidKeystoreProtector("${alias}_other")
+        try {
+            val blob = protector.protect("context", "data".toByteArray())
+            try {
+                other.unprotect("context", blob)
+                fail("blob was decrypted with a different key")
+            } catch (error: AndroidKeystoreProtector.KeystoreException) {
+                assertEquals(
+                    AndroidKeystoreProtector.ErrorKind.KEY_INVALIDATED,
+                    error.kind,
+                )
+            }
+        } finally {
+            other.deleteKey()
+        }
+    }
+
+    @Test
+    fun ivTamperIsRejected() {
+        val blob = protector.protect("context", "data".toByteArray())
+        val tampered = blob.copyOf().also {
+            it[2] = (it[2].toInt() xor 1).toByte()
+        }
+        try {
+            protector.unprotect("context", tampered)
+            fail("tampered IV was accepted")
+        } catch (error: AndroidKeystoreProtector.KeystoreException) {
+            assertEquals(
+                AndroidKeystoreProtector.ErrorKind.INVALID_MATERIAL,
+                error.kind,
+            )
+        }
+    }
+
+    @Test
     fun wrongAadIsRejected() {
         val blob = protector.protect("context-a", "data".toByteArray())
         try {

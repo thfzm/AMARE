@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import org.amare.browser.security.AndroidKeystoreProtector
@@ -21,14 +22,26 @@ class BrowserRepository(context: Context) {
     private val sessionProtector = AndroidKeystoreProtector()
 
     @Volatile
+    private var bookmarksCache: List<Bookmark>? = null
+
+    @Volatile
+    private var historyCache: List<HistoryEntry>? = null
+
+    @Volatile
+    private var downloadsCache: List<DownloadRecord>? = null
+
+    @Volatile
     private var closed = false
 
     init {
         executor.execute {
             runCatching {
+                migrateLegacyPlaintextTables()
                 markInterruptedDownloadsFailed()
                 loadPermissionCache()
-            }.onFailure { Log.e(TAG, "Repository initialization failed", it) }
+            }.onFailure {
+                Log.e(TAG, "Encrypted repository initialization failed")
+            }
         }
     }
 
@@ -48,11 +61,7 @@ class BrowserRepository(context: Context) {
                         .put("session_state", tab.sessionState ?: JSONObject.NULL)
                         .toString()
                         .toByteArray(Charsets.UTF_8)
-                    Triple(
-                        position,
-                        sessionProtector.protect(SESSION_TAB_AAD, payload),
-                        tab,
-                    )
+                    Pair(position, sessionProtector.protect(SESSION_TAB_AAD, payload))
                 }
 
                 db.beginTransaction()
@@ -69,7 +78,7 @@ class BrowserRepository(context: Context) {
                             put("updated_at", System.currentTimeMillis())
                         },
                     )
-                    encryptedTabs.forEach { (position, payload, _) ->
+                    encryptedTabs.forEach { (position, payload) ->
                         db.insertOrThrow(
                             "session_tabs",
                             null,
@@ -229,28 +238,12 @@ class BrowserRepository(context: Context) {
         )
     }
 
-    private fun clearSessionSnapshotLocked(db: SQLiteDatabase) {
-        db.delete("session_tabs", "snapshot_id = ?", arrayOf(SNAPSHOT_ID.toString()))
-        db.delete("session_snapshots", "id = ?", arrayOf(SNAPSHOT_ID.toString()))
-    }
-
     fun loadAllBookmarks(callback: (List<Bookmark>) -> Unit) {
         background(
             work = {
-                val result = mutableListOf<Bookmark>()
-                database.readableDatabase.query(
-                    "bookmarks",
-                    arrayOf("id", "url", "title", "created_at"),
-                    null,
-                    null,
-                    null,
-                    null,
-                    "created_at DESC",
-                    "1000",
-                ).use { cursor ->
-                    while (cursor.moveToNext()) result.add(cursor.toBookmark())
+                bookmarksCache ?: readAllBookmarks(database.readableDatabase).also {
+                    bookmarksCache = it
                 }
-                result
             },
             callback = callback,
         )
@@ -259,17 +252,26 @@ class BrowserRepository(context: Context) {
     fun addBookmark(url: String, title: String, callback: () -> Unit = {}) {
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("url", url)
-                    put("title", title.ifBlank { url })
-                    put("created_at", System.currentTimeMillis())
+                val db = database.writableDatabase
+                val cached = bookmarksCache ?: readAllBookmarks(db).also { bookmarksCache = it }
+                if (cached.any { it.url == url }) {
+                    return@background
                 }
-                database.writableDatabase.insertWithOnConflict(
-                    "bookmarks",
-                    null,
-                    values,
-                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE,
+                val payload = encryptJson(
+                    BOOKMARK_AAD,
+                    JSONObject()
+                        .put("url", url)
+                        .put("title", title.ifBlank { url }),
                 )
+                db.insertOrThrow(
+                    "bookmarks_enc",
+                    null,
+                    ContentValues().apply {
+                        put("payload", payload)
+                        put("created_at", System.currentTimeMillis())
+                    },
+                )
+                bookmarksCache = null
             },
             callback = { callback() },
         )
@@ -278,7 +280,13 @@ class BrowserRepository(context: Context) {
     fun removeBookmarkByUrl(url: String, callback: () -> Unit = {}) {
         background(
             work = {
-                database.writableDatabase.delete("bookmarks", "url = ?", arrayOf(url))
+                val db = database.writableDatabase
+                val cached = bookmarksCache ?: readAllBookmarks(db).also { bookmarksCache = it }
+                val ids = cached.filter { it.url == url }.map { it.id }
+                ids.forEach { id ->
+                    db.delete("bookmarks_enc", "id = ?", arrayOf(id.toString()))
+                }
+                bookmarksCache = cached.filterNot { it.url == url }
             },
             callback = { callback() },
         )
@@ -287,7 +295,12 @@ class BrowserRepository(context: Context) {
     fun removeBookmark(id: Long, callback: () -> Unit = {}) {
         background(
             work = {
-                database.writableDatabase.delete("bookmarks", "id = ?", arrayOf(id.toString()))
+                database.writableDatabase.delete(
+                    "bookmarks_enc",
+                    "id = ?",
+                    arrayOf(id.toString()),
+                )
+                bookmarksCache = bookmarksCache?.filterNot { it.id == id }
             },
             callback = { callback() },
         )
@@ -296,16 +309,26 @@ class BrowserRepository(context: Context) {
     fun recordHistory(url: String, title: String) {
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("url", url)
-                    put("title", title.ifBlank { url })
-                    put("visited_at", System.currentTimeMillis())
-                }
-                database.writableDatabase.insert("history", null, values)
-                database.writableDatabase.execSQL(
-                    "DELETE FROM history WHERE id NOT IN " +
-                        "(SELECT id FROM history ORDER BY visited_at DESC LIMIT 5000)",
+                val payload = encryptJson(
+                    HISTORY_AAD,
+                    JSONObject()
+                        .put("url", url)
+                        .put("title", title.ifBlank { url }),
                 )
+                val db = database.writableDatabase
+                db.insertOrThrow(
+                    "history_enc",
+                    null,
+                    ContentValues().apply {
+                        put("payload", payload)
+                        put("visited_at", System.currentTimeMillis())
+                    },
+                )
+                db.execSQL(
+                    "DELETE FROM history_enc WHERE id NOT IN " +
+                        "(SELECT id FROM history_enc ORDER BY visited_at DESC LIMIT 5000)",
+                )
+                historyCache = null
             },
         )
     }
@@ -313,28 +336,20 @@ class BrowserRepository(context: Context) {
     fun loadHistory(query: String, callback: (List<HistoryEntry>) -> Unit) {
         background(
             work = {
-                val result = mutableListOf<HistoryEntry>()
+                val all = historyCache ?: readAllHistory(database.readableDatabase)
+                    .also { historyCache = it }
                 val trimmed = query.trim()
-                val selection = if (trimmed.isEmpty()) null else "url LIKE ? OR title LIKE ?"
-                val args = if (trimmed.isEmpty()) {
-                    null
+                if (trimmed.isEmpty()) {
+                    all.take(HISTORY_RESULT_LIMIT)
                 } else {
-                    val pattern = "%$trimmed%"
-                    arrayOf(pattern, pattern)
+                    all.asSequence()
+                        .filter {
+                            it.url.contains(trimmed, ignoreCase = true) ||
+                                it.title.contains(trimmed, ignoreCase = true)
+                        }
+                        .take(HISTORY_RESULT_LIMIT)
+                        .toList()
                 }
-                database.readableDatabase.query(
-                    "history",
-                    arrayOf("id", "url", "title", "visited_at"),
-                    selection,
-                    args,
-                    null,
-                    null,
-                    "visited_at DESC",
-                    "500",
-                ).use { cursor ->
-                    while (cursor.moveToNext()) result.add(cursor.toHistoryEntry())
-                }
-                result
             },
             callback = callback,
         )
@@ -343,7 +358,12 @@ class BrowserRepository(context: Context) {
     fun removeHistory(id: Long, callback: () -> Unit = {}) {
         background(
             work = {
-                database.writableDatabase.delete("history", "id = ?", arrayOf(id.toString()))
+                database.writableDatabase.delete(
+                    "history_enc",
+                    "id = ?",
+                    arrayOf(id.toString()),
+                )
+                historyCache = historyCache?.filterNot { it.id == id }
             },
             callback = { callback() },
         )
@@ -351,7 +371,10 @@ class BrowserRepository(context: Context) {
 
     fun clearHistory(callback: () -> Unit = {}) {
         background(
-            work = { database.writableDatabase.delete("history", null, null) },
+            work = {
+                database.writableDatabase.delete("history_enc", null, null)
+                historyCache = emptyList()
+            },
             callback = { callback() },
         )
     }
@@ -366,16 +389,27 @@ class BrowserRepository(context: Context) {
         background(
             work = {
                 val createdAt = System.currentTimeMillis()
-                val values = ContentValues().apply {
-                    put("file_name", fileName)
-                    put("source_url", sourceUrl)
-                    put("mime_type", mimeType)
-                    put("received_bytes", 0L)
-                    put("total_bytes", totalBytes)
-                    put("status", DownloadStatus.RUNNING.name)
-                    put("created_at", createdAt)
-                }
-                val id = database.writableDatabase.insert("downloads", null, values)
+                val payload = encryptJson(
+                    DOWNLOAD_AAD,
+                    JSONObject()
+                        .put("file_name", fileName)
+                        .put("source_url", sourceUrl)
+                        .put("mime_type", mimeType)
+                        .put("local_uri", JSONObject.NULL)
+                        .put("error", JSONObject.NULL),
+                )
+                val id = database.writableDatabase.insertOrThrow(
+                    "downloads_enc",
+                    null,
+                    ContentValues().apply {
+                        put("payload", payload)
+                        put("received_bytes", 0L)
+                        put("total_bytes", totalBytes)
+                        put("status", DownloadStatus.RUNNING.name)
+                        put("created_at", createdAt)
+                    },
+                )
+                downloadsCache = null
                 DownloadRecord(
                     id = id,
                     fileName = fileName,
@@ -396,16 +430,16 @@ class BrowserRepository(context: Context) {
     fun updateDownloadProgress(id: Long, receivedBytes: Long, totalBytes: Long) {
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("received_bytes", receivedBytes)
-                    put("total_bytes", totalBytes)
-                }
                 database.writableDatabase.update(
-                    "downloads",
-                    values,
+                    "downloads_enc",
+                    ContentValues().apply {
+                        put("received_bytes", receivedBytes)
+                        put("total_bytes", totalBytes)
+                    },
                     "id = ?",
                     arrayOf(id.toString()),
                 )
+                downloadsCache = null
             },
         )
     }
@@ -413,18 +447,22 @@ class BrowserRepository(context: Context) {
     fun completeDownload(id: Long, localUri: String, receivedBytes: Long, callback: () -> Unit = {}) {
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("status", DownloadStatus.COMPLETE.name)
-                    put("local_uri", localUri)
-                    put("received_bytes", receivedBytes)
-                    put("error", null as String?)
-                }
-                database.writableDatabase.update(
-                    "downloads",
-                    values,
+                val db = database.writableDatabase
+                val payload = readDownloadPayload(db, id)
+                    ?: throw IllegalStateException("download payload missing")
+                payload.put("local_uri", localUri)
+                payload.put("error", JSONObject.NULL)
+                db.update(
+                    "downloads_enc",
+                    ContentValues().apply {
+                        put("payload", encryptJson(DOWNLOAD_AAD, payload))
+                        put("status", DownloadStatus.COMPLETE.name)
+                        put("received_bytes", receivedBytes)
+                    },
                     "id = ?",
                     arrayOf(id.toString()),
                 )
+                downloadsCache = null
             },
             callback = { callback() },
         )
@@ -433,16 +471,20 @@ class BrowserRepository(context: Context) {
     fun failDownload(id: Long, error: String, callback: () -> Unit = {}) {
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("status", DownloadStatus.FAILED.name)
-                    put("error", error)
-                }
-                database.writableDatabase.update(
-                    "downloads",
-                    values,
+                val db = database.writableDatabase
+                val payload = readDownloadPayload(db, id)
+                    ?: throw IllegalStateException("download payload missing")
+                payload.put("error", error)
+                db.update(
+                    "downloads_enc",
+                    ContentValues().apply {
+                        put("payload", encryptJson(DOWNLOAD_AAD, payload))
+                        put("status", DownloadStatus.FAILED.name)
+                    },
                     "id = ?",
                     arrayOf(id.toString()),
                 )
+                downloadsCache = null
             },
             callback = { callback() },
         )
@@ -451,31 +493,9 @@ class BrowserRepository(context: Context) {
     fun loadDownloads(callback: (List<DownloadRecord>) -> Unit) {
         background(
             work = {
-                val result = mutableListOf<DownloadRecord>()
-                database.readableDatabase.query(
-                    "downloads",
-                    arrayOf(
-                        "id",
-                        "file_name",
-                        "source_url",
-                        "mime_type",
-                        "received_bytes",
-                        "total_bytes",
-                        "status",
-                        "local_uri",
-                        "error",
-                        "created_at",
-                    ),
-                    null,
-                    null,
-                    null,
-                    null,
-                    "created_at DESC",
-                    "200",
-                ).use { cursor ->
-                    while (cursor.moveToNext()) result.add(cursor.toDownloadRecord())
+                downloadsCache ?: readAllDownloads(database.readableDatabase).also {
+                    downloadsCache = it
                 }
-                result
             },
             callback = callback,
         )
@@ -484,7 +504,12 @@ class BrowserRepository(context: Context) {
     fun removeDownload(id: Long, callback: () -> Unit = {}) {
         background(
             work = {
-                database.writableDatabase.delete("downloads", "id = ?", arrayOf(id.toString()))
+                database.writableDatabase.delete(
+                    "downloads_enc",
+                    "id = ?",
+                    arrayOf(id.toString()),
+                )
+                downloadsCache = downloadsCache?.filterNot { it.id == id }
             },
             callback = { callback() },
         )
@@ -502,17 +527,22 @@ class BrowserRepository(context: Context) {
         permissionCache[permissionKey(origin, permission)] = decision
         background(
             work = {
-                val values = ContentValues().apply {
-                    put("origin", origin)
-                    put("permission", permission)
-                    put("decision", decision)
-                    put("updated_at", System.currentTimeMillis())
-                }
+                val payload = encryptJson(
+                    PERMISSION_AAD,
+                    JSONObject()
+                        .put("origin", origin)
+                        .put("decision", decision),
+                )
                 database.writableDatabase.insertWithOnConflict(
-                    "site_permissions",
+                    "site_permissions_enc",
                     null,
-                    values,
-                    android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE,
+                    ContentValues().apply {
+                        put("origin_key", originKey(origin))
+                        put("permission", permission)
+                        put("payload", payload)
+                        put("updated_at", System.currentTimeMillis())
+                    },
+                    SQLiteDatabase.CONFLICT_REPLACE,
                 )
             },
             callback = { callback() },
@@ -524,9 +554,9 @@ class BrowserRepository(context: Context) {
         background(
             work = {
                 database.writableDatabase.delete(
-                    "site_permissions",
-                    "origin = ? AND permission = ?",
-                    arrayOf(origin, permission),
+                    "site_permissions_enc",
+                    "origin_key = ? AND permission = ?",
+                    arrayOf(originKey(origin), permission),
                 )
             },
             callback = { callback() },
@@ -535,32 +565,7 @@ class BrowserRepository(context: Context) {
 
     fun loadPermissions(callback: (List<SitePermissionRecord>) -> Unit) {
         background(
-            work = {
-                val result = mutableListOf<SitePermissionRecord>()
-                database.readableDatabase.query(
-                    "site_permissions",
-                    arrayOf("origin", "permission", "decision", "updated_at"),
-                    null,
-                    null,
-                    null,
-                    null,
-                    "updated_at DESC",
-                    "500",
-                ).use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val record = SitePermissionRecord(
-                            origin = cursor.getString(0),
-                            permission = cursor.getString(1),
-                            decision = cursor.getString(2),
-                            updatedAt = cursor.getLong(3),
-                        )
-                        result.add(record)
-                        permissionCache[permissionKey(record.origin, record.permission)] =
-                            record.decision
-                    }
-                }
-                result
-            },
+            work = { readAllPermissions(database.readableDatabase) },
             callback = callback,
         )
     }
@@ -571,43 +576,470 @@ class BrowserRepository(context: Context) {
         executor.shutdown()
     }
 
-    private fun markInterruptedDownloadsFailed() {
-        val values = ContentValues().apply {
-            put("status", DownloadStatus.FAILED.name)
-            put("error", "Interrupted by app restart.")
+    private fun migrateLegacyPlaintextTables() {
+        val db = database.writableDatabase
+        val hasBookmarks = tableExists(db, LEGACY_BOOKMARKS)
+        val hasHistory = tableExists(db, LEGACY_HISTORY)
+        val hasDownloads = tableExists(db, LEGACY_DOWNLOADS)
+        val hasPermissions = tableExists(db, LEGACY_PERMISSIONS)
+        if (!hasBookmarks && !hasHistory && !hasDownloads && !hasPermissions) return
+
+        val bookmarks = mutableListOf<Triple<ByteArray, Long, Long>>()
+        if (hasBookmarks) {
+            db.query(
+                LEGACY_BOOKMARKS,
+                arrayOf("id", "url", "title", "created_at"),
+                null,
+                null,
+                null,
+                null,
+                "created_at ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    bookmarks.add(
+                        Triple(
+                            encryptJson(
+                                BOOKMARK_AAD,
+                                JSONObject()
+                                    .put("url", cursor.getString(1))
+                                    .put("title", cursor.getString(2)),
+                            ),
+                            cursor.getLong(0),
+                            cursor.getLong(3),
+                        ),
+                    )
+                }
+            }
         }
-        database.writableDatabase.update(
-            "downloads",
-            values,
-            "status = ?",
-            arrayOf(DownloadStatus.RUNNING.name),
-        )
+
+        val history = mutableListOf<Triple<ByteArray, Long, Long>>()
+        if (hasHistory) {
+            db.query(
+                LEGACY_HISTORY,
+                arrayOf("id", "url", "title", "visited_at"),
+                null,
+                null,
+                null,
+                null,
+                "visited_at ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    history.add(
+                        Triple(
+                            encryptJson(
+                                HISTORY_AAD,
+                                JSONObject()
+                                    .put("url", cursor.getString(1))
+                                    .put("title", cursor.getString(2)),
+                            ),
+                            cursor.getLong(0),
+                            cursor.getLong(3),
+                        ),
+                    )
+                }
+            }
+        }
+
+        val downloads = mutableListOf<LegacyDownload>()
+        if (hasDownloads) {
+            db.query(
+                LEGACY_DOWNLOADS,
+                arrayOf(
+                    "id",
+                    "file_name",
+                    "source_url",
+                    "mime_type",
+                    "received_bytes",
+                    "total_bytes",
+                    "status",
+                    "local_uri",
+                    "error",
+                    "created_at",
+                ),
+                null,
+                null,
+                null,
+                null,
+                "created_at ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val payload = JSONObject()
+                        .put("file_name", cursor.getString(1))
+                        .put("source_url", cursor.getString(2))
+                        .put("mime_type", cursor.getString(3))
+                        .put("local_uri", cursor.getString(7) ?: JSONObject.NULL)
+                        .put("error", cursor.getString(8) ?: JSONObject.NULL)
+                    downloads.add(
+                        LegacyDownload(
+                            id = cursor.getLong(0),
+                            payload = encryptJson(DOWNLOAD_AAD, payload),
+                            receivedBytes = cursor.getLong(4),
+                            totalBytes = cursor.getLong(5),
+                            status = cursor.getString(6),
+                            createdAt = cursor.getLong(9),
+                        ),
+                    )
+                }
+            }
+        }
+
+        val permissions = mutableListOf<LegacyPermission>()
+        if (hasPermissions) {
+            db.query(
+                LEGACY_PERMISSIONS,
+                arrayOf("origin", "permission", "decision", "updated_at"),
+                null,
+                null,
+                null,
+                null,
+                "updated_at ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val origin = cursor.getString(0)
+                    permissions.add(
+                        LegacyPermission(
+                            originKey = originKey(origin),
+                            permission = cursor.getString(1),
+                            payload = encryptJson(
+                                PERMISSION_AAD,
+                                JSONObject()
+                                    .put("origin", origin)
+                                    .put("decision", cursor.getString(2)),
+                            ),
+                            updatedAt = cursor.getLong(3),
+                        ),
+                    )
+                }
+            }
+        }
+
+        db.beginTransaction()
+        try {
+            if (hasBookmarks) {
+                db.delete("bookmarks_enc", null, null)
+                bookmarks.forEach { (payload, _, createdAt) ->
+                    db.insertOrThrow(
+                        "bookmarks_enc",
+                        null,
+                        ContentValues().apply {
+                            put("payload", payload)
+                            put("created_at", createdAt)
+                        },
+                    )
+                }
+                db.execSQL("DROP TABLE IF EXISTS $LEGACY_BOOKMARKS")
+            }
+            if (hasHistory) {
+                db.delete("history_enc", null, null)
+                history.forEach { (payload, _, visitedAt) ->
+                    db.insertOrThrow(
+                        "history_enc",
+                        null,
+                        ContentValues().apply {
+                            put("payload", payload)
+                            put("visited_at", visitedAt)
+                        },
+                    )
+                }
+                db.execSQL("DROP TABLE IF EXISTS $LEGACY_HISTORY")
+            }
+            if (hasDownloads) {
+                db.delete("downloads_enc", null, null)
+                downloads.forEach { download ->
+                    db.insertOrThrow(
+                        "downloads_enc",
+                        null,
+                        ContentValues().apply {
+                            put("payload", download.payload)
+                            put("received_bytes", download.receivedBytes)
+                            put("total_bytes", download.totalBytes)
+                            put("status", download.status)
+                            put("created_at", download.createdAt)
+                        },
+                    )
+                }
+                db.execSQL("DROP TABLE IF EXISTS $LEGACY_DOWNLOADS")
+            }
+            if (hasPermissions) {
+                db.delete("site_permissions_enc", null, null)
+                permissions.forEach { permission ->
+                    db.insertWithOnConflict(
+                        "site_permissions_enc",
+                        null,
+                        ContentValues().apply {
+                            put("origin_key", permission.originKey)
+                            put("permission", permission.permission)
+                            put("payload", permission.payload)
+                            put("updated_at", permission.updatedAt)
+                        },
+                        SQLiteDatabase.CONFLICT_REPLACE,
+                    )
+                }
+                db.execSQL("DROP TABLE IF EXISTS $LEGACY_PERMISSIONS")
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+
+        bookmarksCache = null
+        historyCache = null
+        downloadsCache = null
     }
 
-    private fun loadPermissionCache() {
-        database.readableDatabase.query(
-            "site_permissions",
-            arrayOf("origin", "permission", "decision"),
-            null,
-            null,
+    private fun markInterruptedDownloadsFailed() {
+        val db = database.writableDatabase
+        val rows = mutableListOf<Pair<Long, JSONObject>>()
+        db.query(
+            "downloads_enc",
+            arrayOf("id", "payload"),
+            "status = ?",
+            arrayOf(DownloadStatus.RUNNING.name),
             null,
             null,
             null,
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                permissionCache[permissionKey(cursor.getString(0), cursor.getString(1))] =
-                    cursor.getString(2)
+                val payload = runCatching {
+                    decryptJson(DOWNLOAD_AAD, cursor.getBlob(1))
+                }.getOrNull() ?: continue
+                payload.put("error", "Interrupted by app restart.")
+                rows.add(cursor.getLong(0) to payload)
             }
+        }
+        rows.forEach { (id, payload) ->
+            db.update(
+                "downloads_enc",
+                ContentValues().apply {
+                    put("payload", encryptJson(DOWNLOAD_AAD, payload))
+                    put("status", DownloadStatus.FAILED.name)
+                },
+                "id = ?",
+                arrayOf(id.toString()),
+            )
+        }
+        downloadsCache = null
+    }
+
+    private fun loadPermissionCache() {
+        runCatching {
+            readAllPermissions(database.readableDatabase).forEach { record ->
+                permissionCache[permissionKey(record.origin, record.permission)] =
+                    record.decision
+            }
+        }.onFailure {
+            Log.e(TAG, "Permission cache load failed")
+        }
+    }
+
+    private fun readAllBookmarks(db: SQLiteDatabase): List<Bookmark> {
+        val result = mutableListOf<Bookmark>()
+        db.query(
+            "bookmarks_enc",
+            arrayOf("id", "payload", "created_at"),
+            null,
+            null,
+            null,
+            null,
+            "created_at DESC",
+            READ_LIMIT.toString(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val json = runCatching {
+                    decryptJson(BOOKMARK_AAD, cursor.getBlob(1))
+                }.getOrNull() ?: continue
+                val url = json.optString("url")
+                if (url.isBlank()) continue
+                result.add(
+                    Bookmark(
+                        id = cursor.getLong(0),
+                        url = url,
+                        title = json.optString("title", url),
+                        createdAt = cursor.getLong(2),
+                    ),
+                )
+            }
+        }
+        return result
+    }
+
+    private fun readAllHistory(db: SQLiteDatabase): List<HistoryEntry> {
+        val result = mutableListOf<HistoryEntry>()
+        db.query(
+            "history_enc",
+            arrayOf("id", "payload", "visited_at"),
+            null,
+            null,
+            null,
+            null,
+            "visited_at DESC",
+            HISTORY_CACHE_LIMIT.toString(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val json = runCatching {
+                    decryptJson(HISTORY_AAD, cursor.getBlob(1))
+                }.getOrNull() ?: continue
+                val url = json.optString("url")
+                if (url.isBlank()) continue
+                result.add(
+                    HistoryEntry(
+                        id = cursor.getLong(0),
+                        url = url,
+                        title = json.optString("title", url),
+                        visitedAt = cursor.getLong(2),
+                    ),
+                )
+            }
+        }
+        return result
+    }
+
+    private fun readAllDownloads(db: SQLiteDatabase): List<DownloadRecord> {
+        val result = mutableListOf<DownloadRecord>()
+        db.query(
+            "downloads_enc",
+            arrayOf(
+                "id",
+                "payload",
+                "received_bytes",
+                "total_bytes",
+                "status",
+                "created_at",
+            ),
+            null,
+            null,
+            null,
+            null,
+            "created_at DESC",
+            DOWNLOAD_CACHE_LIMIT.toString(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val json = runCatching {
+                    decryptJson(DOWNLOAD_AAD, cursor.getBlob(1))
+                }.getOrNull() ?: continue
+                result.add(
+                    DownloadRecord(
+                        id = cursor.getLong(0),
+                        fileName = json.optString("file_name", "download"),
+                        sourceUrl = json.optString("source_url"),
+                        mimeType = json.optString("mime_type", "application/octet-stream"),
+                        receivedBytes = cursor.getLong(2),
+                        totalBytes = cursor.getLong(3),
+                        status = runCatching { DownloadStatus.valueOf(cursor.getString(4)) }
+                            .getOrDefault(DownloadStatus.FAILED),
+                        localUri = json.optString("local_uri").takeIf {
+                            it.isNotBlank() && it != "null"
+                        },
+                        error = json.optString("error").takeIf {
+                            it.isNotBlank() && it != "null"
+                        },
+                        createdAt = cursor.getLong(5),
+                    ),
+                )
+            }
+        }
+        return result
+    }
+
+    private fun readDownloadPayload(db: SQLiteDatabase, id: Long): JSONObject? {
+        db.query(
+            "downloads_enc",
+            arrayOf("payload"),
+            "id = ?",
+            arrayOf(id.toString()),
+            null,
+            null,
+            null,
+            "1",
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return runCatching {
+                decryptJson(DOWNLOAD_AAD, cursor.getBlob(0))
+            }.getOrNull()
+        }
+    }
+
+    private fun readAllPermissions(db: SQLiteDatabase): List<SitePermissionRecord> {
+        val result = mutableListOf<SitePermissionRecord>()
+        db.query(
+            "site_permissions_enc",
+            arrayOf("permission", "payload", "updated_at"),
+            null,
+            null,
+            null,
+            null,
+            "updated_at DESC",
+            PERMISSION_CACHE_LIMIT.toString(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val json = runCatching {
+                    decryptJson(PERMISSION_AAD, cursor.getBlob(1))
+                }.getOrNull() ?: continue
+                val origin = json.optString("origin")
+                if (origin.isBlank()) continue
+                val record = SitePermissionRecord(
+                    origin = origin,
+                    permission = cursor.getString(0),
+                    decision = json.optString("decision"),
+                    updatedAt = cursor.getLong(2),
+                )
+                result.add(record)
+                permissionCache[permissionKey(record.origin, record.permission)] =
+                    record.decision
+            }
+        }
+        return result
+    }
+
+    private fun encryptJson(context: String, json: JSONObject): ByteArray =
+        sessionProtector.protect(
+            context,
+            json.toString().toByteArray(Charsets.UTF_8),
+        )
+
+    private fun decryptJson(context: String, payload: ByteArray): JSONObject =
+        JSONObject(
+            String(
+                sessionProtector.unprotect(context, payload),
+                Charsets.UTF_8,
+            ),
+        )
+
+    private fun tableExists(db: SQLiteDatabase, table: String): Boolean {
+        db.query(
+            "sqlite_master",
+            arrayOf("name"),
+            "type = 'table' AND name = ?",
+            arrayOf(table),
+            null,
+            null,
+            null,
+            "1",
+        ).use { cursor ->
+            return cursor.moveToFirst()
         }
     }
 
     private fun permissionKey(origin: String, permission: String): String = "$origin|$permission"
 
+    private fun originKey(origin: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(origin.lowercase().toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+    }
+
+    private fun clearSessionSnapshotLocked(db: SQLiteDatabase) {
+        db.delete("session_tabs", "snapshot_id = ?", arrayOf(SNAPSHOT_ID.toString()))
+        db.delete("session_snapshots", "id = ?", arrayOf(SNAPSHOT_ID.toString()))
+    }
+
     private fun <T> background(work: () -> T, callback: ((T) -> Unit)? = null) {
         if (closed) return
         executor.execute {
             val result = runCatching(work)
-            result.onFailure { Log.e(TAG, "Browser database operation failed", it) }
+            result.onFailure {
+                Log.e(TAG, "Encrypted browser database operation failed")
+            }
             val value = result.getOrNull()
             if (callback != null && value != null) {
                 mainHandler.post {
@@ -617,37 +1049,38 @@ class BrowserRepository(context: Context) {
         }
     }
 
-    private fun Cursor.toBookmark(): Bookmark = Bookmark(
-        id = getLong(0),
-        url = getString(1),
-        title = getString(2),
-        createdAt = getLong(3),
+    private data class LegacyDownload(
+        val id: Long,
+        val payload: ByteArray,
+        val receivedBytes: Long,
+        val totalBytes: Long,
+        val status: String,
+        val createdAt: Long,
     )
 
-    private fun Cursor.toHistoryEntry(): HistoryEntry = HistoryEntry(
-        id = getLong(0),
-        url = getString(1),
-        title = getString(2),
-        visitedAt = getLong(3),
-    )
-
-    private fun Cursor.toDownloadRecord(): DownloadRecord = DownloadRecord(
-        id = getLong(0),
-        fileName = getString(1),
-        sourceUrl = getString(2),
-        mimeType = getString(3),
-        receivedBytes = getLong(4),
-        totalBytes = getLong(5),
-        status = runCatching { DownloadStatus.valueOf(getString(6)) }
-            .getOrDefault(DownloadStatus.FAILED),
-        localUri = getString(7),
-        error = getString(8),
-        createdAt = getLong(9),
+    private data class LegacyPermission(
+        val originKey: String,
+        val permission: String,
+        val payload: ByteArray,
+        val updatedAt: Long,
     )
 
     companion object {
         private const val TAG = "BrowserRepository"
         private const val SNAPSHOT_ID = 1L
         private const val SESSION_TAB_AAD = "amare.session.tab.v1"
+        private const val BOOKMARK_AAD = "amare.bookmark.v1"
+        private const val HISTORY_AAD = "amare.history.v1"
+        private const val DOWNLOAD_AAD = "amare.download.v1"
+        private const val PERMISSION_AAD = "amare.site-permission.v1"
+        private const val LEGACY_BOOKMARKS = "bookmarks"
+        private const val LEGACY_HISTORY = "history"
+        private const val LEGACY_DOWNLOADS = "downloads"
+        private const val LEGACY_PERMISSIONS = "site_permissions"
+        private const val READ_LIMIT = 1000
+        private const val HISTORY_CACHE_LIMIT = 5000
+        private const val HISTORY_RESULT_LIMIT = 500
+        private const val DOWNLOAD_CACHE_LIMIT = 200
+        private const val PERMISSION_CACHE_LIMIT = 500
     }
 }

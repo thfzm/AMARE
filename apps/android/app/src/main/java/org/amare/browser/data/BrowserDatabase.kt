@@ -15,44 +15,7 @@ class BrowserDatabase(context: Context) : SQLiteOpenHelper(
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE bookmarks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT NOT NULL UNIQUE,
-                title TEXT NOT NULL,
-                created_at INTEGER NOT NULL
-            )
-            """.trimIndent(),
-        )
-        db.execSQL("CREATE INDEX idx_bookmarks_created ON bookmarks(created_at DESC)")
-        db.execSQL(
-            """
-            CREATE TABLE history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT NOT NULL,
-                title TEXT NOT NULL,
-                visited_at INTEGER NOT NULL
-            )
-            """.trimIndent(),
-        )
-        db.execSQL("CREATE INDEX idx_history_visited ON history(visited_at DESC)")
-        db.execSQL(
-            """
-            CREATE TABLE downloads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_name TEXT NOT NULL,
-                source_url TEXT NOT NULL,
-                mime_type TEXT NOT NULL,
-                received_bytes INTEGER NOT NULL DEFAULT 0,
-                total_bytes INTEGER NOT NULL DEFAULT -1,
-                status TEXT NOT NULL,
-                local_uri TEXT,
-                error TEXT,
-                created_at INTEGER NOT NULL
-            )
-            """.trimIndent(),
-        )
+        createEncryptedTables(db)
         db.execSQL(
             """
             CREATE TABLE site_permissions (
@@ -71,6 +34,62 @@ class BrowserDatabase(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 2) {
             createSessionTables(db)
         }
+        if (oldVersion < 3) {
+            createEncryptedTables(db)
+        }
+    }
+
+    private fun createEncryptedTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS bookmarks_enc (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload BLOB NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_bookmarks_enc_created " +
+                "ON bookmarks_enc(created_at DESC)",
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS history_enc (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload BLOB NOT NULL,
+                visited_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_history_enc_visited " +
+                "ON history_enc(visited_at DESC)",
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS downloads_enc (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload BLOB NOT NULL,
+                received_bytes INTEGER NOT NULL DEFAULT 0,
+                total_bytes INTEGER NOT NULL DEFAULT -1,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS site_permissions_enc (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                origin_key TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                payload BLOB NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE (origin_key, permission)
+            )
+            """.trimIndent(),
+        )
     }
 
     private fun createSessionTables(db: SQLiteDatabase) {
@@ -102,6 +121,6 @@ class BrowserDatabase(context: Context) : SQLiteOpenHelper(
 
     companion object {
         private const val DATABASE_NAME = "amare_browser.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
     }
 }

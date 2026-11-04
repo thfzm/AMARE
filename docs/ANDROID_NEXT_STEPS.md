@@ -4,7 +4,14 @@
 - 범위: 우선순위 4(세션 복구)와 5(보안)
 - 원칙: GeckoView API를 우선 사용하고 Windows/Linux/Rust 코어는 이번 단계에서 변경하지 않음
 
-## 0. 0.3.0 구현 반영
+## 0. 0.4.0 구현 반영
+
+- 북마크/방문 기록/다운로드/사이트 권한 payload를 Android Keystore AES-GCM으로 암호화
+- v1/v2 평문 DB를 transaction으로 암호화 테이블에 마이그레이션
+- 암호화 테이블 검색은 메모리 캐시로 처리해 평문 fallback 제거
+- Release unsigned APK/AAB 빌드 및 R8 축소 적용
+
+## 0.1 0.3.0 구현 반영
 
 - `GeckoSession.SessionState`를 탭별로 저장하고 `restoreState()`로 복원
 - SQLite transaction으로 `session_snapshots`/`session_tabs` 교체

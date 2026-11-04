@@ -12,22 +12,13 @@ android {
         applicationId = "org.amare.browser"
         minSdk = 29
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
-    }
-
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = true
-        }
     }
 
     compileOptions {
@@ -42,6 +33,41 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+
+    val releaseStorePath = System.getenv("AMARE_ANDROID_KEYSTORE")
+    val releaseStorePassword = System.getenv("AMARE_ANDROID_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("AMARE_ANDROID_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("AMARE_ANDROID_KEY_PASSWORD")
+    val releaseSigning = if (
+        !releaseStorePath.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+    ) {
+        signingConfigs.create("release") {
+            storeFile = file(releaseStorePath)
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
+    } else {
+        null
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (releaseSigning != null) {
+                signingConfig = releaseSigning
+            }
         }
     }
 }
