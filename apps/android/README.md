@@ -21,6 +21,7 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - `GeckoSession.SessionState` 기반 전체 탭/back-forward 히스토리 복원
 - clean shutdown marker 및 비정상 종료 복구 알림
 - 세션 payload Android Keystore AES-256-GCM 암호화
+- `GeckoSession` crash/kill 시 새 세션 생성 + 마지막 SessionState/URL 복구(반복 crash 제한)
 - SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
 - SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
 - GeckoView `onExternalResponse` 기반 다운로드 수신
@@ -37,7 +38,6 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 비밀번호/자동완성 저장
 - 웹 알림 실제 표시(사이트 권한 저장/요청은 구현됨)
 - `window.open()`/새 창 처리, WebExtension, AI 계층
-- GeckoSession `onCrash`/`onKill` 자동 복구(현재는 마지막 snapshot 기반 재시작 복구)
 - Rust AndroidKeystore JNI 연결(Rust Android 런타임 미탑재)
 - 릴리스 서명, Play Store/AAB 배포, Android Keystore 연동
 - 북마크/방문 기록의 DB 암호화

@@ -75,6 +75,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private const val KEY_URLS = "open_urls"
         private const val KEY_ACTIVE = "active_index"
         private const val MAX_RESTORED_TABS = 8
+        private const val MAX_RECOVERY_ATTEMPTS = 3
         private const val TAG = "BrowserViewModel"
 
         @Volatile
@@ -105,6 +106,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val permissionQueue = ArrayDeque<PermissionPrompt>()
     private val androidPermissionQueue = ArrayDeque<AndroidPermissionRequest>()
     private val sessionStates = mutableMapOf<Long, String>()
+    private val recoveryAttempts = mutableMapOf<Long, Int>()
     private var persistRunnable: Runnable? = null
     private var nextPromptId = 1L
 
@@ -423,16 +425,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }.getOrDefault(emptyList())
     }
 
+    private fun newSession(): GeckoSession {
+        val settings = GeckoSessionSettings.Builder()
+            .useTrackingProtection(true)
+            .build()
+        return GeckoSession(settings)
+    }
+
     private fun createTab(
         url: String,
         sessionState: String? = null,
         title: String = "New tab",
     ): BrowserTab {
         val id = nextTabId++
-        val settings = GeckoSessionSettings.Builder()
-            .useTrackingProtection(true)
-            .build()
-        val session = GeckoSession(settings)
+        val session = newSession()
         attachDelegates(session, id)
         session.open(runtime)
 
@@ -506,6 +512,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(isLoading = false, progress = if (success) 100 else it.progress)
                 }
                 if (success) {
+                    recoveryAttempts.remove(id)
                     val tab = tabList.firstOrNull { it.id == id } ?: return
                     val url = tab.currentUrl
                     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -539,6 +546,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
             override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
                 startDownload(response)
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                recoverCrashedSession(id, "The page process crashed.")
+            }
+
+            override fun onKill(session: GeckoSession) {
+                recoverCrashedSession(id, "The page process was killed.")
             }
         }
 
@@ -658,6 +673,48 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
         }
+    }
+
+    private fun recoverCrashedSession(id: Long, reason: String) {
+        val tab = tabList.firstOrNull { it.id == id } ?: return
+        val attempts = recoveryAttempts[id] ?: 0
+        val exhausted = attempts >= MAX_RECOVERY_ATTEMPTS
+        recoveryAttempts[id] = attempts + 1
+
+        val replacement = newSession()
+        attachDelegates(replacement, id)
+        replacement.open(runtime)
+        val parsedState = if (exhausted) {
+            null
+        } else {
+            sessionStates[id]?.let { GeckoSession.SessionState.fromString(it) }
+        }
+        if (parsedState != null) {
+            replacement.restoreState(parsedState)
+        } else {
+            replacement.loadUri(tab.currentUrl)
+        }
+
+        val wasActive = id == activeTabId
+        updateTab(id) {
+            it.copy(
+                session = replacement,
+                isLoading = false,
+                error = if (exhausted) {
+                    "This tab crashed repeatedly. Press Retry to load the last URL."
+                } else {
+                    null
+                },
+                progress = 0,
+            )
+        }
+        if (wasActive) replacement.setActive(true)
+        sessionNotice = if (exhausted) {
+            "$reason Automatic state recovery limit reached; reloaded the last URL."
+        } else {
+            reason
+        }
+        scheduleSessionPersist()
     }
 
     private fun startDownload(response: WebResponse) {

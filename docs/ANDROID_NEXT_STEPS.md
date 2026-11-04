@@ -10,6 +10,7 @@
 - SQLite transaction으로 `session_snapshots`/`session_tabs` 교체
 - clean shutdown marker, unexpected exit 알림, URL fallback 구현
 - 세션 payload(URL/제목/SessionState)는 Android Keystore AES-256-GCM으로 암호화
+- `GeckoSession` crash/kill 시 새 세션 생성 및 SessionState/URL 복구, 반복 crash 제한
 - Kotlin `AndroidKeystoreProtector` 구현, 키 무효화/삭제 오류 처리
 - Rust `AndroidKeystoreKeyProtector` JNI 연결은 Rust Android 런타임이 APK에 없어 보류
 - 에뮬레이터/실기기 검증은 미실행
