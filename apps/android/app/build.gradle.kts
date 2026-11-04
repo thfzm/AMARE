@@ -12,8 +12,9 @@ android {
         applicationId = "org.amare.browser"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -56,6 +57,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 
     // Phase 5 engine candidate. Pinned to the latest available GeckoView 152
     // artifact compatible with compileSdk 36; verify the release channel before shipping.

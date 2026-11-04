@@ -64,14 +64,44 @@ class BrowserDatabase(context: Context) : SQLiteOpenHelper(
             )
             """.trimIndent(),
         )
+        createSessionTables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 1 is the first Android-only schema.
+        if (oldVersion < 2) {
+            createSessionTables(db)
+        }
+    }
+
+    private fun createSessionTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS session_snapshots (
+                id INTEGER PRIMARY KEY,
+                clean_shutdown INTEGER NOT NULL,
+                active_index INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS session_tabs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                payload BLOB NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_session_tabs_position " +
+                "ON session_tabs(snapshot_id, position)",
+        )
     }
 
     companion object {
         private const val DATABASE_NAME = "amare_browser.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
     }
 }

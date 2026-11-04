@@ -23,7 +23,11 @@ import org.amare.browser.data.BrowserRepository
 import org.amare.browser.data.DownloadRecord
 import org.amare.browser.data.DownloadStatus
 import org.amare.browser.data.HistoryEntry
+import org.amare.browser.data.SessionLoadResult
+import org.amare.browser.data.SessionTabDraft
 import org.amare.browser.data.SitePermissionRecord
+import org.amare.browser.data.StoredSession
+import org.amare.browser.security.SessionRecoveryPolicy
 import org.json.JSONArray
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
@@ -82,6 +86,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 sharedRuntime?.let { return it }
                 val settings = GeckoRuntimeSettings.Builder()
                     .globalPrivacyControlEnabled(true)
+                    .remoteDebuggingEnabled(false)
+                    .consoleOutput(false)
+                    .aboutConfigEnabled(false)
                     .build()
                 return GeckoRuntime.create(context.applicationContext, settings)
                     .also { sharedRuntime = it }
@@ -97,6 +104,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val downloadExecutor = Executors.newFixedThreadPool(2)
     private val permissionQueue = ArrayDeque<PermissionPrompt>()
     private val androidPermissionQueue = ArrayDeque<AndroidPermissionRequest>()
+    private val sessionStates = mutableMapOf<Long, String>()
+    private var persistRunnable: Runnable? = null
     private var nextPromptId = 1L
 
     val tabs: List<BrowserTab> get() = tabList
@@ -114,22 +123,32 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var pendingAndroidPermission by mutableStateOf<AndroidPermissionRequest?>(null)
         private set
 
+    var isRestoring by mutableStateOf(true)
+        private set
+
+    var sessionNotice by mutableStateOf<String?>(null)
+        private set
+
     private var nextTabId = 1L
 
     val activeTab: BrowserTab?
         get() = tabList.firstOrNull { it.id == activeTabId }
 
     init {
-        restoreTabs()
         refreshBookmarks()
         refreshHistory("")
         refreshDownloads()
         refreshPermissions()
+        repository.loadSessionSnapshot { result ->
+            restoreInitialSession(result)
+            repository.markSessionRunning()
+        }
     }
 
     fun newTab() {
         val tab = createTab(HOME_URL)
         activateTab(tab.id, persist = true)
+        scheduleSessionPersist()
     }
 
     fun selectTab(id: Long) {
@@ -143,6 +162,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (index < 0) return
 
         val closed = tabList.removeAt(index)
+        sessionStates.remove(id)
         closed.session.setActive(false)
         Handler(Looper.getMainLooper()).postDelayed({
             runCatching { closed.session.close() }
@@ -157,7 +177,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             val next = tabList[index.coerceAtMost(tabList.lastIndex)]
             activateTab(next.id, persist = false)
         }
-        persistState()
+        scheduleSessionPersist(delayMs = 0)
     }
 
     fun navigate(input: String) {
@@ -200,8 +220,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onHostStop() {
-        activeTab?.session?.flushSessionState()
-        persistState()
+        tabList.forEach { runCatching { it.session.flushSessionState() } }
+        persistSession(cleanShutdown = false)
+    }
+
+    fun onHostDestroy(isFinishing: Boolean) {
+        if (isFinishing) {
+            persistRunnable?.let { mainHandler.removeCallbacks(it) }
+            persistRunnable = null
+            persistSession(cleanShutdown = true)
+        }
+    }
+
+    fun dismissSessionNotice() {
+        sessionNotice = null
     }
 
     fun isCurrentPageBookmarked(): Boolean {
@@ -318,6 +350,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        persistRunnable?.let { mainHandler.removeCallbacks(it) }
+        persistRunnable = null
         tabList.forEach { runCatching { it.session.close() } }
         tabList.clear()
         repository.close()
@@ -325,14 +359,55 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         super.onCleared()
     }
 
-    private fun restoreTabs() {
-        val savedUrls = readSavedUrls()
-        val initialUrls = savedUrls.ifEmpty { listOf(HOME_URL) }.take(MAX_RESTORED_TABS)
-        val restored = initialUrls.map { createTab(it) }
-        if (restored.isEmpty()) return
+    private fun restoreInitialSession(result: SessionLoadResult) {
+        val notices = mutableListOf<String>()
 
-        val savedIndex = prefs.getInt(KEY_ACTIVE, 0).coerceIn(0, restored.lastIndex)
-        activateTab(restored[savedIndex].id, persist = false)
+        val restored = when {
+            result.session != null -> restoreSession(result.session)
+            result.keyInvalid -> false
+            else -> restoreLegacyUrls()
+        }
+
+        if (!restored) {
+            if (result.keyInvalid) clearLegacyPrefs()
+            val tab = createTab(HOME_URL)
+            activateTab(tab.id, persist = false)
+        }
+
+        if (result.session != null && !result.session.cleanShutdown) {
+            notices.add("Previous session was restored after an unexpected exit.")
+        }
+        result.error?.let { notices.add(it) }
+        if (notices.isNotEmpty()) {
+            sessionNotice = notices.joinToString(" ")
+        }
+        isRestoring = false
+        scheduleSessionPersist(delayMs = 0)
+    }
+
+    private fun restoreSession(session: StoredSession): Boolean {
+        if (session.tabs.isEmpty()) return false
+        val restored = session.tabs.map { stored ->
+            createTab(
+                url = stored.url,
+                sessionState = stored.sessionState,
+                title = stored.title,
+            )
+        }
+        val active = restored[SessionRecoveryPolicy.activeIndex(session.activeIndex, restored.size)]
+        activateTab(active.id, persist = false)
+        return true
+    }
+
+    private fun restoreLegacyUrls(): Boolean {
+        val savedUrls = readSavedUrls()
+        val savedIndex = prefs.getInt(KEY_ACTIVE, 0)
+        clearLegacyPrefs()
+        if (savedUrls.isEmpty()) return false
+        val restored = savedUrls.take(MAX_RESTORED_TABS).map { createTab(it) }
+        val activeIndex = savedIndex.coerceIn(0, restored.lastIndex)
+        activateTab(restored[activeIndex].id, persist = false)
+        return true
     }
 
     private fun readSavedUrls(): List<String> {
@@ -348,7 +423,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }.getOrDefault(emptyList())
     }
 
-    private fun createTab(url: String): BrowserTab {
+    private fun createTab(
+        url: String,
+        sessionState: String? = null,
+        title: String = "New tab",
+    ): BrowserTab {
         val id = nextTabId++
         val settings = GeckoSessionSettings.Builder()
             .useTrackingProtection(true)
@@ -357,9 +436,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         attachDelegates(session, id)
         session.open(runtime)
 
-        val tab = BrowserTab(id = id, session = session, currentUrl = url)
+        val tab = BrowserTab(id = id, session = session, currentUrl = url, title = title)
         tabList.add(tab)
-        session.loadUri(url)
+        val parsedState = sessionState?.let { GeckoSession.SessionState.fromString(it) }
+        if (parsedState != null) {
+            sessionStates[id] = sessionState
+            session.restoreState(parsedState)
+        } else {
+            session.loadUri(url)
+        }
         session.setActive(false)
         return tab
     }
@@ -368,7 +453,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         tabList.firstOrNull { it.id == activeTabId }?.session?.setActive(false)
         activeTabId = id
         tabList.firstOrNull { it.id == id }?.session?.setActive(true)
-        if (persist) persistState()
+        if (persist) scheduleSessionPersist()
     }
 
     private fun updateTab(id: Long, transform: (BrowserTab) -> BrowserTab) {
@@ -388,7 +473,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             ) {
                 if (url.isNullOrBlank()) return
                 updateTab(id) { it.copy(currentUrl = url) }
-                if (id == activeTabId) persistState()
+                scheduleSessionPersist()
             }
 
             override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
@@ -427,6 +512,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                         repository.recordHistory(url, tab.title)
                     }
                 }
+                session.flushSessionState()
+                scheduleSessionPersist()
+            }
+
+            override fun onSessionStateChange(
+                session: GeckoSession,
+                sessionState: GeckoSession.SessionState,
+            ) {
+                val serialized = sessionState.toString() ?: return
+                sessionStates[id] = serialized
+                scheduleSessionPersist()
             }
 
             override fun onProgressChange(session: GeckoSession, progress: Int) {
@@ -639,13 +735,34 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         else -> "Could not load this page (error ${error.code})."
     }
 
-    private fun persistState() {
-        val urls = JSONArray()
-        tabList.forEach { urls.put(it.currentUrl) }
+    private fun scheduleSessionPersist(delayMs: Long = 800L) {
+        if (isRestoring) return
+        persistRunnable?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            persistRunnable = null
+            persistSession(cleanShutdown = false)
+        }
+        persistRunnable = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun persistSession(cleanShutdown: Boolean) {
+        val drafts = tabList.map { tab ->
+            SessionTabDraft(
+                url = tab.currentUrl,
+                title = tab.title,
+                sessionState = sessionStates[tab.id],
+            )
+        }
+        if (drafts.isEmpty()) return
         val activeIndex = tabList.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
+        repository.saveSessionSnapshot(drafts, activeIndex, cleanShutdown)
+    }
+
+    private fun clearLegacyPrefs() {
         prefs.edit {
-            putString(KEY_URLS, urls.toString())
-            putInt(KEY_ACTIVE, activeIndex)
+            remove(KEY_URLS)
+            remove(KEY_ACTIVE)
         }
     }
 }

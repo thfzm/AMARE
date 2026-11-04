@@ -64,6 +64,7 @@ AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립�
 - [Windows 테스트](docs/WINDOWS_TESTING.md)
 - [Windows 11 검증 가이드](docs/WINDOWS_VERIFICATION.md)
 - [Android 다음 단계 설계](docs/ANDROID_NEXT_STEPS.md)
+- [Android Keystore/JNI 분석](docs/ANDROID_KEYSTORE.md)
 - [GitHub Actions 자동 검증](docs/GITHUB_ACTIONS.md)
 - [저장소 아키텍처](docs/STORAGE_ARCHITECTURE.md)
 - [공통 서비스 아키텍처](docs/SERVICE_ARCHITECTURE.md)
@@ -97,8 +98,8 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Phase 2: **Windows WinUI 3 + WebView2 브라우저 본체 + C ABI/C# Adapter 구현** — Windows Runner/실기기 검증 UNVERIFIED
 - Phase 2.1: **Windows 안정화 + 프로필/세션/탭 검증 하네스 + WebView2 probe + 성능/체크리스트** — Windows 실행 UNVERIFIED
 - Phase 2.2: **Windows 검증 게이트 + 통합 결과 JSON + RC 빌드/실행 절차 + GitHub 연결 안내** — Windows 실행 UNVERIFIED
-- Android Phase 5: **GeckoView 브라우저 셸 + 북마크/방문 기록/다운로드/사이트 권한 + 추적 보호** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED
-- Android 세션 전체 복구/Keystore: 설계 완료, 구현 예정 — [설계 문서](docs/ANDROID_NEXT_STEPS.md)
+- Android Phase 5: **GeckoView 셸 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + Keystore 보호** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED
+- Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
 Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow는 작성되었지만 실제 실행은 아직 확인되지 않았습니다. 결과는 [Phase 0.5 검증 결과](docs/PHASE0_5_REPORT.md)에 반영해야 합니다.

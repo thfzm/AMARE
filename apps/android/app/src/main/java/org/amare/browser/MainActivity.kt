@@ -28,6 +28,11 @@ class MainActivity : ComponentActivity() {
         browserViewModel.onHostStop()
         super.onStop()
     }
+
+    override fun onDestroy() {
+        browserViewModel.onHostDestroy(isFinishing)
+        super.onDestroy()
+    }
 }
 
 @Composable

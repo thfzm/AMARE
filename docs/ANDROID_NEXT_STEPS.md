@@ -1,8 +1,18 @@
 # Android 세션 복구 및 보안 개선 설계
 
-- 기준: `42054f4` 이후 Android 북마크/방문 기록/다운로드/권한 구현
-- 범위: 우선순위 4(세션 복구)와 5(보안)의 분석 및 구현 계획
+- 기준: Android 0.3.0 세션 복구/Keystore 구현
+- 범위: 우선순위 4(세션 복구)와 5(보안)
 - 원칙: GeckoView API를 우선 사용하고 Windows/Linux/Rust 코어는 이번 단계에서 변경하지 않음
+
+## 0. 0.3.0 구현 반영
+
+- `GeckoSession.SessionState`를 탭별로 저장하고 `restoreState()`로 복원
+- SQLite transaction으로 `session_snapshots`/`session_tabs` 교체
+- clean shutdown marker, unexpected exit 알림, URL fallback 구현
+- 세션 payload(URL/제목/SessionState)는 Android Keystore AES-256-GCM으로 암호화
+- Kotlin `AndroidKeystoreProtector` 구현, 키 무효화/삭제 오류 처리
+- Rust `AndroidKeystoreKeyProtector` JNI 연결은 Rust Android 런타임이 APK에 없어 보류
+- 에뮬레이터/실기기 검증은 미실행
 
 ## 1. 현재 상태
 

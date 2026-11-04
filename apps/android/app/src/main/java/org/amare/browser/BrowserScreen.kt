@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -113,6 +114,13 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onPermissions = { panel = BrowserPanel.PERMISSIONS },
         )
 
+        viewModel.sessionNotice?.let { notice ->
+            SessionNoticeBanner(
+                message = notice,
+                onDismiss = viewModel::dismissSessionNotice,
+            )
+        }
+
         if (activeTab?.isLoading == true) {
             LinearProgressIndicator(
                 progress = { activeTab.progress / 100f },
@@ -128,6 +136,10 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 activeTab.error?.let { message ->
                     ErrorOverlay(message = message, onRetry = viewModel::retry)
                 }
+            }
+
+            if (viewModel.isRestoring) {
+                RestoreOverlay()
             }
 
             panel?.let { selectedPanel ->
@@ -646,6 +658,47 @@ private fun PermissionDialog(
             TextButton(onClick = onDeny) { Text("Deny") }
         },
     )
+}
+
+@Composable
+private fun SessionNoticeBanner(message: String, onDismiss: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onDismiss) { Text("Dismiss") }
+        }
+    }
+}
+
+@Composable
+private fun RestoreOverlay() {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = "Restoring tabs...",
+                modifier = Modifier.padding(top = 16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 }
 
 @Composable

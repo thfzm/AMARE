@@ -34,7 +34,7 @@ jobs:
         run: gradle wrapper
       - name: Test and assemble debug
         working-directory: apps/android
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:

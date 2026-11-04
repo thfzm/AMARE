@@ -3,17 +3,22 @@ package org.amare.browser.data
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
+import android.database.sqlite.SQLiteDatabase
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import org.amare.browser.security.AndroidKeystoreProtector
+import org.amare.browser.security.SessionRecoveryPolicy
+import org.json.JSONObject
 
 class BrowserRepository(context: Context) {
     private val database = BrowserDatabase(context.applicationContext)
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val permissionCache = ConcurrentHashMap<String, String>()
+    private val sessionProtector = AndroidKeystoreProtector()
 
     @Volatile
     private var closed = false
@@ -25,6 +30,208 @@ class BrowserRepository(context: Context) {
                 loadPermissionCache()
             }.onFailure { Log.e(TAG, "Repository initialization failed", it) }
         }
+    }
+
+    fun saveSessionSnapshot(
+        tabs: List<SessionTabDraft>,
+        activeIndex: Int,
+        cleanShutdown: Boolean,
+        callback: () -> Unit = {},
+    ) {
+        background(
+            work = {
+                val db = database.writableDatabase
+                val encryptedTabs = tabs.mapIndexed { position, tab ->
+                    val payload = JSONObject()
+                        .put("url", tab.url)
+                        .put("title", tab.title)
+                        .put("session_state", tab.sessionState ?: JSONObject.NULL)
+                        .toString()
+                        .toByteArray(Charsets.UTF_8)
+                    Triple(
+                        position,
+                        sessionProtector.protect(SESSION_TAB_AAD, payload),
+                        tab,
+                    )
+                }
+
+                db.beginTransaction()
+                try {
+                    db.delete("session_tabs", "snapshot_id = ?", arrayOf(SNAPSHOT_ID.toString()))
+                    db.delete("session_snapshots", "id = ?", arrayOf(SNAPSHOT_ID.toString()))
+                    db.insertOrThrow(
+                        "session_snapshots",
+                        null,
+                        ContentValues().apply {
+                            put("id", SNAPSHOT_ID)
+                            put("clean_shutdown", if (cleanShutdown) 1 else 0)
+                            put("active_index", activeIndex.coerceAtLeast(0))
+                            put("updated_at", System.currentTimeMillis())
+                        },
+                    )
+                    encryptedTabs.forEach { (position, payload, _) ->
+                        db.insertOrThrow(
+                            "session_tabs",
+                            null,
+                            ContentValues().apply {
+                                put("snapshot_id", SNAPSHOT_ID)
+                                put("position", position)
+                                put("payload", payload)
+                            },
+                        )
+                    }
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            },
+            callback = { callback() },
+        )
+    }
+
+    fun loadSessionSnapshot(callback: (SessionLoadResult) -> Unit) {
+        background(
+            work = {
+                val db = database.readableDatabase
+                var cleanShutdown = true
+                var activeIndex = 0
+                var hasSnapshot = false
+                db.query(
+                    "session_snapshots",
+                    arrayOf("clean_shutdown", "active_index"),
+                    "id = ?",
+                    arrayOf(SNAPSHOT_ID.toString()),
+                    null,
+                    null,
+                    null,
+                    "1",
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        hasSnapshot = true
+                        cleanShutdown = cursor.getInt(0) != 0
+                        activeIndex = cursor.getInt(1)
+                    }
+                }
+                if (!hasSnapshot) return@background SessionLoadResult(null)
+
+                val tabs = mutableListOf<StoredSessionTab>()
+                var failedTabs = 0
+                var keyInvalid = false
+                var failure: String? = null
+                db.query(
+                    "session_tabs",
+                    arrayOf("position", "payload"),
+                    "snapshot_id = ?",
+                    arrayOf(SNAPSHOT_ID.toString()),
+                    null,
+                    null,
+                    "position ASC",
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val position = cursor.getInt(0)
+                        val payload = cursor.getBlob(1)
+                        try {
+                            val json = JSONObject(
+                                String(
+                                    sessionProtector.unprotect(SESSION_TAB_AAD, payload),
+                                    Charsets.UTF_8,
+                                ),
+                            )
+                            val url = json.optString("url")
+                            if (url.isBlank()) {
+                                failedTabs++
+                                continue
+                            }
+                            tabs.add(
+                                StoredSessionTab(
+                                    position = position,
+                                    url = url,
+                                    title = json.optString("title", url),
+                                    sessionState = json.optString("session_state")
+                                        .takeIf { it.isNotBlank() && it != "null" },
+                                ),
+                            )
+                        } catch (error: AndroidKeystoreProtector.KeystoreException) {
+                            failedTabs++
+                            failure = error.message
+                            if (error.kind == AndroidKeystoreProtector.ErrorKind.KEY_INVALIDATED) {
+                                keyInvalid = true
+                                break
+                            }
+                        } catch (_: Throwable) {
+                            failedTabs++
+                            failure = "A saved tab could not be decoded."
+                            Log.e(TAG, "Session tab decode failed; details suppressed")
+                        }
+                    }
+                }
+
+                if (keyInvalid) {
+                    clearSessionSnapshotLocked(db)
+                    return@background SessionLoadResult(
+                        session = null,
+                        error = "The saved session key is no longer available. Started a new session.",
+                        keyInvalid = true,
+                    )
+                }
+
+                if (tabs.isEmpty()) {
+                    clearSessionSnapshotLocked(db)
+                    return@background SessionLoadResult(
+                        session = null,
+                        error = failure ?: "No restorable tabs were found in the saved session.",
+                    )
+                }
+
+                SessionLoadResult(
+                    session = StoredSession(
+                        tabs = tabs,
+                        activeIndex = SessionRecoveryPolicy.activeIndex(activeIndex, tabs.size),
+                        cleanShutdown = cleanShutdown,
+                    ),
+                    error = if (failedTabs > 0) {
+                        "Some saved tabs could not be restored."
+                    } else {
+                        null
+                    },
+                )
+            },
+            callback = callback,
+        )
+    }
+
+    fun markSessionRunning() {
+        background(
+            work = {
+                database.writableDatabase.update(
+                    "session_snapshots",
+                    ContentValues().apply { put("clean_shutdown", 0) },
+                    "id = ?",
+                    arrayOf(SNAPSHOT_ID.toString()),
+                )
+            },
+        )
+    }
+
+    fun clearSessionSnapshot(callback: () -> Unit = {}) {
+        background(
+            work = {
+                val db = database.writableDatabase
+                db.beginTransaction()
+                try {
+                    clearSessionSnapshotLocked(db)
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            },
+            callback = { callback() },
+        )
+    }
+
+    private fun clearSessionSnapshotLocked(db: SQLiteDatabase) {
+        db.delete("session_tabs", "snapshot_id = ?", arrayOf(SNAPSHOT_ID.toString()))
+        db.delete("session_snapshots", "id = ?", arrayOf(SNAPSHOT_ID.toString()))
     }
 
     fun loadAllBookmarks(callback: (List<Bookmark>) -> Unit) {
@@ -440,5 +647,7 @@ class BrowserRepository(context: Context) {
 
     companion object {
         private const val TAG = "BrowserRepository"
+        private const val SNAPSHOT_ID = 1L
+        private const val SESSION_TAB_AAD = "amare.session.tab.v1"
     }
 }

@@ -17,7 +17,10 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 네트워크/SSL/HTTPS 오류 메시지와 재시도 UI
 - 화면 회전 시 ViewModel 기반 세션 유지
 - 앱 재실행 시 열린 탭 URL/활성 탭 복원
-- 백그라운드 전환 시 세션 상태 flush 및 URL 저장
+- 백그라운드 전환 시 세션 상태 flush
+- `GeckoSession.SessionState` 기반 전체 탭/back-forward 히스토리 복원
+- clean shutdown marker 및 비정상 종료 복구 알림
+- 세션 payload Android Keystore AES-256-GCM 암호화
 - SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
 - SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
 - GeckoView `onExternalResponse` 기반 다운로드 수신
@@ -34,8 +37,8 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 비밀번호/자동완성 저장
 - 웹 알림 실제 표시(사이트 권한 저장/요청은 구현됨)
 - `window.open()`/새 창 처리, WebExtension, AI 계층
-- 전체 GeckoSession 히스토리 복원(현재는 URL/활성 탭만 복원)
-- GeckoSession `onCrash`/`onKill` 자동 복구
+- GeckoSession `onCrash`/`onKill` 자동 복구(현재는 마지막 snapshot 기반 재시작 복구)
+- Rust AndroidKeystore JNI 연결(Rust Android 런타임 미탑재)
 - 릴리스 서명, Play Store/AAB 배포, Android Keystore 연동
 - 북마크/방문 기록의 DB 암호화
 
@@ -68,15 +71,15 @@ app/build/outputs/apk/debug/app-universal-debug.apk
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-arm64-v8a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-armeabi-v7a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-universal-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-arm64-v8a-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-armeabi-v7a-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.3.0-universal-debug.apk
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.2.0` (`versionCode 2`)
+- Version: `0.3.0` (`versionCode 3`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -119,17 +122,23 @@ adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-arm64-v8a-debug.
 ## 테스트
 
 ```text
-Android JVM unit tests: 14/14 PASS
+Android JVM unit tests: 19/19 PASS
   UrlNormalizerTest: 5
   DownloadNamingTest: 4
   PermissionRulesTest: 5
+  KeystoreBlobTest: 3
+  SessionRecoveryPolicyTest: 2
+Android instrumentation tests: compile PASS, 실행 UNVERIFIED
 Android lint: 0 errors / 4 warnings
 ```
 
-실제 기기에서 GeckoView 다운로드/권한/DB 동작은 아직 **UNVERIFIED**입니다.
+실제 기기에서 GeckoView 다운로드/권한/DB/세션 복구/Keystore 동작은 아직 **UNVERIFIED**입니다.
+에뮬레이터는 호스트가 aarch64이고 `/dev/kvm`이 없으며 공식 emulator 패키지가 x86_64이므로
+이 환경에서 실행할 수 없습니다.
 
-세션 전체 복구와 Keystore 적용 계획은
-[Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md)에 정리했습니다.
+세션/Keystore 구현과 JNI 경계는
+[Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md),
+[Android Keystore/JNI 분석](../docs/ANDROID_KEYSTORE.md)에 정리했습니다.
 
 ## 아키텍처 경계
 
