@@ -1,7 +1,7 @@
 # AMARE CI 재검증 보고서
 
-- 작성일: 2026-11-03
-- 기준 commit: `610075808dba77438ea8cc53602ac820a49aab8c` (CI fixes + probes)
+- 작성일: 2026-11-04
+- 기준 commit: `4bc9122` (Android CI green; 문서 갱신 전)
 - 저장소: `https://github.com/thfzm/AMARE`
 - branch: `master`
 - 이번 문서 갱신 시점: 모든 수정 commit/push 완료
@@ -15,12 +15,12 @@
 | 실제 GitHub Actions 실행 확인 | **PASS (조회)** |
 | Linux CI | **PASS** — 최신 run confirmed |
 | Windows CI | **PASS** — 최신 Runner run confirmed |
-| Android CI | **UNVERIFIED** — manual workflow dispatch 404 |
+| Android CI | **PASS** — `assembleDebug` confirmed |
 | Linux 로컬 재검증 | **PASS** |
 | Windows 로컬 재검증 | **UNVERIFIED** (Ubuntu ARM64에서 WinUI/WebView2 실행 불가) |
-| 발견한 실제 CI 문제 | **5** |
-| 수정한 문제 | **5** |
-| 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **PASS** |
+| 발견한 실제 CI 문제 | **8** |
+| 수정한 문제 | **8** |
+| 수정 후 GitHub Actions 재실행 | Linux **PASS**, Windows **PASS**, Android **PASS** |
 | Windows artifact | PASS — `windows-verification.json` 확인 |
 
 실제 실행:
@@ -33,7 +33,12 @@
 - 2차 수정 후 Windows run `41678971378` — **failure** (원인 확인)
 - 최종 Linux run `41683684971` — **success**
 - 최종 Windows run `41683684726` — **success**
-- Android run: **없음** (`gh workflow run` → 404)
+- Android 실패 run `41763417894` — setup-android의 `tools` package 오류
+- Android 실패 run `41763521434` — GeckoView artifact 미존재
+- Android 실패 run `41763729538` — GeckoView 159가 compileSdk 37 요구
+- 최종 Android run `41764105964` — **success**
+- 최종 Linux run `41764105986` — **success**
+- 최종 Windows run `41764106062` — **success** (Windows Server 2025)
 
 ---
 
@@ -178,27 +183,22 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ### B-3. Android CI
 
-확인:
+최신 결과: **PASS** (`41764105964`)
 
-- `.github/workflows/ci-android.yml`은 remote default branch에 존재
-- `actionlint`: PASS
-- trigger: `workflow_dispatch` only
+초기 상태:
 
-원인:
+- `.github/workflows/ci-android.yml`은 remote default branch에 존재했지만 Actions registry에 등록되지 않아 `gh workflow run`이 **HTTP 404**
+- trigger가 `workflow_dispatch` only라 push/PR 자동 실행 없음
 
-- push/PR 자동 실행 조건이 없음
-- Android는 Phase 5 manual scaffold이며 SDK/GeckoView 버전 고정 전 자동화하지 않는 기존 설계
-- `gh workflow run ci-android.yml --ref master` 시도 결과: **HTTP 404 workflow not found**
-- GitHub Actions workflows API에도 Android workflow가 등록되지 않음
-- dispatch-only workflow가 workflow registry에 등록되지 않은 상태였음
+수정 및 재검증:
 
-수정:
+1. `workflow` OAuth scope 추가 후 path trigger(`apps/android/**`, workflow 파일)를 push해 workflow 등록
+2. run `41763417894`: `android-actions/setup-android@v3` 기본 package `tools`가 없어 **failure**
+3. run `41763521434`: workflow에서 `platform-tools`, `platforms;android-36`, `build-tools;36.0.0` 설치 후 Gradle 진입, 존재하지 않는 GeckoView artifact `152.0.20260429091901`로 **failure**
+4. run `41763729538`: GeckoView `159.0.20261102144711`은 compileSdk 37/AGP 9.1 이상을 요구해 **failure**
+5. run `41764105964`: compileSdk 36과 호환되는 GeckoView `152.0.20260713164047`로 고정 후 `:app:assembleDebug` **success**
 
-- Android 관련 변경(`apps/android/**`, workflow 파일)에 push/PR trigger 추가
-- Gradle 8.13을 명시적으로 설치하도록 수정
-- `workflow_dispatch`는 유지
-- 최초 실행 결과는 다음 run에서 확인
-- 실제 Android 빌드: **UNVERIFIED** (run 결과 대기)
+Android build는 CI에서 검증됐지만 GeckoView 초기화, 에뮬레이터/기기 실행, Keystore는 여전히 **UNVERIFIED**입니다.
 
 ---
 
@@ -222,7 +222,7 @@ tools/windows-verify/WebViewHelpers.cs:130
 | PowerShell parser | **PASS** | `tools/verify-windows.ps1` |
 | Linux CI | **PASS** | `41683684971` |
 | Windows CI | **PASS** | `41683684726` (Windows Server 2025) |
-| Android CI | **UNVERIFIED** | workflow_dispatch only, run 없음 |
+| Android CI | **PASS** | `41764105964`, `:app:assembleDebug` |
 
 ---
 
@@ -234,7 +234,8 @@ tools/windows-verify/WebViewHelpers.cs:130
 | `tools/windows-verify/WebViewHelpers.cs` | WinForms WebView2 API compile error | `CreateAsync` 사용, `CoreWebView2.Close` 제거 |
 | `.github/workflows/ci-linux.yml` | backup CI 단계 누락 | backup tests/CI/benchmark 추가 |
 | `docs/CI_REVALIDATION_REPORT.md` | 결과 보고 | 이 문서 |
-| `.github/workflows/ci-android.yml` | Android workflow registry/trigger | path trigger + Gradle 8.13 |
+| `.github/workflows/ci-android.yml` | Android workflow registry/trigger | path trigger + Gradle 8.13 + SDK 36 packages |
+| `apps/android/app/build.gradle.kts` | GeckoView artifact/build 호환성 | 존재하며 compileSdk 36과 호환되는 GeckoView 152 고정 |
 | `crates/amare-platform/src/windows_dpapi.rs` | Windows clippy 실패 | 불필요한 mutable reference 제거 |
 | `tools/windows-verify/WebViewHelpers.cs` | CDP 응답 파싱 실패 | envelope/direct result tolerant parser |
 | `tools/verify-windows.ps1` | PowerShell 변수 충돌/Server 판정 | `$ciData`, Server 제외 windows_11, annotation |
@@ -249,11 +250,10 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ## E. 미해결 문제
 
-1. Android workflow는 remote default branch에 있으나 GitHub Actions가 등록하지 않아 `gh workflow run`이 404입니다.
-2. Android 실제 build는 UNVERIFIED입니다.
-3. Windows Runner는 Windows Server 2025이며 Windows 11 실기기 검증과 다릅니다.
-4. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
-5. crate 배포 path dependency version(R-05)은 별도입니다.
+1. Windows Runner는 Windows Server 2025이며 Windows 11 실기기 검증과 다릅니다.
+2. Android GeckoView 초기화/실기기 실행/Keystore는 UNVERIFIED입니다.
+3. WindowsAppSDK/WebView2 Runtime 패키징·고지(R-03)는 별도입니다.
+4. crate 배포 path dependency version(R-05)은 별도입니다.
 
 ---
 
@@ -272,7 +272,7 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ### Android
 
-- Android SDK/JDK/Gradle build
+- ~~Android SDK/JDK/Gradle build~~ — CI `:app:assembleDebug` PASS
 - GeckoView 초기화
 - 에뮬레이터/ARM64 기기 실행
 - Android Keystore
@@ -281,6 +281,6 @@ tools/windows-verify/WebViewHelpers.cs:130
 
 ## 결론
 
-Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 Windows DPAPI clippy, CDP 응답 파싱, PowerShell `$CI` 변수 충돌, headless input/viewport, tab lifecycle 상태 오류를 수정한 뒤 실제 Runner에서 **PASS**했습니다.
+Linux CI는 `src/bin` 누락 수정 후 실제 run에서 **PASS**했습니다. Windows CI는 Windows DPAPI clippy, CDP 응답 파싱, PowerShell `$CI` 변수 충돌, headless input/viewport, tab lifecycle 상태 오류를 수정한 뒤 실제 Runner에서 **PASS**했습니다. Android CI는 workflow 등록, SDK package, GeckoView artifact 호환성 문제를 순차적으로 수정한 뒤 `:app:assembleDebug` **PASS**했습니다.
 
-Windows Runner는 Windows Server 2025이므로 Windows 11 실기기 검증은 별도 **UNVERIFIED**입니다. Android CI는 manual-only workflow가 GitHub Actions에 등록되지 않아 실제 build를 실행하지 못했으므로 **UNVERIFIED**입니다.
+Windows Runner는 Windows Server 2025이므로 Windows 11 실기기 검증은 별도 **UNVERIFIED**입니다. Android는 build만 PASS이며 GeckoView 초기화와 실기기 실행은 **UNVERIFIED**입니다.

@@ -1,11 +1,11 @@
 # GitHub Actions 기반 Windows 자동 검증
 
-- 작성일: 2026-11-03
+- 작성일: 2026-11-04
 - 단계: Phase 2.2 Windows 검증 게이트/Release Candidate
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
-- 현재 상태: 2026-11-03 CI fix push 후 Linux는 **PASS**, Windows는 **FAIL** (내부 verification step). Android는 `workflow_dispatch` 전용이라 run이 없음.
-- 최신 run: [Linux #41683684971](https://github.com/thfzm/AMARE/actions/runs/41683684971) **success**, [Windows #41683684726](https://github.com/thfzm/AMARE/actions/runs/41683684726) **success** (Windows Server 2025)
+- 현재 상태: Linux **PASS**, Windows **PASS** (Runner, Windows Server 2025), Android **PASS** (`assembleDebug`). Windows 11 실기기/Android runtime은 **UNVERIFIED**.
+- 최신 run: [Linux #41764105986](https://github.com/thfzm/AMARE/actions/runs/41764105986) **success**, [Windows #41764106062](https://github.com/thfzm/AMARE/actions/runs/41764106062) **success**, [Android #41764105964](https://github.com/thfzm/AMARE/actions/runs/41764105964) **success**
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---
@@ -16,7 +16,7 @@
 |---|---|---|
 | Linux CI | `.github/workflows/ci-linux.yml` | PR, main/master push, 수동 |
 | Windows CI | `.github/workflows/ci-windows.yml` | PR, main/master push, 수동 |
-| Android scaffold | `.github/workflows/ci-android.yml` | 수동만 (Phase 5) |
+| Android scaffold | `.github/workflows/ci-android.yml` | `apps/android/**`/workflow path push·PR, 수동 |
 
 공통:
 
