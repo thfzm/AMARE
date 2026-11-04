@@ -39,9 +39,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: amare-android-debug
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: amare-android-release-unsigned
           path: |
-            apps/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-            apps/android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
-            apps/android/app/build/outputs/apk/debug/app-universal-debug.apk
+            apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
+            apps/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
