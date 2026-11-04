@@ -75,6 +75,8 @@ AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립�
 - [Android 웹 알림](docs/ANDROID_NOTIFICATIONS.md)
 - [Android 통합 테스트](docs/ANDROID_INTEGRATION_TESTS.md)
 - [Android 데이터 관리](docs/ANDROID_DATA_MANAGEMENT.md)
+- [Android 성능 측정](docs/ANDROID_PERFORMANCE.md)
+- [Android 1.0 출시 체크리스트](docs/ANDROID_1.0_RELEASE_CHECKLIST.md)
 - [GitHub Actions 자동 검증](docs/GITHUB_ACTIONS.md)
 - [저장소 아키텍처](docs/STORAGE_ARCHITECTURE.md)
 - [공통 서비스 아키텍처](docs/SERVICE_ARCHITECTURE.md)

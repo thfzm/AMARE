@@ -1,6 +1,6 @@
 # Android 데이터 관리 및 기본 브라우저
 
-- 기준: Android 0.10.0
+- 기준: Android 0.11.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 데이터 삭제 지원 범위

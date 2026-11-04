@@ -97,21 +97,25 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.10.0` (`versionCode 10`)
+- Version: `0.11.0` (`versionCode 11`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
-- Debug APK: 약 278 MiB (모든 ABI 포함 universal)
-- Release APK: 약 232 MiB, unsigned
-- Release AAB: 약 233 MiB, unsigned
+- Debug arm64 APK: 129,788,383 bytes
+- Debug universal APK: 291,409,957 bytes
+- Release arm64 APK: 92,637,924 bytes, unsigned
+- Release universal APK: 243,196,270 bytes, unsigned
+- Release AAB: 244,159,217 bytes, unsigned
 - 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
 - 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치, Android 13+ 알림 권한 및 GeckoView가 병합한 권한
 - 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
@@ -126,7 +130,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -188,7 +192,9 @@ software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation �
 [Android 새 창/탭](../docs/ANDROID_TABS.md),
 [Android 웹 알림](../docs/ANDROID_NOTIFICATIONS.md),
 [Android 통합 테스트](../docs/ANDROID_INTEGRATION_TESTS.md),
-[Android 데이터 관리](../docs/ANDROID_DATA_MANAGEMENT.md)에 정리했습니다.
+[Android 데이터 관리](../docs/ANDROID_DATA_MANAGEMENT.md),
+[Android 성능 측정](../docs/ANDROID_PERFORMANCE.md),
+[Android 1.0 출시 체크리스트](../docs/ANDROID_1.0_RELEASE_CHECKLIST.md)에 정리했습니다.
 
 실기기 테스트 패키지는
 `/home/ubuntu/AMARE/artifacts/android/device-test/`에 준비되어 있습니다.

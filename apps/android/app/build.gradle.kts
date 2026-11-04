@@ -8,13 +8,20 @@ android {
     namespace = "org.amare.browser"
     compileSdk = 36
 
+    val requestedAbi = providers.gradleProperty("amareAbi").orNull
+
     defaultConfig {
         applicationId = "org.amare.browser"
         minSdk = 29
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.10.0"
+        versionCode = 11
+        versionName = "0.11.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        if (requestedAbi != null) {
+            ndk {
+                abiFilters += requestedAbi
+            }
+        }
     }
 
     buildFeatures {

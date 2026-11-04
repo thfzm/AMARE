@@ -1,6 +1,6 @@
 # Android 보안 설계 및 검증 상태
 
-- 기준: Android 0.10.0
+- 기준: Android 0.11.0
 - 관련 문서: [데이터 암호화](ANDROID_DATA_ENCRYPTION.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [Release](ANDROID_RELEASE.md)
 
 ## 1. 보호 대상과 저장 위치

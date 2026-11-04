@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.10.0
+- 기준: Android 0.11.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -61,9 +61,9 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.10.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.11.0-debug-arm64.apk
 
-Debug APK SHA-256: `9387daeb552c3cc3f3eeda7d24137ed61f8737d681e500a8729bcf3c7cbf7222`
+Debug APK SHA-256: `974acaf0d05b0b6e052eaa19f2b8c3263fe606d9cd9a0380bea182ae2e22a2a3`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
@@ -128,7 +128,7 @@ credential, notification body를 로그에 기록하지 않습니다.
 
 ```bash
 tools/run-android-device-tests.sh \
-  artifacts/android/AMARE-0.10.0-debug.apk \
+  artifacts/android/AMARE-0.11.0-debug-arm64.apk \
   artifacts/android/AMARE-0.8.0-debug-androidTest.apk
 ```
 

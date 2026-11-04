@@ -1,6 +1,6 @@
 # Android Release 및 서명
 
-- 기준: Android 0.10.0
+- 기준: Android 0.11.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 빌드
@@ -19,8 +19,19 @@ export ANDROID_HOME=/home/ubuntu/android-sdk
 - Release `debuggable=false`
 - R8 mapping: `app/build/outputs/mapping/release/mapping.txt`
 
-ABI splits는 Android App Bundle과 함께 사용할 때 AGP 충돌이 있어 제거했습니다.
-현재 APK는 모든 ABI를 포함하는 universal APK입니다.
+기본 빌드는 모든 ABI를 포함하는 universal APK입니다. 로컬 최적화 빌드는
+`-PamareAbi=arm64-v8a`로 ARM64 전용 APK를 만들 수 있습니다. AAB는 표준 universal
+구성으로 빌드합니다.
+
+0.11.0 실제 크기:
+
+| 산출물 | 크기 |
+|---|---:|
+| arm64 Debug APK | 129,788,383 bytes |
+| universal Debug APK | 291,409,957 bytes |
+| arm64 Release APK | 92,637,924 bytes |
+| universal Release APK | 243,196,270 bytes |
+| Release AAB | 244,159,217 bytes |
 
 ## 2. 로컬 서명
 

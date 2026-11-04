@@ -1,6 +1,6 @@
 # Android 브라우저 완성도 및 다음 우선순위
 
-- 기준: Android 0.10.0
+- 기준: Android 0.11.0
 - 범위: 미구현 기능의 기존 구조 호환성 분석 및 우선순위 제안
 - 이번 단계에서는 아래 기능을 구현하지 않았습니다.
 
@@ -65,7 +65,26 @@
 4. **P3**: WebExtension, AI 패널
 5. **P4**: Research/Library 및 Rust 공통 서비스 Android 탑재
 
-## 4. 공통 원칙
+## 4. Android 1.0.0 출시 기준
+
+- 핵심 브라우징 정상 동작
+- 탭/세션 복구
+- 비밀번호 저장 및 자동완성
+- 웹 알림
+- 다운로드
+- 데이터 관리
+- HTTPS-only 및 외부 URL 보안
+- Keystore 및 DB 데이터 무결성
+- 실제 Android 기기 통합 테스트
+- Release 서명 검증
+- 설치/업데이트 검증
+- 치명적 보안 문제 없음
+
+현재 0.11.0은 위 항목 중 실제 기기/서명/성능 검증이 **UNVERIFIED**이므로
+1.0.0 출시 가능 상태가 아닙니다. WebExtension, AI 패널, Research/Library는
+Android 1.0.0 필수 범위에서 제외합니다.
+
+## 5. 공통 원칙
 
 - Windows/Rust 기능을 복제하지 말고 서비스 계약을 공유
 - 새 민감 데이터는 Keystore AES-GCM으로 보호하고 평문 fallback 금지
