@@ -68,8 +68,7 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
             adb shell df -h /data
-            cd apps/android
-            ./gradlew :app:connectedDebugAndroidTest -PamareAbiSplits=true --no-daemon
+            cd apps/android && ./gradlew :app:connectedDebugAndroidTest -PamareAbiSplits=true --no-daemon
       - name: Upload instrumentation reports
         if: always()
         uses: actions/upload-artifact@v4
