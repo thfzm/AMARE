@@ -64,11 +64,19 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1800
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
             adb shell df -h /data
-            cd apps/android && ./gradlew :app:connectedDebugAndroidTest -PamareAbiSplits=true --no-daemon
+            cd apps/android
+            ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PamareAbiSplits=true --no-daemon
+            adb uninstall org.amare.browser >/dev/null 2>&1 || true
+            adb uninstall org.amare.browser.test >/dev/null 2>&1 || true
+            adb install --no-streaming -r app/build/outputs/apk/debug/app-x86_64-debug.apk
+            adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            mkdir -p app/build/reports/manual
+            adb shell am instrument -w -r org.amare.browser.test/androidx.test.runner.AndroidJUnitRunner | tee app/build/reports/manual/instrumentation.txt
+            grep -q "OK (" app/build/reports/manual/instrumentation.txt
       - name: Upload instrumentation reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,5 +85,6 @@ jobs:
           path: |
             apps/android/app/build/reports/androidTests/connected
             apps/android/app/build/outputs/androidTest-results/connected
+            apps/android/app/build/reports/manual
           if-no-files-found: warn
           retention-days: 14
