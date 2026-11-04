@@ -88,6 +88,7 @@ class PasswordRepositoryTest {
     @Test
     fun corruptedPayloadIsSkippedAndReported() {
         val repo = PasswordRepository(context, TEST_DATABASE, TEST_ALIAS).also { repository = it }
+        PasswordDatabase(context, TEST_DATABASE).writableDatabase.close()
         val db = SQLiteDatabase.openDatabase(
             context.getDatabasePath(TEST_DATABASE).path,
             null,

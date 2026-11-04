@@ -27,11 +27,14 @@ export ANDROID_HOME=/home/ubuntu/android-sdk
 
 | 산출물 | 크기 |
 |---|---:|
-| arm64 Debug APK | 129,789,047 bytes |
-| universal Debug APK | 291,410,621 bytes |
-| arm64 Release APK | 92,637,924 bytes |
-| universal Release APK | 243,196,266 bytes |
-| Release AAB | 244,159,368 bytes |
+| arm64 Debug APK | 129,788,911 bytes |
+| universal Debug APK | 291,410,485 bytes |
+| arm64 Release APK | 92,637,772 bytes |
+| universal Release APK | 243,196,114 bytes |
+| Release AAB | 244,159,332 bytes |
+
+위 수치는 2026-11-05 실기기 검증 수정 후 재빌드 결과입니다. Release 산출물은
+서명 키가 없어 모두 unsigned입니다.
 
 ## 2. 로컬 서명
 

@@ -1,7 +1,7 @@
 # Android 비밀번호 관리자 및 자동완성
 
 - 기준: Android 0.6.0
-- 상태: 구현 및 JVM 테스트 PASS, 기기/Keystore 실행 검증 UNVERIFIED
+- 상태: 구현 및 JVM 테스트 PASS, 실기기 repository/Keystore/DB 테스트 PASS, GeckoView 자동완성 UI UNVERIFIED
 - 관련 문서: [보안](ANDROID_SECURITY.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 저장소 경계
@@ -123,7 +123,7 @@ JVM:
 - `PasswordRulesTest`: origin 검증, cross-origin form 거부, node domain, username 정규화 PASS
 - 기존 JVM 19개 + 신규 4개 = 23개 PASS
 
-Instrumentation 작성(실행 UNVERIFIED):
+Instrumentation 실기기 실행(2026-11-05, 13/13 PASS):
 
 - 비밀번호 암호화/저장/목록/수정/삭제
 - origin별 계정 분리
@@ -133,6 +133,6 @@ Instrumentation 작성(실행 UNVERIFIED):
 - 키 삭제 시 복호화 실패/notice
 - 기존 Keystore/Session/Migration 테스트
 
-실제 기기/안정적인 Emulator가 없어 instrumentation 실행은 UNVERIFIED입니다.
-특히 GeckoView 로그인 폼 감지, 저장 prompt, 자동완성 banner는 실제 기기에서 반드시
-검증해야 합니다.
+PasswordRepository/Keystore/DB/Session/Migration instrumentation은 Lenovo TB138FC
+(Android 14)에서 13/13 PASS했습니다. 다만 GeckoView 로그인 폼 감지, 저장 prompt,
+자동완성 banner의 UI 흐름은 아직 **UNVERIFIED**이므로 실제 사이트에서 추가 검증이 필요합니다.

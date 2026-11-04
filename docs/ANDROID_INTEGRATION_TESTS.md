@@ -17,10 +17,10 @@
 현재 환경:
 
 - JVM tests: 33/33 PASS
-- Instrumentation: compile-only
-- 실제 기기: 없음
-- hosted CI emulator: KVM 없음, ADB 불안정
-- 실제 기기/self-hosted KVM runner: 미확보
+- Instrumentation: **13/13 실기기 PASS**
+- 실제 기기: Lenovo TB138FC, Android 14/SDK 34, arm64-v8a
+- hosted CI emulator: KVM 없음, ADB 불안정 (CI는 compile-only 유지)
+- self-hosted KVM runner: 미확보
 
 ## 2. 통합 시나리오
 
@@ -37,8 +37,10 @@
 자동화:
 
 - 탭/세션 정책과 SessionRecoveryPolicy: JVM PASS
-- Session snapshot DB: Instrumentation compile
-- 실제 GeckoView 렌더링/입력/복구: Device UNVERIFIED
+- Session snapshot DB: **Instrumentation PASS**
+- 실제 GeckoView 렌더링: **Device PASS** (DuckDuckGo/example.com)
+- 실제 GeckoView 입력: Device UNVERIFIED
+- 세션 복구/force-stop: **Device PASS**
 - HTTPS-only 실제 차단/해제: Device UNVERIFIED
 
 ### B. 새 창
@@ -86,7 +88,7 @@
 자동화:
 
 - PasswordRules: JVM PASS
-- PasswordRepository encryption/list/update/delete: Instrumentation compile
+- PasswordRepository encryption/list/update/delete: **Instrumentation PASS**
 - GeckoView Autofill/Login prompt: Device UNVERIFIED
 
 ### E. HTTPS/설정
@@ -117,7 +119,9 @@
 자동화:
 
 - 외부 URL scheme/host 검증: JVM PASS
-- 데이터 삭제/default browser role/reopen: Device UNVERIFIED
+- 명시적 ACTION_VIEW 외부 링크: **Device PASS**
+- 암시적 기본 브라우저 role: Device UNVERIFIED
+- 데이터 삭제/reopen: Device UNVERIFIED
 
 ### G. 보안/데이터
 
@@ -132,8 +136,8 @@
 자동화:
 
 - Keystore blob format: JVM PASS
-- Keystore/repository/migration: Instrumentation compile
-- 실제 실행: Device UNVERIFIED
+- Keystore/repository/migration: **Instrumentation 13/13 PASS**
+- 실제 실행: **Device PASS**
 
 ## 3. Debug 진단 화면
 

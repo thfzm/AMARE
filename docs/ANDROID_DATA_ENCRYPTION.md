@@ -69,13 +69,14 @@ SQL LIKE로 검색할 수 없는 암호화 payload 대신:
 
 | 항목 | 상태 |
 |---|---|
-| AES-GCM round-trip | instrumentation 작성, 실행 UNVERIFIED |
-| IV/ciphertext 변조 거부 | instrumentation 작성, 실행 UNVERIFIED |
-| AAD 불일치 거부 | instrumentation 작성, 실행 UNVERIFIED |
-| 잘못된 키 복호화 거부 | instrumentation 작성, 실행 UNVERIFIED |
-| 키 삭제/무효화 | instrumentation 작성, 실행 UNVERIFIED |
-| 세션 snapshot 복구 | instrumentation 작성, 실행 UNVERIFIED |
-| 평문 DB 마이그레이션 | instrumentation 작성, 실행 UNVERIFIED |
+| AES-GCM round-trip | **Instrumentation PASS** (실기기) |
+| IV/ciphertext 변조 거부 | **Instrumentation PASS** |
+| AAD 불일치 거부 | **Instrumentation PASS** |
+| 잘못된 키 복호화 거부 | **Instrumentation PASS** |
+| 키 삭제/무효화 | **Instrumentation PASS** |
+| 세션 snapshot 복구 | **Instrumentation PASS** |
+| 평문 DB 마이그레이션/신규 설치 평문 미생성 | **Instrumentation PASS** |
 | Keystore blob format | JVM PASS |
 
-이 환경에는 Android 기기/에뮬레이터가 없어 instrumentation 테스트를 실행하지 못했습니다.
+2026-11-05 Lenovo TB138FC(Android 14)에서 13/13 PASS했습니다. 실제 TEE/StrongBox,
+기기 잠금 변경에 따른 키 무효화 UI, 재설치 동작은 추가 검증이 필요합니다.

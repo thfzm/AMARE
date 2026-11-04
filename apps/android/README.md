@@ -1,7 +1,8 @@
 # AMARE Android
 
-GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 정적 검증은 완료했고,
-실제 기기 실행은 **UNVERIFIED**입니다.
+GeckoView 기반 Android 브라우저 셸입니다. Debug/Release/AAB 빌드, 정적 검증,
+실기기 Instrumentation 13/13, 주요 UI smoke 테스트를 완료했습니다. 일부 고급 UI
+시나리오와 Release 서명은 아직 **UNVERIFIED/BLOCKED**입니다.
 
 ## 구현 상태
 
@@ -50,9 +51,11 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 
 ### 미구현 또는 미검증
 
-- 실제 기기에서의 GeckoView 초기화/렌더링/입력: **UNVERIFIED**
-- 실제 기기에서의 로그인 폼 감지/저장 prompt/자동완성 동작
-- 실제 기기에서의 웹 알림 표시/클릭 및 `window.open` 동작
+- 실제 기기 GeckoView 초기화/HTTPS 렌더링: **PASS**
+- 실제 기기 주소창 입력/뒤로/앞으로/새로고침: **UNVERIFIED**
+- 실제 기기에서의 로그인 폼 감지/저장 prompt/자동완성 동작: **UNVERIFIED**
+- 실제 기기에서의 웹 알림 표시/클릭 및 `window.open` 동작: **UNVERIFIED**
+- 암시적 기본 브라우저 role: **UNVERIFIED** (명시적 외부 VIEW는 PASS)
 - WebExtension, AI 계층
 - Rust AndroidKeystore JNI 연결(Rust Android 런타임 미탑재)
 - 실제 배포 서명 키 적용 및 Play Store 업로드
@@ -111,11 +114,11 @@ app/build/outputs/bundle/release/app-release.aab
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
-- Debug arm64 APK: 129,789,047 bytes
-- Debug universal APK: 291,410,621 bytes
-- Release arm64 APK: 92,637,924 bytes, unsigned
-- Release universal APK: 243,196,266 bytes, unsigned
-- Release AAB: 244,159,368 bytes, unsigned
+- Debug arm64 APK: 129,788,911 bytes
+- Debug universal APK: 291,410,485 bytes
+- Release arm64 APK: 92,637,772 bytes, unsigned
+- Release universal APK: 243,196,114 bytes, unsigned
+- Release AAB: 244,159,332 bytes, unsigned
 - 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
 - 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치, Android 13+ 알림 권한 및 GeckoView가 병합한 권한
 - 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
@@ -169,16 +172,18 @@ Android JVM unit tests: 33/33 PASS
   NotificationRulesTest: 2
   PopupRulesTest: 1
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: compile PASS, 실행 UNVERIFIED (12 tests, hosted CI에 KVM 없음)
-Android lint: 0 errors / 7 warnings
+Android instrumentation tests: 13/13 PASS (Lenovo TB138FC, Android 14, arm64-v8a)
+Android lint: 0 errors / 8 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
-실제 기기에서 GeckoView 다운로드/권한/DB/세션 복구/Keystore 동작은 아직 **UNVERIFIED**입니다.
+실기기에서 DB migration/Keystore AES-GCM/비밀번호 repository/세션 snapshot은
+Instrumentation 13/13로 PASS했습니다. GeckoView 다운로드 파일 열기/권한/자동완성
+UI/웹 알림은 아직 **UNVERIFIED**입니다.
 Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
 HTTPS-only 기본값은 켜짐이며, 보안 패널에서 사용자가 해제할 수 있습니다.
 로컬 호스트는 aarch64이며 `/dev/kvm`이 없습니다. GitHub hosted runner도 KVM 권한이 없어
-software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation 실행은 UNVERIFIED입니다.
+CI instrumentation은 compile-only이며, 실기기 실행 결과와 구분합니다.
 
 세션/Keystore 구현과 JNI 경계는
 [Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md),

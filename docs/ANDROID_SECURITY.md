@@ -163,14 +163,18 @@ content를 자동 허용하거나 우회하지 않습니다. GeckoView가 제공
 | 항목 | 상태 |
 |---|---|
 | JVM Keystore blob format/version | PASS |
-| AES-GCM round-trip | instrumentation compile PASS, 실행 UNVERIFIED (KVM/기기 없음) |
-| 잘못된 키/IV/ciphertext/AAD 거부 | instrumentation |
-| 키 삭제/무효화 | instrumentation |
-| DB migration transaction | instrumentation |
+| AES-GCM round-trip | **Instrumentation PASS** (실기기) |
+| 잘못된 키/IV/ciphertext/AAD 거부 | **Instrumentation PASS** |
+| 키 삭제/무효화 | **Instrumentation PASS** |
+| DB migration transaction | **Instrumentation PASS** |
+| 신규 설치 평문 테이블 미생성 | **Instrumentation PASS** |
+| 빈 legacy 테이블의 encrypted 데이터 보존 | **Instrumentation PASS** |
 | 실제 강한 보안 키(StrongBox) | UNVERIFIED |
 | 실제 기기 로그/백업 정책 | UNVERIFIED |
-| 비밀번호 저장소 AES-GCM | instrumentation 작성, 실행 UNVERIFIED |
-| 비밀번호 origin 격리 | JVM PasswordRules PASS, 기기 UNVERIFIED |
+| 비밀번호 저장소 AES-GCM | **Instrumentation PASS** |
+| 비밀번호 origin 격리 | JVM PasswordRules + **Instrumentation PASS** |
 | 키 무효화 후 사용자 초기화 UI | 미구현 |
 
-실행되지 않은 instrumentation 테스트는 PASS로 표시하지 않습니다.
+실행되지 않은 instrumentation 테스트는 PASS로 표시하지 않습니다. 2026-11-05
+Lenovo TB138FC(Android 14)에서 13/13 PASS를 확인했습니다. GeckoView 자동완성 UI와
+StrongBox/백업 정책은 여전히 UNVERIFIED입니다.

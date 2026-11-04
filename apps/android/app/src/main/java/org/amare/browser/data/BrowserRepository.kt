@@ -798,64 +798,72 @@ class BrowserRepository(
         db.beginTransaction()
         try {
             if (hasBookmarks) {
-                db.delete("bookmarks_enc", null, null)
-                bookmarks.forEach { (payload, _, createdAt) ->
-                    db.insertOrThrow(
-                        "bookmarks_enc",
-                        null,
-                        ContentValues().apply {
-                            put("payload", payload)
-                            put("created_at", createdAt)
-                        },
-                    )
+                if (bookmarks.isNotEmpty()) {
+                    db.delete("bookmarks_enc", null, null)
+                    bookmarks.forEach { (payload, _, createdAt) ->
+                        db.insertOrThrow(
+                            "bookmarks_enc",
+                            null,
+                            ContentValues().apply {
+                                put("payload", payload)
+                                put("created_at", createdAt)
+                            },
+                        )
+                    }
                 }
                 db.execSQL("DROP TABLE IF EXISTS $LEGACY_BOOKMARKS")
             }
             if (hasHistory) {
-                db.delete("history_enc", null, null)
-                history.forEach { (payload, _, visitedAt) ->
-                    db.insertOrThrow(
-                        "history_enc",
-                        null,
-                        ContentValues().apply {
-                            put("payload", payload)
-                            put("visited_at", visitedAt)
-                        },
-                    )
+                if (history.isNotEmpty()) {
+                    db.delete("history_enc", null, null)
+                    history.forEach { (payload, _, visitedAt) ->
+                        db.insertOrThrow(
+                            "history_enc",
+                            null,
+                            ContentValues().apply {
+                                put("payload", payload)
+                                put("visited_at", visitedAt)
+                            },
+                        )
+                    }
                 }
                 db.execSQL("DROP TABLE IF EXISTS $LEGACY_HISTORY")
             }
             if (hasDownloads) {
-                db.delete("downloads_enc", null, null)
-                downloads.forEach { download ->
-                    db.insertOrThrow(
-                        "downloads_enc",
-                        null,
-                        ContentValues().apply {
-                            put("payload", download.payload)
-                            put("received_bytes", download.receivedBytes)
-                            put("total_bytes", download.totalBytes)
-                            put("status", download.status)
-                            put("created_at", download.createdAt)
-                        },
-                    )
+                if (downloads.isNotEmpty()) {
+                    db.delete("downloads_enc", null, null)
+                    downloads.forEach { download ->
+                        db.insertOrThrow(
+                            "downloads_enc",
+                            null,
+                            ContentValues().apply {
+                                put("payload", download.payload)
+                                put("received_bytes", download.receivedBytes)
+                                put("total_bytes", download.totalBytes)
+                                put("status", download.status)
+                                put("created_at", download.createdAt)
+                            },
+                        )
+                    }
                 }
                 db.execSQL("DROP TABLE IF EXISTS $LEGACY_DOWNLOADS")
             }
             if (hasPermissions) {
-                db.delete("site_permissions_enc", null, null)
-                permissions.forEach { permission ->
-                    db.insertWithOnConflict(
-                        "site_permissions_enc",
-                        null,
-                        ContentValues().apply {
-                            put("origin_key", permission.originKey)
-                            put("permission", permission.permission)
-                            put("payload", permission.payload)
-                            put("updated_at", permission.updatedAt)
-                        },
-                        SQLiteDatabase.CONFLICT_REPLACE,
-                    )
+                if (permissions.isNotEmpty()) {
+                    db.delete("site_permissions_enc", null, null)
+                    permissions.forEach { permission ->
+                        db.insertWithOnConflict(
+                            "site_permissions_enc",
+                            null,
+                            ContentValues().apply {
+                                put("origin_key", permission.originKey)
+                                put("permission", permission.permission)
+                                put("payload", permission.payload)
+                                put("updated_at", permission.updatedAt)
+                            },
+                            SQLiteDatabase.CONFLICT_REPLACE,
+                        )
+                    }
                 }
                 db.execSQL("DROP TABLE IF EXISTS $LEGACY_PERMISSIONS")
             }

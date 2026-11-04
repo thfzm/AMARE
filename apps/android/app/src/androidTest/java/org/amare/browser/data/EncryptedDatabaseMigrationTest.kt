@@ -104,6 +104,67 @@ class EncryptedDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun emptyLegacyPermissionTableDoesNotEraseEncryptedPermissions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase(TEST_DATABASE)
+
+        val first = BrowserRepository(context, TEST_DATABASE)
+        try {
+            val saved = CountDownLatch(1)
+            first.setPermission("https://keep.example", "camera", "allow") {
+                saved.countDown()
+            }
+            assertTrue(saved.await(15, TimeUnit.SECONDS))
+        } finally {
+            first.close()
+        }
+
+        val db = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(TEST_DATABASE).path,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        )
+        try {
+            createEmptyLegacyPermissionTable(db)
+        } finally {
+            db.close()
+        }
+
+        val second = BrowserRepository(context, TEST_DATABASE)
+        try {
+            val loaded = CountDownLatch(1)
+            var permissions: List<SitePermissionRecord> = emptyList()
+            second.loadPermissions {
+                permissions = it
+                loaded.countDown()
+            }
+            assertTrue(loaded.await(15, TimeUnit.SECONDS))
+            assertEquals(1, permissions.size)
+            assertEquals("https://keep.example", permissions[0].origin)
+            assertEquals("camera", permissions[0].permission)
+            assertEquals("allow", permissions[0].decision)
+            assertFalse(tableExists("site_permissions"))
+        } finally {
+            second.close()
+            context.deleteDatabase(TEST_DATABASE)
+        }
+    }
+
+    private fun createEmptyLegacyPermissionTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE site_permissions (
+                origin TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (origin, permission)
+            )
+            """.trimIndent(),
+        )
+    }
+
     private fun createLegacyTables(db: SQLiteDatabase) {
         db.execSQL(
             """

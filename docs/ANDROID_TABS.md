@@ -68,6 +68,8 @@ window.open() / target="_blank"
 |---|---|
 | Popup URL 정책 JVM 테스트 | PASS |
 | Popup rate limiter JVM 테스트 | PASS |
+| 탭 생성/전환/종료 실기기 | PASS |
+| 기존 세션 force-stop 복원 | PASS |
 | window.open 실제 GeckoView 동작 | UNVERIFIED |
 | target="_blank" 실제 동작 | UNVERIFIED |
 | 팝업 차단 prompt 실제 동작 | UNVERIFIED |

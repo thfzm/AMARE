@@ -19,17 +19,6 @@ class BrowserDatabase(
 
     override fun onCreate(db: SQLiteDatabase) {
         createEncryptedTables(db)
-        db.execSQL(
-            """
-            CREATE TABLE site_permissions (
-                origin TEXT NOT NULL,
-                permission TEXT NOT NULL,
-                decision TEXT NOT NULL,
-                updated_at INTEGER NOT NULL,
-                PRIMARY KEY (origin, permission)
-            )
-            """.trimIndent(),
-        )
         createSessionTables(db)
     }
 

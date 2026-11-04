@@ -13,6 +13,9 @@
 로컬에서 `./gradlew :app:connectedDebugAndroidTest`를 실행하면
 `No connected devices!`로 실패합니다. 이는 테스트 실패가 아니라 실행 환경 부재입니다.
 
+2026-11-05에는 원격 ADB로 연결한 Lenovo TB138FC(Android 14/SDK 34, arm64-v8a)에서
+Instrumentation 13개를 실제 실행해 **13/13 PASS**를 확인했습니다.
+
 ## 2. GitHub Actions Emulator 시도 결과
 
 Android CI에서 `reactivecircus/android-emulator-runner@v2`로 API 34 x86_64 AVD 실행을
@@ -25,7 +28,8 @@ Android CI에서 `reactivecircus/android-emulator-runner@v2`로 API 34 x86_64 AV
 - 테스트 APK 설치 전에 emulator 연결이 불안정해짐
 
 따라서 hosted runner에서 instrumentation 실행은 신뢰할 수 없으며, CI는 현재
-**test APK compile-only**로 유지합니다. 실행 결과는 UNVERIFIED입니다.
+**test APK compile-only**로 유지합니다. CI 결과는 계속 compile-only로 표기하고,
+실기기 실행 결과와 구분합니다.
 
 실행 가능한 대안:
 
@@ -43,6 +47,7 @@ PasswordRepositoryTest
 ```
 
 실행 결과는 CI에서 compile-only이며, 기기/AVD가 연결된 환경에서만 PASS로 표시합니다.
+2026-11-05 실기기 실행 결과는 **13/13 PASS**입니다.
 
 ## 3. 실제 기기에서만 검증 가능한 항목
 
@@ -63,7 +68,7 @@ export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
 adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
 
-Debug APK SHA-256: `a91782adea3bdc81ab2361294b8941a826040a168beb0db0daca1902e0cf6222`
+Debug APK SHA-256: `0d6edd2c8441796b0549e326c8aea031d16b76982cb1a856d2abfb60a13d1959`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
@@ -129,20 +134,29 @@ credential, notification body를 로그에 기록하지 않습니다.
 ```bash
 tools/run-android-device-tests.sh \
   artifacts/android/AMARE-0.12.0-debug-arm64.apk \
-  artifacts/android/AMARE-0.8.0-debug-androidTest.apk
+  artifacts/android/AMARE-0.12.0-debug-androidTest.apk
 ```
 
 이 스크립트는 ADB 기기가 없으면 실패를 명확히 표시하고 UNVERIFIED로 남깁니다.
 
 ## 5.4 0.12.0 실행 결과
 
-- ADB 연결 기기: 없음
-- 자동 스크립트 결과: **UNVERIFIED**
-- 결과 보고서: `artifacts/android/device-test/results/`
-- 원인: USB/무선 ADB 기기 미연결
-- 실제 기기 테스트: **UNVERIFIED**
+- ADB 연결 기기: Lenovo TB138FC (Android 14/SDK 34, arm64-v8a)
+- 자동 스크립트 결과: **PASS**
+- Instrumentation: **13/13 PASS**
+- 결과 보고서: `artifacts/android/device-test/results/device-test-20261105-020023.md`
+- 상세 보고서: `artifacts/android/device-test/results/AMARE-0.12.0-real-device-validation.md`
+- UI smoke: 앱 실행, HTTPS 렌더링, 세션 복원, 탭 생성/종료, 명시적 외부 VIEW, Bookmarks/History/Downloads/Settings 화면 PASS
+- UNVERIFIED: 주소창 입력, 뒤로/앞으로/새로고침, 기본 브라우저 role, 팝업, 웹 알림, 자동완성 UI, 다운로드 파일 열기, 데이터 삭제, Mixed Content, 지속 성능
+- 데이터 보존: 두 APK 모두 `-r` 설치, uninstall/pm clear/factory reset 미수행
 
 Instrumentation 테스트는 정상 앱 데이터를 지우지 않도록 격리 DB 이름과 테스트 전용 Keystore alias를 사용합니다.
+
+실기기 검증 중 발견한 테스트/스키마 결함:
+
+1. 신규 DB `onCreate`가 legacy plaintext `site_permissions`를 생성해 migration 테스트가 충돌했습니다. 신규 DB에서는 해당 테이블을 만들지 않도록 수정했습니다.
+2. 비밀번호 손상 payload 테스트가 DB 생성 전에 raw SQLite를 열어 실패했습니다. 테스트에서 `PasswordDatabase`를 먼저 생성하도록 수정했습니다.
+3. 빈 legacy plaintext 테이블이 존재할 때 migration이 해당 encrypted 테이블을 삭제할 수 있었습니다. 이제 빈 legacy 테이블은 encrypted 데이터를 교체하지 않고 drop만 하며, `emptyLegacyPermissionTableDoesNotEraseEncryptedPermissions` 회귀 테스트를 추가했습니다.
 
 ## 6. 결과 표기 원칙
 
