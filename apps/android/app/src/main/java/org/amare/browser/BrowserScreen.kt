@@ -74,6 +74,7 @@ private enum class BrowserPanel(val title: String) {
     DOWNLOADS("Downloads"),
     PERMISSIONS("Site permissions"),
     PASSWORDS("Passwords"),
+    DIAGNOSTICS("Diagnostics"),
 }
 
 @SuppressLint("InlinedApi")
@@ -138,6 +139,11 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onDownloads = { panel = BrowserPanel.DOWNLOADS },
             onPermissions = { panel = BrowserPanel.PERMISSIONS },
             onPasswords = { panel = BrowserPanel.PASSWORDS },
+            onDiagnostics = if (BuildConfig.DEBUG) {
+                { panel = BrowserPanel.DIAGNOSTICS }
+            } else {
+                null
+            },
         )
 
         viewModel.sessionNotice?.let { notice ->
@@ -295,6 +301,7 @@ private fun LibraryBar(
     onDownloads: () -> Unit,
     onPermissions: () -> Unit,
     onPasswords: () -> Unit,
+    onDiagnostics: (() -> Unit)?,
 ) {
     Row(
         modifier = Modifier
@@ -309,6 +316,9 @@ private fun LibraryBar(
         TextButton(onClick = onDownloads) { Text("Downloads") }
         TextButton(onClick = onPermissions) { Text("Permissions") }
         TextButton(onClick = onPasswords) { Text("Passwords") }
+        onDiagnostics?.let { onClick ->
+            TextButton(onClick = onClick) { Text("Diagnostics") }
+        }
     }
 }
 
@@ -442,6 +452,10 @@ private fun BrowserPanelOverlay(
                     onRemove = viewModel::removeSitePermission,
                 )
                 BrowserPanel.PASSWORDS -> PasswordsPanel(viewModel)
+                BrowserPanel.DIAGNOSTICS -> DiagnosticsPanel(
+                    viewModel = viewModel,
+                    onClose = onClose,
+                )
             }
         }
     }

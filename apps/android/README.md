@@ -28,6 +28,7 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - `window.open()`/`target="_blank"` 새 탭 생성, URL allowlist, rate limit
 - 사이트별 웹 알림 권한, Android 13+ OS 알림 권한, NotificationChannel
 - 알림 클릭 시 origin 검증 후 기존 탭/새 탭 이동
+- Debug 전용 Diagnostics 화면(Release에는 미노출): GeckoRuntime/Keystore/DB/알림 권한 상태
 - `GeckoSession` crash/kill 시 새 세션 생성 + 마지막 SessionState/URL 복구(반복 crash 제한)
 - SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
 - SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
@@ -88,15 +89,15 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.7.0-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.7.0-release-unsigned.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.7.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-release-unsigned.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.7.0` (`versionCode 7`)
+- Version: `0.8.0` (`versionCode 8`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
@@ -117,7 +118,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.7.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -174,7 +175,11 @@ software emulation으로 부팅했지만 ADB 연결이 끊겨 instrumentation �
 [Android Release](../docs/ANDROID_RELEASE.md),
 [Android 비밀번호 관리자](../docs/ANDROID_PASSWORD_MANAGER.md),
 [Android 새 창/탭](../docs/ANDROID_TABS.md),
-[Android 웹 알림](../docs/ANDROID_NOTIFICATIONS.md)에 정리했습니다.
+[Android 웹 알림](../docs/ANDROID_NOTIFICATIONS.md),
+[Android 통합 테스트](../docs/ANDROID_INTEGRATION_TESTS.md)에 정리했습니다.
+
+실기기 테스트 패키지는
+`/home/ubuntu/AMARE/artifacts/android/device-test/`에 준비되어 있습니다.
 
 ## 아키텍처 경계
 

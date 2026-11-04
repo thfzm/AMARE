@@ -233,6 +233,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun runtimeInitialized(): Boolean = sharedRuntime != null
+
     fun newTab() {
         val tab = createTab(HOME_URL)
         activateTab(tab.id, persist = true)

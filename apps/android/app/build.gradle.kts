@@ -12,13 +12,14 @@ android {
         applicationId = "org.amare.browser"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 8
+        versionName = "0.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     val abiSplitsEnabled = providers.gradleProperty("amareAbiSplits")

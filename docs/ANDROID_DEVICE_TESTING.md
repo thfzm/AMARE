@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.7.0
+- 기준: Android 0.8.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -39,9 +39,12 @@ Android CI에서 `reactivecircus/android-emulator-runner@v2`로 API 34 x86_64 AV
 AndroidKeystoreProtectorTest
 SessionSnapshotRepositoryTest
 EncryptedDatabaseMigrationTest
+PasswordRepositoryTest
 ```
 
-## 3. 실제 기기에서만 검증 가능한 항목## 3. 실제 기기에서만 검증 가능한 항목
+실행 결과는 CI에서 compile-only이며, 기기/AVD가 연결된 환경에서만 PASS로 표시합니다.
+
+## 3. 실제 기기에서만 검증 가능한 항목
 
 - GeckoView 초기화/렌더링/입력
 - 실제 TEE/StrongBox-backed Keystore
@@ -58,7 +61,12 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.5.0-debug.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
+
+Debug APK SHA-256: `d08e0c73d20ec07ce2c64fe83d968a75236244a3b307ade1764b948e458c82aa`
+
+실기기 테스트 패키지:
+`/home/ubuntu/AMARE/artifacts/android/device-test/`
 ```
 
 Release APK/AAB는 현재 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -75,6 +83,49 @@ Release APK/AAB는 현재 unsigned이므로 실제 배포 전 서명이 필요�
 8. 기기 잠금 방식 변경 후 Keystore 데이터 접근 안내
 9. 앱 데이터 삭제 후 새 세션 시작
 10. 백업/기기 이전에서 앱 데이터 제외 확인
+11. Debug 전용 Diagnostics에서 GeckoRuntime/Keystore/DB/알림 권한 상태 확인
+12. Release APK에서는 Diagnostics 버튼이 보이지 않는지 확인
+
+## 5.1 실기기 결과 기록
+
+각 항목은 PASS / FAIL / UNVERIFIED로 기록합니다. 실행하지 않은 항목은 UNVERIFIED입니다.
+
+```text
+기기 모델:
+Android 버전:
+APK SHA-256:
+설치 시각:
+테스터:
+브라우저 기본:
+새 창:
+웹 알림:
+비밀번호:
+보안/데이터:
+성능:
+실패 재현 절차:
+로그 파일:
+```
+
+## 5.2 로그 수집
+
+```bash
+adb logcat -c
+adb logcat -d -v time > amare-device.log
+```
+
+로그에는 GeckoView/Android 시스템이 URL을 포함할 수 있습니다. 로그 공유 전에
+비밀번호, 알림 본문, 민감한 URL이 없는지 확인해야 합니다. AMARE 앱 코드는 password,
+credential, notification body를 로그에 기록하지 않습니다.
+
+## 5.3 자동 실행
+
+```bash
+tools/run-android-device-tests.sh \
+  artifacts/android/AMARE-0.8.0-debug.apk \
+  artifacts/android/AMARE-0.8.0-debug-androidTest.apk
+```
+
+이 스크립트는 ADB 기기가 없으면 실패를 명확히 표시하고 UNVERIFIED로 남깁니다.
 
 ## 6. 결과 표기 원칙
 

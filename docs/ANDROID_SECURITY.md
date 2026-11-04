@@ -1,6 +1,6 @@
 # Android 보안 설계 및 검증 상태
 
-- 기준: Android 0.7.0
+- 기준: Android 0.8.0
 - 관련 문서: [데이터 암호화](ANDROID_DATA_ENCRYPTION.md), [Keystore/JNI](ANDROID_KEYSTORE.md), [Release](ANDROID_RELEASE.md)
 
 ## 1. 보호 대상과 저장 위치
@@ -76,7 +76,21 @@ AMARE가 복구할 수 없습니다.
 - DB/Keystore 오류 메시지는 고정 문자열만 기록
 - Exception 객체를 그대로 로그에 남기지 않는 경로를 사용
 
-## 7. 검증 상태
+## 7. 0.8.0 보안 감사 메모
+
+- 비밀번호/알림/URL을 로그에 남기는 코드 경로 없음 (고정 오류 문자열 사용)
+- GeckoView remote debugging/console output 비활성화 유지
+- cleartext traffic false 유지. GeckoView의 HTTPS-only 강제 모드는 별도 정책 결정 필요
+- 팝업 URL allowlist + rate limit
+- 알림 HTTPS origin/site permission 검증 + rate limit
+- 알림 클릭은 explicit Intent + 앱 메모리 opaque key로 검증
+- 알림 삭제/스와이프는 내부 receiver로 WebNotification에 전달
+- cross-origin Autofill node/form 차단 유지
+- Keystore 키 무효화 시 평문 fallback 없음
+- DB migration은 transaction + 이전 평문 table rollback 보존
+- 탭/웹 알림 메모리 사용량과 장시간 성능은 실기기 UNVERIFIED
+
+## 8. 검증 상태
 
 | 항목 | 상태 |
 |---|---|
