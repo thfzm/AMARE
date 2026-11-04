@@ -39,7 +39,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // Phase 5 engine candidate. Version must be checked against Mozilla's
-    // current GeckoView release before building.
-    implementation("org.mozilla.geckoview:geckoview:152.0.20260429091901")
+    // Phase 5 engine candidate. Pinned to an available Mozilla GeckoView
+    // nightly/release artifact; verify the release channel before shipping.
+    implementation("org.mozilla.geckoview:geckoview:159.0.20261102144711")
 }
