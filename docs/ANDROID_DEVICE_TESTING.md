@@ -63,7 +63,7 @@ export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
 adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.8.0-debug.apk
 
-Debug APK SHA-256: `d08e0c73d20ec07ce2c64fe83d968a75236244a3b307ade1764b948e458c82aa`
+Debug APK SHA-256: `5a19c4e054aa8e67731f73dc13b813cb5cf4136949619ba18ccad238aa514fe3`
 
 실기기 테스트 패키지:
 `/home/ubuntu/AMARE/artifacts/android/device-test/`
