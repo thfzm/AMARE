@@ -18,17 +18,26 @@ GeckoView 기반 Android 브라우저 셸입니다. 현재 Debug APK 빌드와 �
 - 화면 회전 시 ViewModel 기반 세션 유지
 - 앱 재실행 시 열린 탭 URL/활성 탭 복원
 - 백그라운드 전환 시 세션 상태 flush 및 URL 저장
+- SQLite 기반 북마크 저장, 목록/검색/삭제, 현재 페이지 저장/해제
+- SQLite 기반 방문 기록 저장, 목록/검색/삭제/전체 삭제
+- GeckoView `onExternalResponse` 기반 다운로드 수신
+- MediaStore `Download/AMARE` 저장, 진행률/완료/실패 상태
+- 중단된 다운로드의 다음 실행 시 FAILED 복구 표시
+- 사이트별 위치/알림/저장소/카메라/마이크 권한 허용/거부 저장
+- Android 런타임 권한과 웹사이트 권한을 분리한 요청 흐름
+- 추적 보호 기본 활성화 및 Global Privacy Control 전송
 - 앱 아이콘, Android 12+ 데이터 추출 차단, cleartext HTTP 차단 설정
 
 ### 미구현 또는 미검증
 
 - 실제 기기에서의 GeckoView 초기화/렌더링/입력: **UNVERIFIED**
-- 북마크, 방문 기록, 다운로드, 비밀번호/자동완성
-- 사이트 권한 요청 UI(카메라, 위치, 알림 등)
+- 비밀번호/자동완성 저장
+- 웹 알림 실제 표시(사이트 권한 저장/요청은 구현됨)
 - `window.open()`/새 창 처리, WebExtension, AI 계층
-- 전체 세션 히스토리 복원(현재는 URL/활성 탭만 복원)
+- 전체 GeckoSession 히스토리 복원(현재는 URL/활성 탭만 복원)
+- GeckoSession `onCrash`/`onKill` 자동 복구
 - 릴리스 서명, Play Store/AAB 배포, Android Keystore 연동
-- Android 11+ scoped storage 기반 파일 다운로드
+- 북마크/방문 기록의 DB 암호화
 
 ## 빌드 환경
 
@@ -59,20 +68,22 @@ app/build/outputs/apk/debug/app-universal-debug.apk
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-arm64-v8a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-armeabi-v7a-debug.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-universal-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-arm64-v8a-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-armeabi-v7a-debug.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.2.0-universal-debug.apk
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.1.0` (`versionCode 1`)
+- Version: `0.2.0` (`versionCode 2`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
 - arm64 APK: 약 124 MiB, 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
-- 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE` 및 GeckoView가 병합한 권한
+- 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치 런타임 권한 및 GeckoView가 병합한 권한
+- 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
+- 완료된 다운로드 파일: Android MediaStore `Download/AMARE`
 
 ## 설치
 
@@ -99,6 +110,26 @@ adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.1.0-arm64-v8a-debug.
 9. 비행기 모드 또는 잘못된 도메인으로 네트워크 오류/재시도 확인
 10. 홈으로 이동 후 앱 백그라운드/복귀, 페이지 유지 확인
 11. 시스템 뒤로 가기: 히스토리가 있으면 뒤로, 없으면 앱 종료
+12. 페이지에서 `☆ Save`로 북마크 추가, Bookmarks에서 검색/열기/삭제
+13. History에서 검색/열기/삭제/전체 삭제
+14. 파일 링크 다운로드, 진행률/완료 확인, Downloads에서 Open/Remove
+15. 카메라/마이크/위치 사이트에서 Allow/Deny, Permissions에서 변경/Reset
+16. Android 런타임 권한 거부 시 웹사이트가 자동 허용되지 않는지 확인
+
+## 테스트
+
+```text
+Android JVM unit tests: 14/14 PASS
+  UrlNormalizerTest: 5
+  DownloadNamingTest: 4
+  PermissionRulesTest: 5
+Android lint: 0 errors / 4 warnings
+```
+
+실제 기기에서 GeckoView 다운로드/권한/DB 동작은 아직 **UNVERIFIED**입니다.
+
+세션 전체 복구와 Keystore 적용 계획은
+[Android 다음 단계 설계](../docs/ANDROID_NEXT_STEPS.md)에 정리했습니다.
 
 ## 아키텍처 경계
 

@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **Phase 2.2 Windows 검증 게이트/Release Candidate 준비** 단계입니다. WinUI 3 + WebView2 코드, RC 빌드 절차, GitHub 연결 안내, 통합 검증 보고서를 준비했지만 Windows Runner/Windows 11 실기기 실행 결과는 아직 **UNVERIFIED**입니다. Android/실제 AI는 이번 Phase 범위가 아니며, 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
+현재 저장소는 **Phase 2.2 Windows 검증 게이트/Release Candidate 준비**와 **Android GeckoView 브라우저 셸 확장** 단계입니다. WinUI 3 + WebView2 코드와 Android 북마크/방문 기록/다운로드/사이트 권한 계층을 구현했지만 Windows 11 및 Android 실기기 실행 결과는 아직 **UNVERIFIED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
 
 ## 핵심 원칙
 
@@ -63,6 +63,7 @@ AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립�
 - [Windows UI 설계](docs/WINDOWS_UI_DESIGN.md)
 - [Windows 테스트](docs/WINDOWS_TESTING.md)
 - [Windows 11 검증 가이드](docs/WINDOWS_VERIFICATION.md)
+- [Android 다음 단계 설계](docs/ANDROID_NEXT_STEPS.md)
 - [GitHub Actions 자동 검증](docs/GITHUB_ACTIONS.md)
 - [저장소 아키텍처](docs/STORAGE_ARCHITECTURE.md)
 - [공통 서비스 아키텍처](docs/SERVICE_ARCHITECTURE.md)
@@ -96,6 +97,8 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Phase 2: **Windows WinUI 3 + WebView2 브라우저 본체 + C ABI/C# Adapter 구현** — Windows Runner/실기기 검증 UNVERIFIED
 - Phase 2.1: **Windows 안정화 + 프로필/세션/탭 검증 하네스 + WebView2 probe + 성능/체크리스트** — Windows 실행 UNVERIFIED
 - Phase 2.2: **Windows 검증 게이트 + 통합 결과 JSON + RC 빌드/실행 절차 + GitHub 연결 안내** — Windows 실행 UNVERIFIED
+- Android Phase 5: **GeckoView 브라우저 셸 + 북마크/방문 기록/다운로드/사이트 권한 + 추적 보호** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED
+- Android 세션 전체 복구/Keystore: 설계 완료, 구현 예정 — [설계 문서](docs/ANDROID_NEXT_STEPS.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
 Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow는 작성되었지만 실제 실행은 아직 확인되지 않았습니다. 결과는 [Phase 0.5 검증 결과](docs/PHASE0_5_REPORT.md)에 반영해야 합니다.
