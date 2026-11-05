@@ -40,6 +40,10 @@ public static class ReaderExtractionScript
             if (text) blocks.push({ tag, text: text.slice(0, 20000) });
             if (blocks.length >= 400) break;
           }
+          if (blocks.length === 0) {
+            const fallback = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (fallback) blocks.push({ tag: 'p', text: fallback.slice(0, 20000) });
+          }
           const plain = blocks.filter(block => block.tag !== 'img').map(block => block.text).join(' ');
           return JSON.stringify({ title: document.title || '', url: location.href, blocks, wordCount: plain.split(/\s+/).filter(Boolean).length });
         })()

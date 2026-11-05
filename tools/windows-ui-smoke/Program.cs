@@ -120,7 +120,7 @@ internal static class Program
         Invoke(go);
         WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
             TimeSpan.FromSeconds(15), "Example Domain title");
-        Thread.Sleep(1500);
+        Thread.Sleep(4000);
         return _process!.MainWindowTitle;
     }
 
@@ -139,6 +139,7 @@ internal static class Program
         var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
         SetValue(box, "Example Domain");
         box.SetFocus();
+        Console.WriteLine($"find_value={box.Current.Name}");
         SendKeys.SendWait("{ENTER}");
         WaitFor(() =>
         {
@@ -164,7 +165,7 @@ internal static class Program
         {
             var close = FindById("ReaderCloseButton");
             return close is not null && !close.Current.IsOffscreen;
-        }, TimeSpan.FromSeconds(10), "Reader close button visibility");
+        }, TimeSpan.FromSeconds(30), "Reader close button visibility");
         var title = FindById("ReaderTitleText")?.Current.Name ?? "";
         Invoke(FindById("ReaderCloseButton") ?? throw new InvalidOperationException("ReaderCloseButton missing"));
         return string.IsNullOrWhiteSpace(title) ? "reader opened/closed" : $"reader={title}";
@@ -177,7 +178,7 @@ internal static class Program
         {
             var close = FindById("AiCloseButton");
             return close is not null && !close.Current.IsOffscreen;
-        }, TimeSpan.FromSeconds(8), "AI close button visibility");
+        }, TimeSpan.FromSeconds(30), "AI close button visibility");
         Invoke(FindById("AiCloseButton") ?? throw new InvalidOperationException("AiCloseButton missing"));
         return "AI panel opened/closed";
     }

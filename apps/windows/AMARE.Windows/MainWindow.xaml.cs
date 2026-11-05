@@ -1282,6 +1282,7 @@ public sealed partial class MainWindow : Window
                     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (page is null || page.Blocks.Count == 0)
             {
+                AppLog.Info($"Reader Mode no content raw_chars={raw?.Length ?? 0}");
                 StatusText.Text = "Reader Mode could not extract readable content.";
                 return;
             }
@@ -1395,7 +1396,9 @@ public sealed partial class MainWindow : Window
             AiColumn.Width = new GridLength(380);
             AiPanelHost.Visibility = Visibility.Visible;
             _aiOpen = true;
+            AppLog.Info("AI panel ensure starting");
             await EnsureAiAsync();
+            AppLog.Info("AI panel ensure complete");
             if (AiServiceBox.SelectedItem is AiServiceOption service && AiWebView.CoreWebView2 is { } core)
             {
                 core.Navigate(service.Url);
