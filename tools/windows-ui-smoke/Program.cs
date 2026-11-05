@@ -116,8 +116,8 @@ internal static class Program
     {
         var edit = FindAddressEdit();
         SetValue(edit, "https://example.com/");
-        edit.SetFocus();
-        SendKeys.SendWait("{ENTER}");
+        var go = WaitFindById("GoButton", TimeSpan.FromSeconds(5));
+        Invoke(go);
         WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
             TimeSpan.FromSeconds(15), "Example Domain title");
         return _process!.MainWindowTitle;
@@ -159,8 +159,11 @@ internal static class Program
     {
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Reader Mode");
-        var host = WaitFindById("ReaderHost", TimeSpan.FromSeconds(10));
-        Require(!host.Current.IsOffscreen, "ReaderHost is offscreen");
+        WaitFor(() =>
+        {
+            var close = FindById("ReaderCloseButton");
+            return close is not null && !close.Current.IsOffscreen;
+        }, TimeSpan.FromSeconds(10), "Reader close button visibility");
         var title = FindById("ReaderTitleText")?.Current.Name ?? "";
         Invoke(FindById("ReaderCloseButton") ?? throw new InvalidOperationException("ReaderCloseButton missing"));
         return string.IsNullOrWhiteSpace(title) ? "reader opened/closed" : $"reader={title}";
@@ -169,8 +172,11 @@ internal static class Program
     private static string OpenAndCloseAiPanel()
     {
         Invoke(FindById("AiButton") ?? throw new InvalidOperationException("AiButton missing"));
-        var host = WaitFindById("AiPanelHost", TimeSpan.FromSeconds(8));
-        Require(!host.Current.IsOffscreen, "AI panel is offscreen");
+        WaitFor(() =>
+        {
+            var close = FindById("AiCloseButton");
+            return close is not null && !close.Current.IsOffscreen;
+        }, TimeSpan.FromSeconds(8), "AI close button visibility");
         Invoke(FindById("AiCloseButton") ?? throw new InvalidOperationException("AiCloseButton missing"));
         return "AI panel opened/closed";
     }

@@ -119,6 +119,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Button x:Name="BackButton" Grid.Column="0" Style="{StaticResource ToolbarButtonStyle}" Click="Back_Click" ToolTipService.ToolTip="Back">
                 <FontIcon Glyph="&#xE72B;" />
@@ -140,30 +141,33 @@
                 TextChanged="AddressBar_TextChanged"
                 SuggestionChosen="AddressBar_SuggestionChosen"
                 QuerySubmitted="AddressBar_QuerySubmitted" />
+            <Button x:Name="GoButton" Grid.Column="4" AutomationProperties.AutomationId="GoButton" Style="{StaticResource ToolbarButtonStyle}" Click="GoButton_Click" ToolTipService.ToolTip="Go">
+                <FontIcon Glyph="&#xE768;" />
+            </Button>
             <ComboBox
                 x:Name="SearchEngineBox" AutomationProperties.AutomationId="SearchEngineBox"
-                Grid.Column="4"
+                Grid.Column="5"
                 Width="126"
                 Height="34"
                 DisplayMemberPath="Name"
                 SelectionChanged="SearchEngineBox_SelectionChanged"
                 ToolTipService.ToolTip="Search engine" />
-            <Button x:Name="BookmarksButton" AutomationProperties.AutomationId="BookmarksButton" Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="Bookmarks_Click" ToolTipService.ToolTip="Bookmarks">
+            <Button x:Name="BookmarksButton" AutomationProperties.AutomationId="BookmarksButton" Grid.Column="6" Style="{StaticResource ToolbarButtonStyle}" Click="Bookmarks_Click" ToolTipService.ToolTip="Bookmarks">
                 <FontIcon x:Name="BookmarkIcon" Glyph="&#xE734;" />
             </Button>
-            <Button x:Name="DownloadsButton" AutomationProperties.AutomationId="DownloadsButton" Grid.Column="6" Style="{StaticResource ToolbarButtonStyle}" Click="Downloads_Click" ToolTipService.ToolTip="Downloads">
+            <Button x:Name="DownloadsButton" AutomationProperties.AutomationId="DownloadsButton" Grid.Column="7" Style="{StaticResource ToolbarButtonStyle}" Click="Downloads_Click" ToolTipService.ToolTip="Downloads">
                 <FontIcon Glyph="&#xE896;" />
             </Button>
-            <Button x:Name="ProfileButton" AutomationProperties.AutomationId="ProfileButton" Grid.Column="7" Style="{StaticResource ToolbarButtonStyle}" Click="Profile_Click" ToolTipService.ToolTip="Profiles">
+            <Button x:Name="ProfileButton" AutomationProperties.AutomationId="ProfileButton" Grid.Column="8" Style="{StaticResource ToolbarButtonStyle}" Click="Profile_Click" ToolTipService.ToolTip="Profiles">
                 <FontIcon Glyph="&#xE77B;" />
             </Button>
-            <Button x:Name="AiButton" AutomationProperties.AutomationId="AiButton" Grid.Column="8" Style="{StaticResource ToolbarButtonStyle}" Click="Ai_Click" ToolTipService.ToolTip="AI web panel">
+            <Button x:Name="AiButton" AutomationProperties.AutomationId="AiButton" Grid.Column="9" Style="{StaticResource ToolbarButtonStyle}" Click="Ai_Click" ToolTipService.ToolTip="AI web panel">
                 <FontIcon Glyph="&#xE8BD;" />
             </Button>
-            <Button x:Name="MenuButton" AutomationProperties.AutomationId="MenuButton" Grid.Column="9" Style="{StaticResource ToolbarButtonStyle}" Click="Menu_Click" ToolTipService.ToolTip="Browser menu">
+            <Button x:Name="MenuButton" AutomationProperties.AutomationId="MenuButton" Grid.Column="10" Style="{StaticResource ToolbarButtonStyle}" Click="Menu_Click" ToolTipService.ToolTip="Browser menu">
                 <FontIcon Glyph="&#xE712;" />
             </Button>
-            <ProgressRing x:Name="LoadingRing" Grid.Column="10" Width="18" Height="18" IsActive="False" />
+            <ProgressRing x:Name="LoadingRing" Grid.Column="11" Width="18" Height="18" IsActive="False" />
         </Grid>
 
         <!-- Find in page -->

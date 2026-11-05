@@ -390,6 +390,10 @@ Invoke-Step "webview2_probe_run" {
     } else {
         Add-SkippedStep "winui_ui_smoke" "UNVERIFIED" "UIAutomation smoke failed or was unavailable; see $uiLog."
     }
+    $amareLogDir = Join-Path $env:LOCALAPPDATA "AMARE\logs"
+    if (Test-Path $amareLogDir) {
+        Copy-Item $amareLogDir (Join-Path $OutputDir "amare-logs") -Recurse -Force
+    }
 
 $storagePath = Join-Path $OutputDir "storage-ci.json"
 $storageSummary = $null

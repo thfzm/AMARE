@@ -1094,15 +1094,26 @@ public sealed partial class MainWindow : Window
 
     private async void AddressBar_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
+        var query = args.ChosenSuggestion is AddressSuggestion suggestion
+            ? suggestion.Url
+            : args.QueryText;
+        sender.IsSuggestionListOpen = false;
+        await NavigateAddressAsync(query);
+    }
+
+    private async void GoButton_Click(object sender, RoutedEventArgs e)
+    {
+        await NavigateAddressAsync(AddressBar.Text);
+    }
+
+    private async Task NavigateAddressAsync(string input)
+    {
         var active = ActiveHost;
         if (active is null)
         {
             return;
         }
-        var query = args.ChosenSuggestion is AddressSuggestion suggestion
-            ? suggestion.Url
-            : args.QueryText;
-        var resolution = AddressBarResolver.Resolve(query, _engineId);
+        var resolution = AddressBarResolver.Resolve(input, _engineId);
         switch (resolution.Kind)
         {
             case AddressInputKind.Url when resolution.Target.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase):
@@ -1111,7 +1122,6 @@ public sealed partial class MainWindow : Window
                 break;
             case AddressInputKind.Url:
             case AddressInputKind.Search:
-                sender.IsSuggestionListOpen = false;
                 Navigate(active, resolution.Target);
                 break;
         }
@@ -1284,6 +1294,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            AppLog.Error("Reader Mode failed", exception);
             StatusText.Text = $"Reader Mode failed: {exception.Message}";
         }
     }
@@ -1391,6 +1402,7 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             CloseAiPanel();
+            AppLog.Error("AI panel failed", exception);
             StatusText.Text = $"AI panel failed: {exception.Message}";
         }
     }
