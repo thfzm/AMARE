@@ -53,12 +53,15 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 - Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/`
 - Rust tests: **PASS**
-- C# interop/core tests: **62/62 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
+- C# interop/core tests: **67/67 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **13/13 PASS** (window, address, tabs, Find 1/2, Reader, AI panel, settings, API AI settings, manual update check, diagnostics, session restore, 7-tab stress)
+- UIAutomation GUI smoke: **19/19 PASS** (window, address, tabs, tab close, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, session restore, 6-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
+- Repeat/downgrade/concurrent helper rejection, health-mark timeout, crash-after-apply recovery PASS
+- Korean/space path clean ZIP launch PASS
+- Release preflight version/arch/assets/hashes PASS
 - AI mock success, 401 key redaction, SSE streaming PASS
 - AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace

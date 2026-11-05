@@ -2,12 +2,12 @@
 
 AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + WebView2 Evergreen 기반 데스크톱 브라우저입니다.
 
-## 0.18.0 구현 상태
+## 0.19.0 구현 상태
 
 | 영역 | 상태 |
 |---|---|
 | WinUI 3 XAML/C# build | **PASS** (Windows Runner, Windows Server 2025) |
-| 실제 GUI UIAutomation | **PASS 13/13** (window/address/tabs/Find/Reader/AI/settings/API settings/update check/diagnostics/session) |
+| 실제 GUI UIAutomation | **PASS 19/19** (window/address/tabs/Find/Reader/AI/API settings/no-key/update/diagnostics/history/bookmarks/downloads/resize/session) |
 | WebView2 tabs/address/navigation | 구현, GUI automation PASS |
 | Bookmarks/History Rust persistence | **PASS** (C# native interop round-trip) |
 | Downloads detection/persistent list | 구현, GUI **UNVERIFIED** |
@@ -22,9 +22,10 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | DPI 100/125/150/200%, multi-monitor, Korean IME | **UNVERIFIED** |
 | Code signing | **BLOCKED** — no distribution certificate |
 | GitHub Releases update check | 구현, **Release 0개 / 실제 update UNVERIFIED** |
-| Portable download/checksum/apply/rollback | 구현; 격리 helper smoke **PASS**, 실제 공개 Release **UNVERIFIED** |
+| Portable download/checksum/apply/rollback | 구현; helper smoke, 중복 적용 차단, 한글·공백 경로 **PASS**, 실제 공개 Release **UNVERIFIED** |
+| Release preflight | version/arch/assets/checksum unique **PASS** |
 | Update package manifest | `amare-update.json` + `VERSION` + SHA-256 sidecar 검증 **PASS** |
-| Interrupted update recovery | journal/backup/recovery 구현, helper crash test **PASS** |
+| Interrupted update recovery | journal/backup/recovery/health timeout/crash-after-apply **PASS** |
 | API-based AI | provider 선택 + streaming/cancel UI 구현, mock success/401/stream **PASS**, 실제 key **UNVERIFIED** |
 | Diagnostics | 구현, GUI dialog **PASS**, GPU **UNVERIFIED** |
 
@@ -52,7 +53,7 @@ dotnet run --project AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
 `tools/verify-windows.ps1 -CI`가 다음 portable ZIP을 생성합니다.
 
 ```text
-artifacts/windows/AMARE-0.18.0-win-x64.zip
+artifacts/windows/AMARE-0.19.0-win-x64.zip
 ```
 
 이 ZIP은 `AMARE.Updater.exe`, `VERSION`, `amare-update.json`, `RELEASE_NOTES.md`를 포함하는 개발/테스트용 portable package이며 서명된 MSIX 설치 프로그램이 아닙니다. SHA-256 sidecar와 release manifest도 함께 생성됩니다.
