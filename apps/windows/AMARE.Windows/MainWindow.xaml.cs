@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
 using Windows.System;
 
@@ -1547,6 +1548,7 @@ public sealed partial class MainWindow : Window
         {
             Text = shortcut.Length == 0 ? text : $"{text}\t{shortcut}"
         };
+        AutomationProperties.SetName(item, text);
         item.Click += (_, _) => action();
         menu.Items.Add(item);
     }

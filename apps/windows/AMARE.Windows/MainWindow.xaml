@@ -42,7 +42,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <ListView
-                x:Name="TabList"
+                x:Name="TabList" AutomationProperties.AutomationId="TabList"
                 Grid.Column="0"
                 Margin="8,4,4,4"
                 SelectionMode="Single"
@@ -98,6 +98,7 @@
                 Height="34"
                 VerticalAlignment="Center"
                 Style="{StaticResource ToolbarButtonStyle}"
+                AutomationProperties.AutomationId="NewTabButton"
                 Click="NewTab_Click"
                 ToolTipService.ToolTip="New tab">
                 <FontIcon Glyph="&#xE710;" />
@@ -129,7 +130,7 @@
                 <FontIcon x:Name="ReloadIcon" Glyph="&#xE72C;" />
             </Button>
             <AutoSuggestBox
-                x:Name="AddressBar"
+                x:Name="AddressBar" AutomationProperties.AutomationId="AddressBar"
                 Grid.Column="3"
                 Margin="4,0"
                 Height="34"
@@ -140,33 +141,33 @@
                 SuggestionChosen="AddressBar_SuggestionChosen"
                 QuerySubmitted="AddressBar_QuerySubmitted" />
             <ComboBox
-                x:Name="SearchEngineBox"
+                x:Name="SearchEngineBox" AutomationProperties.AutomationId="SearchEngineBox"
                 Grid.Column="4"
                 Width="126"
                 Height="34"
                 DisplayMemberPath="Name"
                 SelectionChanged="SearchEngineBox_SelectionChanged"
                 ToolTipService.ToolTip="Search engine" />
-            <Button x:Name="BookmarksButton" Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="Bookmarks_Click" ToolTipService.ToolTip="Bookmarks">
+            <Button x:Name="BookmarksButton" AutomationProperties.AutomationId="BookmarksButton" Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="Bookmarks_Click" ToolTipService.ToolTip="Bookmarks">
                 <FontIcon x:Name="BookmarkIcon" Glyph="&#xE734;" />
             </Button>
-            <Button x:Name="DownloadsButton" Grid.Column="6" Style="{StaticResource ToolbarButtonStyle}" Click="Downloads_Click" ToolTipService.ToolTip="Downloads">
+            <Button x:Name="DownloadsButton" AutomationProperties.AutomationId="DownloadsButton" Grid.Column="6" Style="{StaticResource ToolbarButtonStyle}" Click="Downloads_Click" ToolTipService.ToolTip="Downloads">
                 <FontIcon Glyph="&#xE896;" />
             </Button>
-            <Button x:Name="ProfileButton" Grid.Column="7" Style="{StaticResource ToolbarButtonStyle}" Click="Profile_Click" ToolTipService.ToolTip="Profiles">
+            <Button x:Name="ProfileButton" AutomationProperties.AutomationId="ProfileButton" Grid.Column="7" Style="{StaticResource ToolbarButtonStyle}" Click="Profile_Click" ToolTipService.ToolTip="Profiles">
                 <FontIcon Glyph="&#xE77B;" />
             </Button>
-            <Button x:Name="AiButton" Grid.Column="8" Style="{StaticResource ToolbarButtonStyle}" Click="Ai_Click" ToolTipService.ToolTip="AI web panel">
+            <Button x:Name="AiButton" AutomationProperties.AutomationId="AiButton" Grid.Column="8" Style="{StaticResource ToolbarButtonStyle}" Click="Ai_Click" ToolTipService.ToolTip="AI web panel">
                 <FontIcon Glyph="&#xE8BD;" />
             </Button>
-            <Button x:Name="MenuButton" Grid.Column="9" Style="{StaticResource ToolbarButtonStyle}" Click="Menu_Click" ToolTipService.ToolTip="Browser menu">
+            <Button x:Name="MenuButton" AutomationProperties.AutomationId="MenuButton" Grid.Column="9" Style="{StaticResource ToolbarButtonStyle}" Click="Menu_Click" ToolTipService.ToolTip="Browser menu">
                 <FontIcon Glyph="&#xE712;" />
             </Button>
             <ProgressRing x:Name="LoadingRing" Grid.Column="10" Width="18" Height="18" IsActive="False" />
         </Grid>
 
         <!-- Find in page -->
-        <Grid x:Name="FindBar" Grid.Row="2" Padding="8,4" ColumnSpacing="6" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}">
+        <Grid x:Name="FindBar" AutomationProperties.AutomationId="FindBar" Grid.Row="2" Padding="8,4" ColumnSpacing="6" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -177,19 +178,19 @@
             </Grid.ColumnDefinitions>
             <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center" />
             <TextBox
-                x:Name="FindBox"
+                x:Name="FindBox" AutomationProperties.AutomationId="FindBox"
                 Grid.Column="1"
                 Height="32"
                 PlaceholderText="Find in page"
                 KeyDown="FindBox_KeyDown" />
-            <TextBlock x:Name="FindCount" Grid.Column="2" VerticalAlignment="Center" MinWidth="70" Text="0/0" />
+            <TextBlock x:Name="FindCount" AutomationProperties.AutomationId="FindCount" Grid.Column="2" VerticalAlignment="Center" MinWidth="70" Text="0/0" />
             <Button Grid.Column="3" Style="{StaticResource ToolbarButtonStyle}" Click="FindPrevious_Click" ToolTipService.ToolTip="Previous match">
                 <FontIcon Glyph="&#xE70E;" />
             </Button>
             <Button Grid.Column="4" Style="{StaticResource ToolbarButtonStyle}" Click="FindNext_Click" ToolTipService.ToolTip="Next match">
                 <FontIcon Glyph="&#xE70D;" />
             </Button>
-            <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="FindClose_Click" ToolTipService.ToolTip="Close find">
+            <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="FindCloseButton" Click="FindClose_Click" ToolTipService.ToolTip="Close find">
                 <FontIcon Glyph="&#xE711;" />
             </Button>
         </Grid>
@@ -202,7 +203,7 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="WebViewHost" Grid.Column="0" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" />
 
-            <Border x:Name="AiPanelHost" Grid.Column="1" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+            <Border x:Name="AiPanelHost" AutomationProperties.AutomationId="AiPanelHost" Grid.Column="1" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="40" />
@@ -217,7 +218,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="AI web panel" VerticalAlignment="Center" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="AiClose_Click" ToolTipService.ToolTip="Close AI panel">
+                        <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="AiCloseButton" Click="AiClose_Click" ToolTipService.ToolTip="Close AI panel">
                             <FontIcon Glyph="&#xE711;" />
                         </Button>
                     </Grid>
@@ -226,13 +227,13 @@
                         <Button Content="Page info" Click="AiCopyInfo_Click" ToolTipService.ToolTip="Copy page title and URL" />
                         <Button Content="Article" Click="AiCopyArticle_Click" ToolTipService.ToolTip="Copy extracted article text" />
                     </StackPanel>
-                    <WebView2 x:Name="AiWebView" Grid.Row="3" Margin="0,2" />
+                    <WebView2 x:Name="AiWebView" AutomationProperties.AutomationId="AiWebView" Grid.Row="3" Margin="0,2" />
                     <TextBlock x:Name="AiStatusText" Grid.Row="4" Padding="8,4" FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Context is copied only when you choose it; it is never sent automatically." />
                 </Grid>
             </Border>
 
             <!-- Reader overlay -->
-            <Grid x:Name="ReaderHost" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid x:Name="ReaderHost" AutomationProperties.AutomationId="ReaderHost" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="44" />
                     <RowDefinition Height="*" />
@@ -247,12 +248,12 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ReaderTitleText" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Reader" />
+                    <TextBlock x:Name="ReaderTitleText" AutomationProperties.AutomationId="ReaderTitleText" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Reader" />
                     <ComboBox x:Name="ReaderFontBox" Grid.Column="1" Width="92" Height="32" Margin="4,0" SelectionChanged="ReaderFontBox_SelectionChanged" />
                     <ComboBox x:Name="ReaderThemeBox" Grid.Column="2" Width="96" Height="32" Margin="4,0" SelectionChanged="ReaderThemeBox_SelectionChanged" />
                     <Button Grid.Column="3" Style="{StaticResource ToolbarButtonStyle}" Click="ReaderSmaller_Click" ToolTipService.ToolTip="Smaller text"><FontIcon Glyph="&#xE1A3;" /></Button>
                     <Button Grid.Column="4" Style="{StaticResource ToolbarButtonStyle}" Click="ReaderLarger_Click" ToolTipService.ToolTip="Larger text"><FontIcon Glyph="&#xE1A4;" /></Button>
-                    <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="ReaderClose_Click" ToolTipService.ToolTip="Return to page"><FontIcon Glyph="&#xE711;" /></Button>
+                    <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="ReaderCloseButton" Click="ReaderClose_Click" ToolTipService.ToolTip="Return to page"><FontIcon Glyph="&#xE711;" /></Button>
                 </Grid>
                 <WebView2 x:Name="ReaderWebView" Grid.Row="1" />
             </Grid>
@@ -260,7 +261,7 @@
 
         <!-- Status -->
         <Border Grid.Row="4" Padding="10,2" Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <TextBlock x:Name="StatusText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="StatusText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
         </Border>
     </Grid>
 </Window>

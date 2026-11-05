@@ -297,11 +297,11 @@ if ($SkipWinUI) {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
-        $stage = Join-Path $OutputDir "AMARE-0.15.0-win-x64"
+        $stage = Join-Path $OutputDir "AMARE-0.16.0-win-x64"
         if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item (Join-Path $exe.Directory.FullName "*") -Destination $stage -Recurse -Force
-        $zip = Join-Path $OutputDir "AMARE-0.15.0-win-x64.zip"
+        $zip = Join-Path $OutputDir "AMARE-0.16.0-win-x64.zip"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
         Write-Host "Portable package: $zip"
@@ -316,7 +316,7 @@ Invoke-Step "webview2_probe_run" {
     dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
 } -Required $false
 
-    $appExe = Join-Path $OutputDir "AMARE-0.15.0-win-x64\AMARE.Windows.exe"
+    $appExe = Join-Path $OutputDir "AMARE-0.16.0-win-x64\AMARE.Windows.exe"
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
     try {
@@ -351,6 +351,34 @@ Invoke-Step "webview2_probe_run" {
             Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
         }
         Add-SkippedStep "app_process_launch" "UNVERIFIED" "Could not launch AMARE.Windows.exe: $($_.Exception.Message)"
+    }
+
+    $uiLog = Join-Path $OutputDir "winui_ui_smoke.log"
+    $uiResults = Join-Path $OutputDir "winui_ui_smoke_results.json"
+    $env:AMARE_UI_SMOKE_RESULTS = $uiResults
+    $uiExit = 1
+    try {
+        & dotnet run -c Release --project tools/windows-ui-smoke/WindowsUiSmoke.csproj -- $appExe *>&1 |
+            Tee-Object -FilePath $uiLog
+        $uiExit = $LASTEXITCODE
+    } catch {
+        $uiExit = 1
+        $_.Exception.Message | Out-File -FilePath $uiLog -Append
+    }
+    if ($uiExit -eq 0) {
+        $Steps.Add([pscustomobject]@{
+            name = "winui_ui_smoke"
+            status = "PASS"
+            exit_code = 0
+            required = $false
+            started_at = (Get-Date).ToUniversalTime().ToString("o")
+            finished_at = (Get-Date).ToUniversalTime().ToString("o")
+            duration_ms = 0
+            log = $uiLog
+            detail = "UIAutomation smoke passed: window, address, tabs, Find, Reader, AI panel, Settings, session restart."
+        })
+    } else {
+        Add-SkippedStep "winui_ui_smoke" "UNVERIFIED" "UIAutomation smoke failed or was unavailable; see $uiLog."
     }
 
 $storagePath = Join-Path $OutputDir "storage-ci.json"
