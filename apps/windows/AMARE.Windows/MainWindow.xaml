@@ -54,6 +54,9 @@
                 ScrollViewer.VerticalScrollMode="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
                 SelectionChanged="TabList_SelectionChanged"
+                DragItemsStarting="TabList_DragItemsStarting"
+                DragOver="TabList_DragOver"
+                Drop="TabList_Drop"
                 DragItemsCompleted="TabList_DragItemsCompleted">
                 <ListView.ItemsPanel>
                     <ItemsPanelTemplate>

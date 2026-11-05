@@ -52,6 +52,12 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int command);
+
     private sealed record Result(string Name, bool Passed, string Detail);
 
     [STAThread]
@@ -107,6 +113,7 @@ internal static class Program
             Check("downloads_menu", OpenAndCloseDownloads);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
+            Check("cross_window_tab_move", CrossWindowTabMove);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
@@ -598,6 +605,86 @@ internal static class Program
             .Where(window => window.Current.ControlType == ControlType.Window)
             .ToArray();
 
+    private static string CrossWindowTabMove()
+    {
+        if (_process is null || _window is null) throw new InvalidOperationException("source window missing");
+        var sourceWindow = _window;
+        var beforeWindows = WindowsForProcess(_process.Id);
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("New window");
+        AutomationElement? targetWindow = null;
+        WaitFor(() =>
+        {
+            var current = WindowsForProcess(_process.Id);
+            targetWindow = current.FirstOrDefault(window =>
+                !beforeWindows.Any(before => before.GetRuntimeId().SequenceEqual(window.GetRuntimeId())));
+            return targetWindow is not null;
+        }, TimeSpan.FromSeconds(10), "target window");
+        if (targetWindow is null) throw new InvalidOperationException("target window not found");
+        try
+        {
+            ShowWindow((IntPtr)targetWindow.Current.NativeWindowHandle, 9); // SW_RESTORE
+            ShowWindow((IntPtr)sourceWindow.Current.NativeWindowHandle, 9);
+            SetWindowPos((IntPtr)sourceWindow.Current.NativeWindowHandle, IntPtr.Zero, 40, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            SetWindowPos((IntPtr)targetWindow.Current.NativeWindowHandle, IntPtr.Zero, 900, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            WaitFor(() => CountTabs(sourceWindow) >= 1 && CountTabs(targetWindow) >= 1, TimeSpan.FromSeconds(10), "cross-window tabs");
+            var sourceItems = FindByIdIn(sourceWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            var targetItems = FindByIdIn(targetWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            Require(sourceItems.Length >= 1 && targetItems.Length >= 1, "cross-window tab elements missing");
+            sourceItems[0].SetFocus();
+            if (sourceItems[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+                ((SelectionItemPattern)selection).Select();
+            Thread.Sleep(300);
+            var sourceRect = sourceItems[0].Current.BoundingRectangle;
+            var targetRect = targetItems[0].Current.BoundingRectangle;
+            var startX = (int)(sourceRect.X + 24);
+            var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
+            var endX = (int)(targetRect.X + Math.Min(40, targetRect.Width / 2));
+            var endY = (int)(targetRect.Y + targetRect.Height / 2);
+            SetForegroundWindow((IntPtr)sourceWindow.Current.NativeWindowHandle);
+            MoveMouseAbsolute(startX, startY);
+            Thread.Sleep(300);
+            SendMouseButton(MouseLeftDown);
+            Thread.Sleep(300);
+            for (var i = 1; i <= 25; i++)
+            {
+                MoveMouseAbsolute(startX + (endX - startX) * i / 25, startY + (endY - startY) * i / 25);
+                Thread.Sleep(90);
+            }
+            Thread.Sleep(300);
+            SendMouseButton(MouseLeftUp);
+            WaitFor(() => CountTabs(targetWindow) >= 2, TimeSpan.FromSeconds(15), "cross-window transfer");
+            if (CountTabs(sourceWindow) < 1) throw new InvalidOperationException("source window lost its replacement tab");
+            return $"cross-window target tabs={CountTabs(targetWindow)} source tabs={CountTabs(sourceWindow)}";
+        }
+        finally
+        {
+            try
+            {
+                if (targetWindow.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+                    ((WindowPattern)pattern).Close();
+            }
+            catch { }
+            WaitFor(() => WindowsForProcess(_process.Id).Length <= beforeWindows.Length, TimeSpan.FromSeconds(10), "target close");
+            SetForegroundWindow((IntPtr)sourceWindow.Current.NativeWindowHandle);
+        }
+    }
+
+    private static AutomationElement? FindByIdIn(AutomationElement window, string id) =>
+        window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+
+    private static int CountTabs(AutomationElement window)
+    {
+        var list = FindByIdIn(window, "TabList");
+        if (list is null) return 0;
+        return list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
+    }
+
     private static string CreateTabsAndCheck()
     {
         var started = Stopwatch.StartNew();
@@ -763,13 +850,7 @@ internal static class Program
         Thread.Sleep(200);
     }
 
-    private static int CountTabs()
-    {
-        var list = FindById("TabList");
-        if (list is null) return 0;
-        return list.FindAll(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
-    }
+    private static int CountTabs() => CountTabs(_window!);
 
     private static void WaitFor(Func<bool> condition, TimeSpan timeout, string description)
     {

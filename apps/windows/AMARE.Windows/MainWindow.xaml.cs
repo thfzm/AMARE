@@ -31,6 +31,9 @@ public sealed partial class MainWindow : Window
     private readonly ProfileDataCleanup _profileCleanup;
     private readonly GitHubReleaseClient _releaseClient = new();
     private readonly UpdateDownloader _updateDownloader = new();
+    private static readonly object WindowRegistryGate = new();
+    private static readonly List<WeakReference<MainWindow>> WindowRegistry = [];
+    private readonly Guid _windowId = Guid.NewGuid();
 
     private AmareNative? _native;
     private ProfileClient? _profiles;
@@ -125,7 +128,32 @@ public sealed partial class MainWindow : Window
         AiServiceBox.SelectedIndex = 0;
         LoadDownloads();
         RegisterKeyboardAccelerators();
+        RegisterWindow(this);
         Closed += MainWindow_Closed;
+    }
+
+    private static void RegisterWindow(MainWindow window)
+    {
+        lock (WindowRegistryGate)
+        {
+            WindowRegistry.RemoveAll(reference => !reference.TryGetTarget(out _));
+            WindowRegistry.Add(new WeakReference<MainWindow>(window));
+        }
+    }
+
+    private static MainWindow? FindWindow(Guid windowId)
+    {
+        lock (WindowRegistryGate)
+        {
+            foreach (var reference in WindowRegistry)
+            {
+                if (reference.TryGetTarget(out var window) && window._windowId == windowId)
+                {
+                    return window;
+                }
+            }
+        }
+        return null;
     }
 
     private void ApplyWindowIcon()
@@ -1026,6 +1054,87 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void TabList_DragItemsStarting(object sender, DragItemsStartingEventArgs args)
+    {
+        if (args.Items.FirstOrDefault() is not BrowserTabModel tab) return;
+        args.Data.SetText($"amare-tab|{_windowId:N}|{tab.Id:N}");
+        args.Data.RequestedOperation = DataPackageOperation.Move;
+    }
+
+    private void TabList_DragOver(object sender, DragEventArgs args)
+    {
+        if (args.DataView.Contains(StandardDataFormats.Text))
+        {
+            args.AcceptedOperation = DataPackageOperation.Move;
+        }
+    }
+
+    private async void TabList_Drop(object sender, DragEventArgs args)
+    {
+        if (!args.DataView.Contains(StandardDataFormats.Text)) return;
+        try
+        {
+            var text = await args.DataView.GetTextAsync();
+            var parts = text.Split('|');
+            if (parts.Length != 3
+                || parts[0] != "amare-tab"
+                || !Guid.TryParse(parts[1], out var sourceId)
+                || !Guid.TryParse(parts[2], out var tabId)
+                || sourceId == _windowId)
+            {
+                return;
+            }
+            var source = FindWindow(sourceId);
+            if (source is null) return;
+            var snapshot = source.GetTabSnapshot(tabId);
+            if (snapshot is null) return;
+            try
+            {
+                await AddTransferredTabAsync(snapshot);
+                await source.CompleteTransferAsync(tabId);
+                args.AcceptedOperation = DataPackageOperation.Move;
+                args.Handled = true;
+            }
+            catch (Exception exception)
+            {
+                // Source remains intact until the target has accepted the tab.
+                StatusText.Text = $"Tab move failed; source tab preserved: {exception.Message}";
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Tab move failed: {exception.Message}";
+        }
+    }
+
+    private sealed record TabTransferSnapshot(string Url, string Title, bool Pinned, double ZoomFactor);
+
+    private TabTransferSnapshot? GetTabSnapshot(Guid tabId)
+    {
+        if (!_hosts.TryGetValue(tabId, out var host)) return null;
+        return new TabTransferSnapshot(
+            host.Model.Url,
+            host.Model.Title,
+            host.Model.IsPinned,
+            host.View.CoreWebView2?.ZoomFactor ?? _zoomFactor);
+    }
+
+    private async Task CompleteTransferAsync(Guid tabId)
+    {
+        await CloseTabAsync(tabId);
+    }
+
+    private async Task AddTransferredTabAsync(TabTransferSnapshot snapshot)
+    {
+        await CreateTabAsync(snapshot.Url, snapshot.Title, snapshot.Pinned, activate: true);
+        if (_hosts.TryGetValue(_tabs.ActiveTab?.Id ?? Guid.Empty, out var host)
+            && host.View.CoreWebView2 is { } core)
+        {
+            core.ZoomFactor = snapshot.ZoomFactor;
+            _zoomFactor = snapshot.ZoomFactor;
+        }
+    }
+
     private void TabList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
         var ordered = TabList.Items.OfType<BrowserTabModel>().ToArray();
@@ -1711,7 +1820,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.25.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.26.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
@@ -2746,6 +2855,11 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        lock (WindowRegistryGate)
+        {
+            WindowRegistry.RemoveAll(reference =>
+                !reference.TryGetTarget(out var window) || window == this);
+        }
         _saveTimer?.Stop();
         try
         {

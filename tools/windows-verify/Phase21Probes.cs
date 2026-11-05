@@ -320,6 +320,12 @@ internal static class Phase21Probes
         var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
             new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("localhost");
+        san.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(san.Build());
         using var certificate = request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddDays(-3), DateTimeOffset.UtcNow.AddDays(-1));
 
