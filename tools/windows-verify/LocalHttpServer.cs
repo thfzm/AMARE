@@ -84,10 +84,29 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                 {
                     var media = await File.ReadAllBytesAsync(
                         Path.Combine(AppContext.BaseDirectory, "assets", "sample.webm"), _cts.Token);
-                    var mediaHeader = "HTTP/1.1 200 OK\r\nContent-Type: video/webm\r\n" +
-                                      $"Content-Length: {media.Length}\r\nConnection: close\r\n\r\n";
+                    var start = 0;
+                    var end = media.Length - 1;
+                    var partial = false;
+                    if (headers.TryGetValue("Range", out var range)
+                        && range.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parts = range[6..].Split('-', 2);
+                        if (int.TryParse(parts[0], out var requestedStart))
+                        {
+                            start = Math.Clamp(requestedStart, 0, media.Length - 1);
+                            if (parts.Length > 1 && int.TryParse(parts[1], out var requestedEnd))
+                                end = Math.Clamp(requestedEnd, start, media.Length - 1);
+                            partial = true;
+                        }
+                    }
+                    var length = end - start + 1;
+                    var status = partial ? "206 Partial Content" : "200 OK";
+                    var mediaHeader = $"HTTP/1.1 {status}\r\nContent-Type: video/webm\r\n" +
+                                      "Accept-Ranges: bytes\r\n" +
+                                      (partial ? $"Content-Range: bytes {start}-{end}/{media.Length}\r\n" : "") +
+                                      $"Content-Length: {length}\r\nConnection: close\r\n\r\n";
                     await stream.WriteAsync(Encoding.ASCII.GetBytes(mediaHeader), _cts.Token);
-                    await stream.WriteAsync(media, _cts.Token);
+                    await stream.WriteAsync(media.AsMemory(start, length), _cts.Token);
                     await stream.FlushAsync(_cts.Token);
                     return;
                 }

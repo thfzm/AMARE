@@ -158,6 +158,7 @@ internal static class WebViewHelpers
 
     public static void DisposeView(Control host, WebView2 view)
     {
+        try { view.CoreWebView2?.Stop(); } catch { }
         host.Controls.Remove(view);
         view.Dispose();
     }
