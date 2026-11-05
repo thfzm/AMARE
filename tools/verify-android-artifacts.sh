@@ -9,7 +9,11 @@ BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-${ANDROID_HOME:-/home/ubuntu/android-sdk}/bu
 APKSIGNER="$BUILD_TOOLS/apksigner"
 AAPT="$BUILD_TOOLS/aapt"
 EXPECTED_PACKAGE="org.amare.browser"
-EXPECTED_VERSION_NAME="0.12.0"
+GRADLE_FILE="$ROOT/apps/android/app/build.gradle.kts"
+EXPECTED_VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' "$GRADLE_FILE" | head -1)"
+EXPECTED_VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' "$GRADLE_FILE" | head -1)"
+[ -n "$EXPECTED_VERSION_NAME" ] || fail "could not read versionName from $GRADLE_FILE"
+[ -n "$EXPECTED_VERSION_CODE" ] || fail "could not read versionCode from $GRADLE_FILE"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -25,9 +29,9 @@ fail() {
 
 DEBUG_BADGING="$("$AAPT" dump badging "$DEBUG_APK")"
 RELEASE_BADGING="$("$AAPT" dump badging "$RELEASE_APK")"
-grep -q "package: name='$EXPECTED_PACKAGE' versionCode='12' versionName='$EXPECTED_VERSION_NAME'" \
+grep -q "package: name='$EXPECTED_PACKAGE' versionCode='$EXPECTED_VERSION_CODE' versionName='$EXPECTED_VERSION_NAME'" \
   <<<"$DEBUG_BADGING" || fail "debug package/version mismatch"
-grep -q "package: name='$EXPECTED_PACKAGE' versionCode='12' versionName='$EXPECTED_VERSION_NAME'" \
+grep -q "package: name='$EXPECTED_PACKAGE' versionCode='$EXPECTED_VERSION_CODE' versionName='$EXPECTED_VERSION_NAME'" \
   <<<"$RELEASE_BADGING" || fail "release package/version mismatch"
 grep -q "application-debuggable" <<<"$DEBUG_BADGING" \
   || fail "debug build is not marked debuggable"
