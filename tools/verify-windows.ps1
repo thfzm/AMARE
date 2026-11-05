@@ -358,6 +358,10 @@ Invoke-Step "webview2_probe_run" {
         }
         Add-SkippedStep "app_process_launch" "UNVERIFIED" "Could not launch AMARE.Windows.exe: $($_.Exception.Message)"
     }
+    $startupLog = Join-Path $env:LOCALAPPDATA "AMARE\logs\startup-error.log"
+    if (Test-Path $startupLog) {
+        Copy-Item $startupLog (Join-Path $OutputDir "app_startup_error.log") -Force
+    }
 
     $uiLog = Join-Path $OutputDir "winui_ui_smoke.log"
     $uiResults = Join-Path $OutputDir "winui_ui_smoke_results.json"
