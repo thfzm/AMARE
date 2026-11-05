@@ -2,7 +2,7 @@
 
 AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + WebView2 Evergreen 기반 데스크톱 브라우저입니다.
 
-## 0.16.0 구현 상태
+## 0.17.0 구현 상태
 
 | 영역 | 상태 |
 |---|---|
@@ -21,7 +21,8 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | Windows 11 real device/GUI | **UNVERIFIED** (Runner is Windows Server 2025) |
 | DPI 100/125/150/200%, multi-monitor, Korean IME | **UNVERIFIED** |
 | Code signing | **BLOCKED** — no distribution certificate |
-| API-based AI | **NOT IMPLEMENTED (P2)** |
+| GitHub Releases update check | 구현, **Release 0개 / 실제 update UNVERIFIED** |
+| API-based AI | 구현, no-key/실제 API **UNVERIFIED** |
 
 ## Build
 
@@ -46,7 +47,7 @@ dotnet run --project AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
 `tools/verify-windows.ps1 -CI`가 다음 portable ZIP을 생성합니다.
 
 ```text
-artifacts/windows/AMARE-0.16.0-win-x64.zip
+artifacts/windows/AMARE-0.17.0-win-x64.zip
 ```
 
 이 ZIP은 개발/테스트용 portable package이며 서명된 MSIX 설치 프로그램이 아닙니다.

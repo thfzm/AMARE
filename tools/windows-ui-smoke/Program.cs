@@ -57,6 +57,8 @@ internal static class Program
             Check("reader_mode", OpenAndCloseReader);
             Check("ai_panel", OpenAndCloseAiPanel);
             Check("settings_dialog", OpenAndCloseSettings);
+            Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
+            Check("update_check_dialog", OpenAndCloseUpdateCheck);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
         }
@@ -210,6 +212,37 @@ internal static class Program
             Invoke(cancel);
         }
         return "Settings dialog opened";
+    }
+
+    private static string OpenAndCloseApiAiSettings()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("API AI settings…");
+        WaitFor(() => FindByName("API AI settings") is not null, TimeSpan.FromSeconds(8), "API AI settings dialog");
+        var cancel = FindByName("Cancel");
+        if (cancel is not null)
+        {
+            Invoke(cancel);
+        }
+        WaitFor(() => FindByName("API AI settings") is null, TimeSpan.FromSeconds(8), "API AI settings dialog close");
+        return "API AI settings dialog opened";
+    }
+
+    private static string OpenAndCloseUpdateCheck()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Check for updates…");
+        WaitFor(() => FindByName("Update check") is not null, TimeSpan.FromSeconds(30), "update check dialog");
+        var detail = FindByName("AMARE is up to date.") is not null
+            ? "manual check: up to date (GitHub Releases empty)"
+            : "manual check dialog opened";
+        var close = FindByName("Close");
+        if (close is not null)
+        {
+            Invoke(close);
+        }
+        WaitFor(() => FindByName("Update check") is null, TimeSpan.FromSeconds(8), "update check dialog close");
+        return detail;
     }
 
     private static string CreateTabsAndCheck()

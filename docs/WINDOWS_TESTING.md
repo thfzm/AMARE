@@ -53,10 +53,14 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 - Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/`
 - Rust tests: **PASS**
-- C# interop/core tests: **51/51 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
+- C# interop/core tests: **55/55 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP: **PASS** (Windows Server 2025 Runner)
 - UIAutomation GUI smoke: **10/10 PASS** (window, address, tabs, Find 1/2, Reader, AI panel, settings, session restore, 7-tab stress)
+- Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
+- AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace
+- GitHub Releases: 현재 public release 0개, 실제 app update flow UNVERIFIED
+- API AI: Credential Manager 저장 구조/HTTP client compile, 실제 key/API request UNVERIFIED
 - Windows 11 actual GUI: **UNVERIFIED**
 - DPI/IME/multi-monitor: **UNVERIFIED**
 - 코드 서명/업데이트 설치: **BLOCKED / 미구현**

@@ -5,8 +5,8 @@
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
 - 현재 상태: Windows 0.15.0 WinUI Debug/Release build, portable ZIP, app process/window launch smoke, C#/Rust interop, WebView2 probes **PASS** (Windows Server 2025 Runner). Windows 11 실제 GUI는 **UNVERIFIED**입니다. Linux **PASS**. Android CI는 0.14.0 최종 코드 `9110ddc`에서 **SUCCESS**했으며 Windows-only 변경에서는 path filter로 실행되지 않습니다.
-- 0.16.0 최종 코드 검증 run: [Windows #41981460192](https://github.com/thfzm/AMARE/actions/runs/41981460192) **success**, [Linux #41981460094](https://github.com/thfzm/AMARE/actions/runs/41981460094) **success**, Android [0.14.0 #41952767737](https://github.com/thfzm/AMARE/actions/runs/41952767737) **success**
-- AMARE 0.16.0: GUI UIAutomation **10/10 PASS**, WinUI Debug/Release, portable ZIP, unsigned MSIX build PASS; MSIX install은 unsigned publisher로 **BLOCKED**.
+- 0.17.0 최종 코드 검증 run: [Windows #41984330224](https://github.com/thfzm/AMARE/actions/runs/41984330224) **success**, [Linux #41984330171](https://github.com/thfzm/AMARE/actions/runs/41984330171) **success**, Android [0.14.0 #41952767737](https://github.com/thfzm/AMARE/actions/runs/41952767737) **success**
+- AMARE 0.17.0: GUI UIAutomation **10/10 PASS**, WinUI Debug/Release, portable ZIP, unsigned MSIX build, update/API core tests PASS; MSIX install은 unsigned publisher로 **BLOCKED**, GitHub Release 0개.
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---
