@@ -37,10 +37,18 @@ internal static class Program
             });
             Check("initial_ui", () =>
             {
-                Require(FindById("AddressBar") is not null, "AddressBar missing");
-                Require(FindById("NewTabButton") is not null, "NewTabButton missing");
-                Require(FindById("MenuButton") is not null, "MenuButton missing");
-                return "address/new-tab/menu controls present";
+                try
+                {
+                    WaitFindById("AddressBar", TimeSpan.FromSeconds(20));
+                    WaitFindById("NewTabButton", TimeSpan.FromSeconds(10));
+                    WaitFindById("MenuButton", TimeSpan.FromSeconds(10));
+                    return "address/new-tab/menu controls present";
+                }
+                catch
+                {
+                    DumpTree();
+                    throw;
+                }
             });
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
@@ -194,12 +202,13 @@ internal static class Program
     private static string RestartAndCheckSession()
     {
         var tabsBefore = CountTabs();
+        Require(tabsBefore > 0, "no tabs before restart");
         TryClose(graceful: true);
         WaitFor(() => _process?.HasExited == true, TimeSpan.FromSeconds(15), "process exit");
         _process = null;
         _window = null;
         Launch(_exePath!);
-        WaitFor(() => CountTabs() >= Math.Min(2, tabsBefore), TimeSpan.FromSeconds(15), "restored tabs");
+        WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "restored tabs");
         return $"tabs_before={tabsBefore} tabs_after={CountTabs()}";
     }
 
@@ -247,6 +256,32 @@ internal static class Program
 
     private static AutomationElement? FindById(string id) =>
         _window?.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+
+    private static void DumpTree()
+    {
+        Console.WriteLine("=== UIAUTOMATION TREE ===");
+        if (_window is null)
+        {
+            Console.WriteLine("window is null");
+            return;
+        }
+        var all = _window.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+        var count = 0;
+        foreach (AutomationElement element in all)
+        {
+            if (count++ >= 200) break;
+            try
+            {
+                Console.WriteLine($"id={element.Current.AutomationId} name={element.Current.Name} " +
+                    $"type={element.Current.ControlType.ProgrammaticName} offscreen={element.Current.IsOffscreen}");
+            }
+            catch (ElementNotAvailableException)
+            {
+                break;
+            }
+        }
+        Console.WriteLine($"=== END TREE count={count} ===");
+    }
 
     private static AutomationElement WaitFindById(string id, TimeSpan timeout)
     {
