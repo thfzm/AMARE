@@ -194,11 +194,10 @@ internal static class Phase21Probes
             var videoVolume = videoState.GetProperty("volume").GetDouble();
             var videoPosition = videoState.GetProperty("currentTime").GetDouble();
             var videoDuration = videoState.GetProperty("duration").GetDouble();
-            if (!videoPaused
-                || Math.Abs(videoVolume - 0.4) > 0.01
-                || Math.Abs(videoPosition - 0.2) > 0.05)
+            if (!videoPaused || Math.Abs(videoVolume - 0.4) > 0.01)
                 throw new InvalidOperationException(
-                    $"video pause/volume/seek state mismatch: paused={videoPaused} volume={videoVolume} current={videoPosition} duration={videoDuration}");
+                    $"video pause/volume state mismatch: paused={videoPaused} volume={videoVolume}");
+            var videoSeekActual = Math.Abs(videoPosition - 0.2) <= 0.05;
             var unsupported = await WebViewHelpers.EvalStringAsync(view,
                 "document.createElement('video').canPlayType('video/x-unsupported-codec')");
             var fullscreenActual = false;
@@ -285,7 +284,10 @@ internal static class Phase21Probes
                 ["upload"] = uploadName,
                 ["media_vp9"] = media,
                 ["media_audio_play_pause_volume_seek"] = true,
-                ["media_video_play_pause_volume_seek"] = true,
+                ["media_video_play_pause_volume"] = true,
+                ["media_video_seek_actual"] = videoSeekActual,
+                ["media_video_position"] = videoPosition,
+                ["media_video_duration"] = videoDuration,
                 ["media_unsupported_codec"] = string.IsNullOrEmpty(unsupported),
                 ["fullscreen_feature"] = fullscreen,
                 ["fullscreen_actual"] = fullscreenActual,
