@@ -137,9 +137,9 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Find in page");
         var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
-        SetValue(box, "Example Domain");
         box.SetFocus();
-        Console.WriteLine($"find_value={box.Current.Name}");
+        SendKeys.SendWait("^a");
+        SendKeys.SendWait("Example Domain");
         SendKeys.SendWait("{ENTER}");
         WaitFor(() =>
         {

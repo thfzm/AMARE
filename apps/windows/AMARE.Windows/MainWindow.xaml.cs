@@ -1274,7 +1274,9 @@ public sealed partial class MainWindow : Window
         CloseAiPanel();
         try
         {
+            AppLog.Info("Reader extraction starting");
             var raw = await host.View.CoreWebView2.ExecuteScriptAsync(ReaderExtractionScript.Script);
+            AppLog.Info($"Reader extraction returned chars={raw?.Length ?? 0}");
             var json = JsonSerializer.Deserialize<string>(raw);
             var page = string.IsNullOrWhiteSpace(json)
                 ? null
