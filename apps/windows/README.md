@@ -7,7 +7,7 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | 영역 | 상태 |
 |---|---|
 | WinUI 3 XAML/C# build | **PASS** (Windows Runner, Windows Server 2025) |
-| 실제 GUI UIAutomation | **PASS 10/10** (window/address/tabs/Find/Reader/AI/settings/session) |
+| 실제 GUI UIAutomation | **PASS 12/12** (window/address/tabs/Find/Reader/AI/settings/API settings/update check/session) |
 | WebView2 tabs/address/navigation | 구현, GUI automation PASS |
 | Bookmarks/History Rust persistence | **PASS** (C# native interop round-trip) |
 | Downloads detection/persistent list | 구현, GUI **UNVERIFIED** |

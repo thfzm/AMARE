@@ -111,3 +111,8 @@ Next action:
 | W11-45 | AI 문맥 | Page info/Article 복사 | 클립보드에만 복사, 자동 전송 없음 |  |  |  |  |
 | W11-46 | AI/일반 탭 분리 | AI 로그인 후 일반 브라우저 확인 | 저장소/로그인 상태 분리 |  |  |  |  |
 | W11-47 | 테마 | System/Light/Dark 변경 | 즉시 반영, 재시작 후 유지 |  |  |  |  |
+
+## 0.17 update / API AI
+- [ ] GitHub Release가 실제로 발행된 뒤 `Check for updates…` → 다운로드 → SHA-256 → 적용/rollback 확인
+- [ ] `API AI settings…`에서 실제 key 저장/삭제 후 test connection 확인
+- [ ] API AI 요청에서 page context 사용자 승인/취소 동작 확인

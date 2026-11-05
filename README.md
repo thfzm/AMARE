@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.17.0 Updates & AI Integration** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows GUI UIAutomation 10/10, WinUI Debug/Release, portable ZIP, unsigned MSIX build, update/API core tests가 PASS했지만 Windows 11 실기기·DPI/IME/멀티모니터, 실제 GitHub Release 업데이트, 실제 API AI, MSIX 서명/설치는 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
+현재 저장소는 **AMARE 0.17.0 Updates & AI Integration** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows GUI UIAutomation 12/12, WinUI Debug/Release, portable ZIP, unsigned MSIX build, update/API core tests가 PASS했지만 Windows 11 실기기·DPI/IME/멀티모니터, 실제 GitHub Release 업데이트, 실제 API AI, MSIX 서명/설치는 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
 
 ## 핵심 원칙
 
