@@ -7,10 +7,12 @@ on:
   push:
     paths:
       - "apps/android/**"
+      - "tools/verify-android-artifacts.sh"
       - ".github/workflows/ci-android.yml"
   pull_request:
     paths:
       - "apps/android/**"
+      - "tools/verify-android-artifacts.sh"
       - ".github/workflows/ci-android.yml"
 
 jobs:
