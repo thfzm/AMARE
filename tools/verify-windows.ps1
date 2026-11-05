@@ -307,6 +307,15 @@ if ($SkipWinUI) {
         Write-Host "Portable package: $zip"
         Write-Host "Executable: $($exe.FullName)"
     }
+}
+
+# ---------- WebView2 probes ----------
+Write-Host ""
+Write-Host "Starting WebView2 probes. Follow the status bar for the manual intervention step." -ForegroundColor Yellow
+Invoke-Step "webview2_probe_run" {
+    dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
+} -Required $false
+
     $appExe = Join-Path $OutputDir "AMARE-0.15.0-win-x64\AMARE.Windows.exe"
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
@@ -343,14 +352,6 @@ if ($SkipWinUI) {
         }
         Add-SkippedStep "app_process_launch" "UNVERIFIED" "Could not launch AMARE.Windows.exe: $($_.Exception.Message)"
     }
-}
-
-# ---------- WebView2 probes ----------
-Write-Host ""
-Write-Host "Starting WebView2 probes. Follow the status bar for the manual intervention step." -ForegroundColor Yellow
-Invoke-Step "webview2_probe_run" {
-    dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
-} -Required $false
 
 $storagePath = Join-Path $OutputDir "storage-ci.json"
 $storageSummary = $null
