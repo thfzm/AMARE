@@ -135,8 +135,6 @@
                 Height="34"
                 VerticalContentAlignment="Center"
                 PlaceholderText="Search or enter a web address"
-                IsSpellCheckEnabled="False"
-                IsTextPredictionEnabled="False"
                 TextMemberPath="Label"
                 TextChanged="AddressBar_TextChanged"
                 SuggestionChosen="AddressBar_SuggestionChosen"

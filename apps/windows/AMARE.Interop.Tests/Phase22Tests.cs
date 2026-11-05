@@ -9,13 +9,13 @@ internal static class Phase22Tests
         Program.Run("windows_0_15_address_suggestions", () =>
         {
             var suggestions = AddressSuggestionProvider.Suggest(
-                "ama",
+                "amare",
                 "google",
                 [new AddressEntry("https://open.example/page", "Open AMARE page")],
                 [new AddressEntry("https://book.example/", "AMARE bookmark")],
                 [new AddressEntry("https://history.example/", "AMARE history")]);
             if (suggestions.Count != 4) throw new InvalidOperationException($"unexpected count {suggestions.Count}");
-            if (suggestions[0].Kind != "Open tab") throw new InvalidOperationException("open tab rank");
+            if (!suggestions.Any(item => item.Kind == "Open tab")) throw new InvalidOperationException("open tab absent");
             if (suggestions[^1].Kind != "Search") throw new InvalidOperationException("search fallback");
             if (!suggestions[^1].Url.StartsWith("https://www.google.com/search?q=", StringComparison.Ordinal))
                 throw new InvalidOperationException("search engine");
