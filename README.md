@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.25.0 Native Tab Interaction & Certificate Validation** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows GUI UIAutomation 25/25, 실제 AMARE WebSocket 탭/창 정리, video/fullscreen/PiP, SQLite/WAL recovery 4/4, GUI 회귀, memory, updater/release tests가 PASS했지만 Windows 11 실기기·DPI/IME/멀티모니터, 창 간 탭 이동, certificate error event/UI, 실제 API key, MSIX 서명/설치는 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
+현재 저장소는 **AMARE 0.26.0 Cross-Window Tabs & Real Certificate UX** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows GUI UIAutomation 26/26, 실제 AMARE WebSocket 탭/창 정리, video/fullscreen/PiP, SQLite/WAL recovery 4/4, GUI 회귀, memory, updater/release tests가 PASS했지만 Windows 11 실기기·DPI/IME/멀티모니터, 나머지 drag 조합/tear-off, certificate error event/UI, 실제 API key, MSIX 서명/설치는 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
 
 ## 핵심 원칙
 
@@ -121,6 +121,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.23.0: **certificate error event Cancel UX, WinUI lifecycle 수정, WebSocket/cert probe 재검증**; WS tab-close cleanup observed false, native drag/cert actual/DPI/API/signing은 UNVERIFIED/BLOCKED
 - Windows 0.24.0: **WebSocket tab/window close cleanup 실제 UI PASS, reconnect 테스트 계측 수정, 0.24 회귀**; native drag/창 간 이동/cert actual/DPI/API/signing은 UNVERIFIED/BLOCKED
 - Windows 0.25.0: **실제 native tab first→last drag PASS, WebSocket tab/window cleanup 회귀 PASS, GUI 25/25**; 창 간 이동/cert actual/DPI/API/signing은 UNVERIFIED/BLOCKED
+- Windows 0.26.0: **실제 두 창 간 tab transfer PASS, native first→last drag PASS, GUI 26/26**; 나머지 drag 조합/tear-off/cert actual/DPI/API/signing은 UNVERIFIED/BLOCKED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
