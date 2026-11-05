@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
-$Version = "0.22.0"
+$Version = "0.23.0"
 $PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir

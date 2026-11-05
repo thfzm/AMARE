@@ -342,37 +342,40 @@ internal static class Phase21Probes
         var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-cert"));
         try
         {
-            var completion = new TaskCompletionSource<(bool Success, CoreWebView2WebErrorStatus Status)>(
+            var certificateError = new TaskCompletionSource<CoreWebView2WebErrorStatus>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            void Handler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
+            void Handler(object? sender, CoreWebView2ServerCertificateErrorDetectedEventArgs args)
             {
-                view.NavigationCompleted -= Handler;
-                completion.TrySetResult((args.IsSuccess, args.WebErrorStatus));
+                // Explicitly cancel; this probe must never allow/ignore the certificate.
+                args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
+                certificateError.TrySetResult(args.ErrorStatus);
             }
-            view.NavigationCompleted += Handler;
-            view.CoreWebView2.Navigate($"https://127.0.0.1:{port}/");
-            (bool Success, CoreWebView2WebErrorStatus Status) result;
+            view.CoreWebView2.ServerCertificateErrorDetected += Handler;
             try
             {
-                result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                view.CoreWebView2.Navigate($"https://127.0.0.1:{port}/");
+                var status = await certificateError.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                var data = new Dictionary<string, object?>
+                {
+                    ["navigation_success"] = false,
+                    ["web_error_status"] = status.ToString(),
+                    ["certificate_rejected"] = true,
+                    ["action"] = "cancel",
+                    ["user_bypass_implemented"] = false,
+                };
+                return Result("webview2_certificate_error", ProbeStatus.Pass, true,
+                    "self-signed/expired local certificate raised ServerCertificateErrorDetected and was cancelled; no bypass", data);
             }
             catch (TimeoutException)
             {
                 return Result("webview2_certificate_error", ProbeStatus.Unverified, true,
-                    "local TLS certificate probe timed out before NavigationCompleted; engine-level result is not claimed",
+                    "local TLS certificate probe timed out before ServerCertificateErrorDetected; engine-level result is not claimed",
                     new { navigation_success = (bool?)null, certificate_rejected = (bool?)null });
             }
-            if (result.Success)
-                throw new InvalidOperationException("self-signed/expired certificate was unexpectedly accepted");
-            var data = new Dictionary<string, object?>
+            finally
             {
-                ["navigation_success"] = false,
-                ["web_error_status"] = result.Status.ToString(),
-                ["certificate_rejected"] = true,
-                ["user_bypass_implemented"] = false,
-            };
-            return Result("webview2_certificate_error", ProbeStatus.Pass, true,
-                "self-signed/expired local certificate was rejected; no automatic bypass is implemented", data);
+                view.CoreWebView2.ServerCertificateErrorDetected -= Handler;
+            }
         }
         finally
         {

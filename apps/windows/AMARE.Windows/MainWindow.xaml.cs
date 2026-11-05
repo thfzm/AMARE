@@ -737,6 +737,14 @@ public sealed partial class MainWindow : Window
                 UpdateToolbar();
             }
         };
+        core.ServerCertificateErrorDetected += (_, args) =>
+        {
+            // Never allow a certificate error automatically. Cancel the navigation
+            // and show the user an explicit, non-bypass error notice.
+            args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
+            StatusText.Text = DescribeWebError(args.ErrorStatus);
+            _ = ShowCertificateErrorAsync(args.RequestUri, args.ErrorStatus);
+        };
         core.NavigationCompleted += (webview, args) =>
         {
             host.ShowingNewTab = false;
@@ -982,6 +990,14 @@ public sealed partial class MainWindow : Window
             // The process may already be shutting down.
         }
         WebViewHost.Children.Remove(host.View);
+        try
+        {
+            host.View.Dispose();
+        }
+        catch
+        {
+            // The control may already be disposed during app shutdown.
+        }
     }
 
     private void CloseAllTabs()
@@ -1050,6 +1066,38 @@ public sealed partial class MainWindow : Window
 
     private BrowserTab? ActiveHost =>
         _tabs.ActiveTab is { } active && _hosts.TryGetValue(active.Id, out var host) ? host : null;
+
+    private async Task ShowCertificateErrorAsync(string uri, CoreWebView2WebErrorStatus status)
+    {
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "보안 인증서 오류",
+                Content = new TextBlock
+                {
+                    Text = $"{DescribeWebError(status)}\n\n요청 주소: {uri}\n\n" +
+                           "이 페이지로 자동 진행하지 않았습니다. 사이트 관리자에게 문의하거나, " +
+                           "인증서가 올바른지 확인한 뒤 다시 시도하세요.",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                PrimaryButtonText = "뒤로",
+                CloseButtonText = "닫기",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = RootGrid.XamlRoot
+            };
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                var active = ActiveHost?.View.CoreWebView2;
+                if (active?.CanGoBack == true) active.GoBack();
+            }
+        }
+        catch
+        {
+            // The window may be closing; the navigation remains cancelled.
+        }
+    }
 
     private static string DescribeWebError(CoreWebView2WebErrorStatus status) => status switch
     {
@@ -1671,7 +1719,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.22.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.23.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
