@@ -64,11 +64,11 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Release preflight version/arch/assets/hashes PASS
 - AI mock success, 401/429/network errors, key redaction, SSE streaming, provider selection PASS
 - Local web compatibility: SPA, cookie/session, upload, WebSocket connect/echo/reconnect, audio/video play/pause/volume/seek, fullscreen/PiP actual, media capability, zoom, redirect PASS
-- SQLite/WAL recovery: 4/4 PASS (WAL checkpoint/reopen, corrupt copy, missing DB restore, future schema copy)
+- SQLite/WAL recovery: **4/4 PASS** (WAL checkpoint/reopen, corrupt copy, missing DB restore, future schema copy)
 - Native tab drag: **UNVERIFIED** (actual native reorder not reproduced); core Move PASS; new window open/close PASS
 - WebSocket tab-close cleanup: **UNVERIFIED/false observation**; connect/echo/reconnect PASS
 - Certificate error: **UNVERIFIED** (local TLS probe timeout); no bypass
-- Certificate error local probe: **UNVERIFIED** (timeout); no bypass implemented
+- Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning code; local TLS probe **UNVERIFIED** (event timeout); no bypass implemented
 - 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing PASS (0.22 values in report)
 - Native tab drag reorder: **UNVERIFIED** (attempted; core TabManager.Move PASS)
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
