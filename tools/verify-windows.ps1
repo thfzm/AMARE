@@ -328,22 +328,28 @@ Invoke-Step "webview2_probe_run" {
         } else {
             $appProcess.Refresh()
             $windowHandle = $appProcess.MainWindowHandle
+            $windowTitle = $appProcess.MainWindowTitle
             $windowDetail = if ($windowHandle -ne [IntPtr]::Zero) {
                 "a window handle was created"
             } else {
                 "no main window handle was available in the CI session"
             }
-            $Steps.Add([pscustomobject]@{
-                name = "app_process_launch"
-                status = "PASS"
-                exit_code = 0
-                required = $false
-                started_at = $appStarted
-                finished_at = (Get-Date).ToUniversalTime().ToString("o")
-                duration_ms = 8000
-                log = $null
-                detail = "AMARE.Windows.exe stayed alive for 8 seconds after Start-Process; $windowDetail; GUI rendering remains UNVERIFIED."
-            })
+            $startupFailed = $windowTitle -match 'could not be started|Required components'
+            if ($startupFailed) {
+                Add-SkippedStep "app_process_launch" "UNVERIFIED" "AMARE.Windows.exe opened a startup error dialog ($windowTitle); self-contained runtime or deployment is incomplete."
+            } else {
+                $Steps.Add([pscustomobject]@{
+                    name = "app_process_launch"
+                    status = "PASS"
+                    exit_code = 0
+                    required = $false
+                    started_at = $appStarted
+                    finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                    duration_ms = 8000
+                    log = $null
+                    detail = "AMARE.Windows.exe stayed alive for 8 seconds after Start-Process; $windowDetail; title=($windowTitle); GUI rendering remains UNVERIFIED."
+                })
+            }
             Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
         }
     } catch {
