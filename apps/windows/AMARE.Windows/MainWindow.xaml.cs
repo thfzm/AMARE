@@ -1383,7 +1383,7 @@ public sealed partial class MainWindow : Window
         if (!_settingReader && _readerPage is not null) RenderReader();
     }
 
-    private async void Ai_Click(object sender, RoutedEventArgs e)
+    private void Ai_Click(object sender, RoutedEventArgs e)
     {
         AppLog.Info($"AI panel click open={_aiOpen}");
         if (_aiOpen)
@@ -1393,25 +1393,33 @@ public sealed partial class MainWindow : Window
         }
         CloseFind();
         CloseReader();
+        AiColumn.Width = new GridLength(380);
+        AiPanelHost.Visibility = Visibility.Visible;
+        _aiOpen = true;
+        StatusText.Text = "AI web panel opened";
+        AppLog.Info("AI panel opened");
+        _ = InitializeAiPanelAsync();
+    }
+
+    private async Task InitializeAiPanelAsync()
+    {
         try
         {
-            AiColumn.Width = new GridLength(380);
-            AiPanelHost.Visibility = Visibility.Visible;
-            _aiOpen = true;
             AppLog.Info("AI panel ensure starting");
             await EnsureAiAsync();
             AppLog.Info("AI panel ensure complete");
             if (AiServiceBox.SelectedItem is AiServiceOption service && AiWebView.CoreWebView2 is { } core)
             {
+                AppLog.Info($"AI navigating={service.Url}");
                 core.Navigate(service.Url);
             }
-            StatusText.Text = "AI web panel opened";
+            AppLog.Info("AI panel navigation requested");
         }
         catch (Exception exception)
         {
-            CloseAiPanel();
             AppLog.Error("AI panel failed", exception);
             StatusText.Text = $"AI panel failed: {exception.Message}";
+            CloseAiPanel();
         }
     }
 

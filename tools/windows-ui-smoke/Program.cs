@@ -129,6 +129,8 @@ internal static class Program
         var before = CountTabs();
         Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
         WaitFor(() => CountTabs() > before, TimeSpan.FromSeconds(5), "new tab count");
+        Thread.Sleep(500);
+        NavigateToExample();
         return $"tabs {before}->{CountTabs()}";
     }
 
