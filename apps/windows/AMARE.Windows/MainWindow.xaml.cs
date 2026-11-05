@@ -1221,6 +1221,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void FindGo_Click(object sender, RoutedEventArgs e) => await StartFindAsync();
+
     private void FindClose_Click(object sender, RoutedEventArgs e) => CloseFind();
 
     private void CloseFind()

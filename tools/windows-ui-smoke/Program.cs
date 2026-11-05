@@ -139,15 +139,13 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Find in page");
         var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
-        box.SetFocus();
-        SendKeys.SendWait("^a");
-        SendKeys.SendWait("Example Domain");
-        SendKeys.SendWait("{ENTER}");
+        SetValue(box, "Domain");
+        Invoke(WaitFindById("FindGoButton", TimeSpan.FromSeconds(5)));
         WaitFor(() =>
         {
             var count = FindById("FindCount")?.Current.Name ?? "";
-            return count.Length > 0 && count != "0/0";
-        }, TimeSpan.FromSeconds(5), "find result count");
+            return System.Text.RegularExpressions.Regex.IsMatch(count, "^[1-9][0-9]*/[1-9][0-9]*$");
+        }, TimeSpan.FromSeconds(10), "find result count");
         return FindById("FindCount")?.Current.Name ?? "";
     }
 

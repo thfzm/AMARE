@@ -179,6 +179,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center" />
             <TextBox
@@ -188,13 +189,16 @@
                 PlaceholderText="Find in page"
                 KeyDown="FindBox_KeyDown" />
             <TextBlock x:Name="FindCount" AutomationProperties.AutomationId="FindCount" Grid.Column="2" VerticalAlignment="Center" MinWidth="70" Text="0/0" />
-            <Button Grid.Column="3" Style="{StaticResource ToolbarButtonStyle}" Click="FindPrevious_Click" ToolTipService.ToolTip="Previous match">
+            <Button x:Name="FindGoButton" Grid.Column="3" AutomationProperties.AutomationId="FindGoButton" Style="{StaticResource ToolbarButtonStyle}" Click="FindGo_Click" ToolTipService.ToolTip="Find">
+                <FontIcon Glyph="&#xE721;" />
+            </Button>
+            <Button Grid.Column="4" Style="{StaticResource ToolbarButtonStyle}" Click="FindPrevious_Click" ToolTipService.ToolTip="Previous match">
                 <FontIcon Glyph="&#xE70E;" />
             </Button>
-            <Button Grid.Column="4" Style="{StaticResource ToolbarButtonStyle}" Click="FindNext_Click" ToolTipService.ToolTip="Next match">
+            <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" Click="FindNext_Click" ToolTipService.ToolTip="Next match">
                 <FontIcon Glyph="&#xE70D;" />
             </Button>
-            <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="FindCloseButton" Click="FindClose_Click" ToolTipService.ToolTip="Close find">
+            <Button Grid.Column="6" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="FindCloseButton" Click="FindClose_Click" ToolTipService.ToolTip="Close find">
                 <FontIcon Glyph="&#xE711;" />
             </Button>
         </Grid>
