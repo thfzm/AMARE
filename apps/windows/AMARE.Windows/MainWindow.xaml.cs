@@ -1263,6 +1263,7 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenReaderAsync()
     {
+        AppLog.Info("Reader Mode requested");
         var host = ActiveHost;
         if (host?.View.CoreWebView2 is null || host.Model.IsNewTabPage)
         {
@@ -1286,6 +1287,7 @@ public sealed partial class MainWindow : Window
             }
             _readerPage = page;
             _readerNonce = Guid.NewGuid().ToString("N");
+            AppLog.Info($"Reader content extracted words={page.WordCount} blocks={page.Blocks.Count}");
             ReaderTitleText.Text = string.IsNullOrWhiteSpace(page.Title) ? "Reader" : page.Title;
             await EnsureReaderAsync();
             RenderReader();
@@ -1380,6 +1382,7 @@ public sealed partial class MainWindow : Window
 
     private async void Ai_Click(object sender, RoutedEventArgs e)
     {
+        AppLog.Info($"AI panel click open={_aiOpen}");
         if (_aiOpen)
         {
             CloseAiPanel();

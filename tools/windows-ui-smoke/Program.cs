@@ -120,6 +120,7 @@ internal static class Program
         Invoke(go);
         WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
             TimeSpan.FromSeconds(15), "Example Domain title");
+        Thread.Sleep(1500);
         return _process!.MainWindowTitle;
     }
 
@@ -136,7 +137,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Find in page");
         var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
-        SetValue(box, "Example");
+        SetValue(box, "Example Domain");
         box.SetFocus();
         SendKeys.SendWait("{ENTER}");
         WaitFor(() =>
