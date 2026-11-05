@@ -334,6 +334,34 @@ if ($SkipWinUI) {
         Write-Host "SHA-256: $zipHash"
         Write-Host "Executable: $($exe.FullName)"
     }
+    Invoke-Step "portable_update_helper_smoke" {
+        $zip = Join-Path $OutputDir "$PortableName.zip"
+        $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
+        if (-not (Test-Path $updater)) { throw "Updater helper is missing." }
+        $root = Join-Path $env:TEMP "amare-update-helper-smoke-$([guid]::NewGuid().ToString('N'))"
+        $appDir = Join-Path $root "app"
+        $dataDir = Join-Path $root "data"
+        try {
+            New-Item -ItemType Directory -Force -Path $appDir, $dataDir | Out-Null
+            Set-Content -Path (Join-Path $appDir "VERSION") -Value "0.17.0" -Encoding utf8
+            Set-Content -Path (Join-Path $appDir "AMARE.Windows.exe") -Value "old-exe" -Encoding utf8
+            Set-Content -Path (Join-Path $dataDir "user-data.txt") -Value "preserve-me" -Encoding utf8
+            $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            & $updater apply --package $zip --app-dir $appDir --data-dir $dataDir --version $Version --sha256 $hash --architecture win-x64 --entry AMARE.Windows.exe --no-launch
+            if ($LASTEXITCODE -ne 0) { throw "Updater helper exited with $LASTEXITCODE." }
+            $installed = (Get-Content (Join-Path $appDir "VERSION") -Raw).Trim()
+            if ($installed -ne $Version) { throw "Helper applied version $installed, expected $Version." }
+            if ((Get-Content (Join-Path $dataDir "user-data.txt") -Raw).Trim() -ne "preserve-me") {
+                throw "Helper changed user data."
+            }
+            $state = Get-Content (Join-Path $dataDir "update-state.json") -Raw | ConvertFrom-Json
+            if ($state.status -ne "succeeded") { throw "Unexpected helper state: $($state.status)" }
+            Write-Host "Helper applied $installed; user data preserved; state=$($state.status)"
+        } finally {
+            if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
     Invoke-Step "winui_msix" {
         $makeAppx = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin") -Recurse -Filter MakeAppx.exe -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\x64\\' } |
@@ -478,7 +506,7 @@ Invoke-Step "webview2_probe_run" {
             finished_at = (Get-Date).ToUniversalTime().ToString("o")
             duration_ms = 0
             log = $uiLog
-            detail = "UIAutomation smoke passed: window, address, tabs, Find, Reader, AI panel, Settings, session restart."
+            detail = "UIAutomation smoke passed: window, address, tabs, Find, Reader, AI panel, Settings, API settings, update check, diagnostics, session restart."
         })
     } else {
         Add-SkippedStep "winui_ui_smoke" "UNVERIFIED" "UIAutomation smoke failed or was unavailable; see $uiLog."
