@@ -4,8 +4,8 @@
 - 단계: Phase 2.2 Windows 검증 게이트/Release Candidate
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
-- 현재 상태: Linux **PASS**, Windows **PASS** (Runner, Windows Server 2025), Android **PASS** (`assembleDebug`). CI Android instrumentation은 compile-only이며, 별도 실기기에서 13/13 PASS를 확인했습니다. Windows 11 실기기는 **UNVERIFIED**.
-- 최신 run: [Linux #41764105986](https://github.com/thfzm/AMARE/actions/runs/41764105986) **success**, [Windows #41764106062](https://github.com/thfzm/AMARE/actions/runs/41764106062) **success**, [Android #41764105964](https://github.com/thfzm/AMARE/actions/runs/41764105964) **success**
+- 현재 상태: Windows 0.15.0 WinUI Debug/Release build, portable ZIP, app process/window launch smoke, C#/Rust interop, WebView2 probes **PASS** (Windows Server 2025 Runner). Windows 11 실제 GUI는 **UNVERIFIED**입니다. Linux **PASS**. Android CI는 0.14.0 최종 코드 `9110ddc`에서 **SUCCESS**했으며 Windows-only 변경에서는 path filter로 실행되지 않습니다.
+- 최종 코드 검증 run: [Windows #41960475932](https://github.com/thfzm/AMARE/actions/runs/41960475932) **success**, [Linux #41960475752](https://github.com/thfzm/AMARE/actions/runs/41960475752) **success**, Android [0.14.0 #41952767737](https://github.com/thfzm/AMARE/actions/runs/41952767737) **success**
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---
