@@ -5,7 +5,29 @@ using System.Text.Json;
 
 namespace Amare.Windows.Core;
 
-public sealed record AiApiSettings(string Model = "gpt-4o-mini", string BaseUrl = "https://api.openai.com/v1");
+public sealed record AiApiSettings(
+    string Model = "gpt-4o-mini",
+    string BaseUrl = "https://api.openai.com/v1",
+    string Provider = AiProviderCatalog.OpenAiId);
+
+public sealed record AiProviderDescriptor(string Id, string Name, string BaseUrl, string DefaultModel, string Description);
+
+public static class AiProviderCatalog
+{
+    public const string OpenAiId = "openai";
+    public const string CompatibleId = "openai-compatible";
+    public static readonly IReadOnlyList<AiProviderDescriptor> All =
+    [
+        new(OpenAiId, "OpenAI", "https://api.openai.com/v1", "gpt-4o-mini",
+            "OpenAI Chat Completions API."),
+        new(CompatibleId, "OpenAI-compatible endpoint", "https://api.openai.com/v1", "gpt-4o-mini",
+            "A user-approved endpoint that implements the OpenAI Chat Completions request shape.")
+    ];
+
+    public static AiProviderDescriptor Resolve(string? id) =>
+        All.FirstOrDefault(provider => provider.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+        ?? All[0];
+}
 
 public sealed record AiApiChunk(string Text, bool Done);
 
@@ -79,7 +101,19 @@ public static class AiApiClient
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("API key is not configured.");
-        using var http = CreateClient(apiKey);
+        return await CompleteAsync(apiKey, settings, prompt, pageContext, null, cancellationToken);
+    }
+
+    public static async Task<string> CompleteAsync(
+        string apiKey,
+        AiApiSettings settings,
+        string prompt,
+        string? pageContext,
+        HttpMessageHandler? handler,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("API key is not configured.");
+        using var http = CreateClient(apiKey, handler);
         using var response = await http.PostAsync(
             new Uri(settings.BaseUrl.TrimEnd('/') + "/chat/completions"),
             new StringContent(BuildRequest(settings.Model, prompt, pageContext), Encoding.UTF8, "application/json"),
@@ -87,7 +121,8 @@ public static class AiApiClient
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"AI API returned HTTP {(int)response.StatusCode}: {TrimError(json)}");
+            throw new InvalidOperationException(
+                $"AI API returned HTTP {(int)response.StatusCode}: {TrimError(json, apiKey)}");
         }
         return ParseContent(json) ?? "The AI API returned an empty response.";
     }
@@ -100,7 +135,22 @@ public static class AiApiClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("API key is not configured.");
-        using var http = CreateClient(apiKey);
+        await foreach (var chunk in StreamAsync(apiKey, settings, prompt, pageContext, null, cancellationToken))
+        {
+            yield return chunk;
+        }
+    }
+
+    public static async IAsyncEnumerable<string> StreamAsync(
+        string apiKey,
+        AiApiSettings settings,
+        string prompt,
+        string? pageContext,
+        HttpMessageHandler? handler,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("API key is not configured.");
+        using var http = CreateClient(apiKey, handler);
         var request = new HttpRequestMessage(
             HttpMethod.Post,
             new Uri(settings.BaseUrl.TrimEnd('/') + "/chat/completions"))
@@ -115,7 +165,8 @@ public static class AiApiClient
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new InvalidOperationException($"AI API returned HTTP {(int)response.StatusCode}: {TrimError(error)}");
+            throw new InvalidOperationException(
+                $"AI API returned HTTP {(int)response.StatusCode}: {TrimError(error, apiKey)}");
         }
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -131,13 +182,18 @@ public static class AiApiClient
         }
     }
 
-    private static HttpClient CreateClient(string apiKey)
+    private static HttpClient CreateClient(string apiKey, HttpMessageHandler? handler = null)
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        var client = handler == null
+            ? new HttpClient { Timeout = TimeSpan.FromMinutes(2) }
+            : new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromMinutes(2) };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         return client;
     }
 
-    private static string TrimError(string value) =>
-        value.Length > 240 ? value[..240] : value;
+    private static string TrimError(string value, string apiKey)
+    {
+        var sanitized = string.IsNullOrEmpty(apiKey) ? value : value.Replace(apiKey, "[redacted]", StringComparison.Ordinal);
+        return sanitized.Length > 240 ? sanitized[..240] : sanitized;
+    }
 }

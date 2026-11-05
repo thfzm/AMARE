@@ -59,6 +59,7 @@ internal static class Program
             Check("settings_dialog", OpenAndCloseSettings);
             Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
             Check("update_check_dialog", OpenAndCloseUpdateCheck);
+            Check("diagnostics_dialog", OpenAndCloseDiagnostics);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
         }
@@ -243,6 +244,20 @@ internal static class Program
         }
         WaitFor(() => FindByName("Update check") is null, TimeSpan.FromSeconds(8), "update check dialog close");
         return detail;
+    }
+
+    private static string OpenAndCloseDiagnostics()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Diagnostics…");
+        WaitFor(() => FindByName("Diagnostics") is not null, TimeSpan.FromSeconds(8), "diagnostics dialog");
+        var close = FindByName("Close");
+        if (close is not null)
+        {
+            Invoke(close);
+        }
+        WaitFor(() => FindByName("Diagnostics") is null, TimeSpan.FromSeconds(8), "diagnostics dialog close");
+        return "diagnostics dialog opened";
     }
 
     private static string CreateTabsAndCheck()

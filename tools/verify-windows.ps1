@@ -17,6 +17,8 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
+$Version = "0.18.0"
+$PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir
 $env:AMARE_VERIFY_AUTORUN = "1"
@@ -266,6 +268,9 @@ Invoke-Step "webview2_runtime" {
 Invoke-Step "csharp_core_build" {
     dotnet build apps/windows/AMARE.Windows.Core/AMARE.Windows.Core.csproj -c Release
 }
+Invoke-Step "updater_build" {
+    dotnet publish tools/amare-updater/AMARE.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o "$OutputDir\updater-publish"
+}
 
 $vcvars = Join-Path $vsInstallPath "VC\Auxiliary\Build\vcvars64.bat"
 Invoke-Step "c_header" {
@@ -297,14 +302,36 @@ if ($SkipWinUI) {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
-        $stage = Join-Path $OutputDir "AMARE-0.17.0-win-x64"
+        $stage = Join-Path $OutputDir $PortableName
         if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item (Join-Path $exe.Directory.FullName "*") -Destination $stage -Recurse -Force
-        $zip = Join-Path $OutputDir "AMARE-0.17.0-win-x64.zip"
+        $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe was not produced by the updater build." }
+        Copy-Item $updater (Join-Path $stage "AMARE.Updater.exe") -Force
+        [System.IO.File]::WriteAllText((Join-Path $stage "VERSION"), "$Version`n", [System.Text.UTF8Encoding]::new($false))
+        $updateManifest = [ordered]@{
+            schema = 1
+            product = "AMARE"
+            version = $Version
+            architecture = "win-x64"
+            entryPoint = "AMARE.Windows.exe"
+            runtime = "win-x64-self-contained"
+            channel = "portable"
+            requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe")
+        }
+        Write-Utf8Json (Join-Path $stage "amare-update.json") $updateManifest
+        $notes = Join-Path (Get-Location) "docs\releases\AMARE-$Version.md"
+        if (Test-Path $notes) { Copy-Item $notes (Join-Path $stage "RELEASE_NOTES.md") -Force }
+        $zip = Join-Path $OutputDir "$PortableName.zip"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
+        $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        [System.IO.File]::WriteAllText("$zip.sha256", "$zipHash  $PortableName.zip`n", [System.Text.UTF8Encoding]::new($false))
+        & $updater validate --package $zip --version $Version --architecture win-x64
+        if ($LASTEXITCODE -ne 0) { throw "Portable update package manifest validation failed." }
         Write-Host "Portable package: $zip"
+        Write-Host "SHA-256: $zipHash"
         Write-Host "Executable: $($exe.FullName)"
     }
     Invoke-Step "winui_msix" {
@@ -312,18 +339,18 @@ if ($SkipWinUI) {
             Where-Object { $_.FullName -match '\\x64\\' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $makeAppx) { throw "MakeAppx.exe was not found in the Windows SDK." }
-        $stage = Join-Path $OutputDir "AMARE-0.17.0-win-x64"
+        $stage = Join-Path $OutputDir $PortableName
         $stageAssets = Join-Path $stage "Assets"
         New-Item -ItemType Directory -Force -Path $stageAssets | Out-Null
         Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Assets\*") -Destination $stageAssets -Force
         Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Package.appxmanifest") -Destination (Join-Path $stage "AppxManifest.xml") -Force
-        $msix = Join-Path $OutputDir "AMARE-0.17.0-win-x64-unsigned.msix"
+        $msix = Join-Path $OutputDir "$PortableName-unsigned.msix"
         if (Test-Path $msix) { Remove-Item $msix -Force }
         & $makeAppx.FullName pack /d $stage /p $msix /o
         if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed with exit code $LASTEXITCODE." }
         Write-Host "Unsigned MSIX: $msix"
     }
-    $msix = Join-Path $OutputDir "AMARE-0.17.0-win-x64-unsigned.msix"
+    $msix = Join-Path $OutputDir "$PortableName-unsigned.msix"
     try {
         Add-AppxPackage -Path $msix -AllowUnsigned -ErrorAction Stop
         $package = Get-AppxPackage -Name "Amare.Browser" -ErrorAction Stop
@@ -345,6 +372,36 @@ if ($SkipWinUI) {
     }
 }
 
+# ---------- Release metadata ----------
+Invoke-Step "release_metadata" {
+    $zip = Join-Path $OutputDir "$PortableName.zip"
+    $msix = Join-Path $OutputDir "$PortableName-unsigned.msix"
+    if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
+    if (-not (Test-Path $msix)) { throw "Unsigned MSIX is missing." }
+    $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $msixHash = (Get-FileHash $msix -Algorithm SHA256).Hash.ToLowerInvariant()
+    [System.IO.File]::WriteAllText("$zip.sha256", "$zipHash  $PortableName.zip`n", [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $OutputDir "checksums.txt"),
+        "$zipHash  $PortableName.zip`n$msixHash  $PortableName-unsigned.msix`n",
+        [System.Text.UTF8Encoding]::new($false))
+    $releaseManifest = [ordered]@{
+        schema = 1
+        product = "AMARE"
+        version = $Version
+        architecture = "win-x64"
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        git_commit = (& git rev-parse HEAD).Trim()
+        assets = @(
+            [ordered]@{ name = "$PortableName.zip"; sha256 = $zipHash; size = (Get-Item $zip).Length },
+            [ordered]@{ name = "$PortableName-unsigned.msix"; sha256 = $msixHash; size = (Get-Item $msix).Length }
+        )
+        notes = "docs/releases/AMARE-$Version.md"
+        signing = "UNSIGNED"
+    }
+    Write-Utf8Json (Join-Path $OutputDir "AMARE-$Version-release-manifest.json") $releaseManifest
+    Write-Host "Release metadata: AMARE-$Version-release-manifest.json"
+}
+
 # ---------- WebView2 probes ----------
 Write-Host ""
 Write-Host "Starting WebView2 probes. Follow the status bar for the manual intervention step." -ForegroundColor Yellow
@@ -352,7 +409,7 @@ Invoke-Step "webview2_probe_run" {
     dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
 } -Required $false
 
-    $appExe = Join-Path $OutputDir "AMARE-0.17.0-win-x64\AMARE.Windows.exe"
+    $appExe = Join-Path $OutputDir "AMARE-0.18.0-win-x64\AMARE.Windows.exe"
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
     try {

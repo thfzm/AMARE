@@ -38,10 +38,17 @@ internal static class Program
 
     private static int Main()
     {
-        Phase2Tests.Register();
+        var coreOnly = Environment.GetEnvironmentVariable("AMARE_CORE_ONLY") == "1";
+        if (!coreOnly) Phase2Tests.Register();
         Phase21Tests.Register();
         Phase22Tests.Register();
         Phase23Tests.Register();
+        Phase24Tests.Register();
+
+        if (coreOnly)
+        {
+            return Finish(coreOnly);
+        }
 
         Run("version", () =>
         {
@@ -126,12 +133,17 @@ internal static class Program
             }
         });
 
+        return Finish(coreOnly);
+    }
+
+    private static int Finish(bool coreOnly)
+    {
         var failed = Results.Count(r => !r.Passed);
         foreach (var result in Results)
         {
             Console.WriteLine($"{(result.Passed ? "PASS" : "FAIL")} {result.Name}: {result.Detail}");
         }
-        Console.WriteLine($"SUMMARY passed={Results.Count - failed} failed={failed}");
+        Console.WriteLine($"SUMMARY passed={Results.Count - failed} failed={failed} core_only={coreOnly}");
 
         var outputDir = Environment.GetEnvironmentVariable("AMARE_VERIFY_OUTPUT");
         if (string.IsNullOrWhiteSpace(outputDir))
@@ -139,7 +151,7 @@ internal static class Program
             outputDir = Environment.CurrentDirectory;
         }
         Directory.CreateDirectory(outputDir);
-        var jsonPath = Path.Combine(outputDir, "interop-results.json");
+        var jsonPath = Path.Combine(outputDir, coreOnly ? "core-results.json" : "interop-results.json");
         File.WriteAllText(jsonPath, JsonSerializer.Serialize(Results, new JsonSerializerOptions
         {
             WriteIndented = true

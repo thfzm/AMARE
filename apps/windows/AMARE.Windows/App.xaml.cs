@@ -7,8 +7,7 @@ public partial class App : Application
 {
     private Window? _window;
     private static readonly string StartupLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "AMARE", "logs", "startup-error.log");
+        AppPaths.LocalRoot(), "logs", "startup-error.log");
 
     public App()
     {

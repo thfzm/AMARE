@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Amare.Windows.Core;
@@ -12,6 +13,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
 using Windows.System;
+using WinRT.Interop;
 
 namespace Amare.Windows;
 
@@ -90,8 +92,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         ApplyWindowIcon();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-        _appDataRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AMARE");
+        _appDataRoot = AppPaths.LocalRoot();
         _profileCleanup = new ProfileDataCleanup(_appDataRoot);
         AppLog.Initialize(_appDataRoot);
         AppLog.Info("MainWindow created");
@@ -286,7 +287,14 @@ public sealed partial class MainWindow : Window
         await RestoreSessionOrNewTabAsync();
         _ = ResumeProfileCleanupAsync();
         AppLog.Info($"AMARE initialized profile={_profileId} engine={_engineId} restore_session={_restoreSession}");
-        StatusText.Text = "Ready";
+        PortableUpdateRecovery.MarkHealthyIfRequested(
+            _appDataRoot,
+            CurrentAppVersion,
+            AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var recoveryMessage = PortableUpdateRecovery.RecoveryMessage(_appDataRoot);
+        StatusText.Text = recoveryMessage == null
+            ? "Ready"
+            : recoveryMessage + " Use the browser menu → Recover interrupted update.";
         if (_updatePreferences.CheckOnStartup)
         {
             _ = CheckForUpdatesAsync(false);
@@ -1582,6 +1590,11 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, "Ask API AI…", "", () => _ = AskApiAiAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenu(menu, "Check for updates…", "", () => _ = CheckForUpdatesAsync(true));
+        if (PortableUpdateRecovery.NeedsRecovery(_appDataRoot))
+        {
+            AddMenu(menu, "Recover interrupted update…", "", () => _ = RecoverInterruptedUpdateAsync());
+        }
+        AddMenu(menu, "Diagnostics…", "", () => _ = ShowDiagnosticsAsync());
         AddMenu(menu, "Zoom in", "Ctrl++", () => ChangeZoom(0.1));
         AddMenu(menu, "Zoom out", "Ctrl+-", () => ChangeZoom(-0.1));
         AddMenu(menu, "Reset zoom", "Ctrl+0", () => SetZoom(1.0));
@@ -1604,7 +1617,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.17.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.18.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
@@ -1759,27 +1772,143 @@ public sealed partial class MainWindow : Window
             (received, total) => StatusText.Text = total > 0
                 ? $"Downloading AMARE {update.Version}: {received * 100 / total}%"
                 : $"Downloading AMARE {update.Version}: {received:N0} bytes");
-        if (!result.Succeeded)
+        if (!result.Succeeded || result.FilePath == null)
         {
             StatusText.Text = result.Error ?? "Update download failed.";
             await ShowMessageAsync("Update download", result.Error ?? "Update download failed.");
             return;
         }
-        StatusText.Text = "Update downloaded and verified.";
+        var validation = PortableUpdatePackage.Validate(result.FilePath, update.Version, "win-x64");
+        if (!validation.Valid)
+        {
+            try { File.Delete(result.FilePath); } catch { }
+            StatusText.Text = validation.Error ?? "Update package is invalid.";
+            await ShowMessageAsync("Update package", validation.Error ?? "Update package is invalid.");
+            return;
+        }
+        StatusText.Text = "Update downloaded, checksum and package verified.";
+        if (AppPaths.IsPackaged)
+        {
+            await ShowMessageAsync("MSIX update",
+                "This AMARE build is installed as an MSIX package. Portable file replacement is disabled. " +
+                "Install a newer signed MSIX package through Windows; no automatic MSIX updater is available yet.");
+            await Launcher.LaunchFolderAsync(
+                await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
+            return;
+        }
         var dialog = new ContentDialog
         {
             Title = "Update verified",
-            Content = $"SHA-256 verified. The downloaded package is staged at:\n{result.FilePath}\n\n" +
-                      "AMARE does not replace its running files automatically. Close AMARE before applying the portable update.",
-            PrimaryButtonText = "Open folder",
-            CloseButtonText = "Close",
+            Content = $"SHA-256 and package manifest verified.\n{update.Package.Name}\n" +
+                      $"Staged at:\n{result.FilePath}\n\n" +
+                      "AMARE will close, back up the current app files, apply the update, " +
+                      "and restore the previous version if the new version fails to start. " +
+                      "User data in %LOCALAPPDATA%\\AMARE is preserved.",
+            PrimaryButtonText = "Install and restart",
+            SecondaryButtonText = "Open folder",
+            CloseButtonText = "Later",
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && result.FilePath != null)
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.Secondary)
         {
             await Launcher.LaunchFolderAsync(
                 await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
+            return;
         }
+        if (choice != ContentDialogResult.Primary) return;
+        var appDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!PortableUpdateLauncher.TryStartApply(
+            result.FilePath, _appDataRoot, appDirectory, update.Version, result.Sha256!, out var helperError))
+        {
+            await ShowMessageAsync("Update helper", helperError ?? "The update helper could not be started.");
+            return;
+        }
+        StatusText.Text = "Applying update. AMARE will close and restart automatically.";
+        Close();
+        Application.Current.Exit();
+    }
+
+    private async Task ShowDiagnosticsAsync()
+    {
+        var updateState = PortableUpdateStateStore.Load(_appDataRoot);
+        var webView2 = "not initialized";
+        try
+        {
+            webView2 = CoreWebView2Environment.GetAvailableBrowserVersionString() ?? "not found";
+        }
+        catch
+        {
+            webView2 = "unavailable";
+        }
+        var handle = WindowNative.GetWindowHandle(this);
+        var dpi = handle == IntPtr.Zero ? 0 : GetDpiForWindow(handle);
+        var size = AppWindow.Size;
+        var lines = new[]
+        {
+            $"AMARE: {CurrentAppVersion}",
+            $"Windows: {Environment.OSVersion.VersionString}",
+            $"Process architecture: {RuntimeInformation.ProcessArchitecture}",
+            $"WebView2 Runtime: {webView2}",
+            $"Window: {size.Width} x {size.Height}",
+            $"DPI: {dpi} ({(dpi == 0 ? "unknown" : $"{dpi * 100 / 96}%")})",
+            $"Browser engine initialized: {(_environment != null ? "yes" : "no")}",
+            $"Update state: {updateState?.Status ?? "none"}",
+            $"Update version: {updateState?.Version ?? "-"}",
+            $"Update error: {updateState?.Error ?? "-"}",
+            "GPU: not collected (UNVERIFIED)",
+            $"Generated: {DateTimeOffset.UtcNow:O}"
+        };
+        var text = string.Join(Environment.NewLine, lines);
+        var box = new TextBox
+        {
+            Text = text,
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 260
+        };
+        var dialog = new ContentDialog
+        {
+            Title = "Diagnostics",
+            Content = new ScrollViewer { MaxHeight = 560, Content = box },
+            PrimaryButtonText = "Copy",
+            CloseButtonText = "Close",
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var data = new DataPackage();
+            data.SetText(text);
+            Clipboard.SetContent(data);
+        }
+    }
+
+    private async Task RecoverInterruptedUpdateAsync()
+    {
+        if (!PortableUpdateRecovery.NeedsRecovery(_appDataRoot))
+        {
+            await ShowMessageAsync("Update recovery", "No recoverable interrupted update was found.");
+            return;
+        }
+        var dialog = new ContentDialog
+        {
+            Title = "Recover interrupted update",
+            Content = "AMARE will close and restore the previous application files from the local update backup. User data is not changed.",
+            PrimaryButtonText = "Recover",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (!PortableUpdateLauncher.TryStartRecovery(_appDataRoot, out var error))
+        {
+            await ShowMessageAsync("Update recovery", error ?? "The recovery helper could not be started.");
+            return;
+        }
+        Close();
+        Application.Current.Exit();
     }
 
     private async Task ShowMessageAsync(string title, string message)
@@ -1805,6 +1934,12 @@ public sealed partial class MainWindow : Window
     {
         var existingKey = AiCredentialStore.GetKey();
         var keyBox = new PasswordBox { Password = existingKey ?? "", PlaceholderText = "OpenAI API key" };
+        var providerCombo = new ComboBox
+        {
+            ItemsSource = AiProviderCatalog.All,
+            DisplayMemberPath = nameof(AiProviderDescriptor.Name),
+            SelectedItem = AiProviderCatalog.Resolve(_aiApiSettings.Provider)
+        };
         var modelBox = new TextBox { Text = _aiApiSettings.Model, PlaceholderText = AiApiClient.DefaultModel };
         var baseUrlBox = new TextBox { Text = _aiApiSettings.BaseUrl, PlaceholderText = AiApiClient.DefaultBaseUrl };
         var testResult = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
@@ -1814,7 +1949,9 @@ public sealed partial class MainWindow : Window
             try
             {
                 testResult.Text = "Testing…";
-                var settings = new AiApiSettings(modelBox.Text.Trim(), baseUrlBox.Text.Trim());
+                var provider = providerCombo.SelectedItem as AiProviderDescriptor ?? AiProviderCatalog.All[0];
+                var settings = new AiApiSettings(
+                    modelBox.Text.Trim(), baseUrlBox.Text.Trim(), provider.Id);
                 var answer = await AiApiClient.CompleteAsync(
                     keyBox.Password, settings, "Reply with OK only.", null);
                 testResult.Text = $"Connection OK: {answer[..Math.Min(answer.Length, 80)]}";
@@ -1830,7 +1967,8 @@ public sealed partial class MainWindow : Window
             Text = "Optional API mode. The API key is stored only in Windows Credential Manager and is never written to logs or settings files.",
             TextWrapping = TextWrapping.Wrap
         });
-        panel.Children.Add(new TextBlock { Text = "Provider: OpenAI Chat Completions" });
+        panel.Children.Add(new TextBlock { Text = "Provider" });
+        panel.Children.Add(providerCombo);
         panel.Children.Add(new TextBlock { Text = "API key" });
         panel.Children.Add(keyBox);
         panel.Children.Add(new TextBlock { Text = "Model" });
@@ -1862,9 +2000,11 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("API key", "Windows Credential Manager could not store the key.");
             return;
         }
+        var selectedProvider = providerCombo.SelectedItem as AiProviderDescriptor ?? AiProviderCatalog.All[0];
         _aiApiSettings = new AiApiSettings(
-            modelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : modelBox.Text.Trim(),
-            baseUrlBox.Text.Trim().Length == 0 ? AiApiClient.DefaultBaseUrl : baseUrlBox.Text.Trim());
+            modelBox.Text.Trim().Length == 0 ? selectedProvider.DefaultModel : modelBox.Text.Trim(),
+            baseUrlBox.Text.Trim().Length == 0 ? selectedProvider.BaseUrl : baseUrlBox.Text.Trim(),
+            selectedProvider.Id);
         SaveAiApiSettings();
         StatusText.Text = "API AI settings saved. Web AI remains the default.";
     }
@@ -1945,31 +2085,66 @@ public sealed partial class MainWindow : Window
                     context += "\nArticle (untrusted data):\n" + text;
                 }
             }
-            var answer = await AiApiClient.CompleteAsync(
-                key, _aiApiSettings, prompt, context);
-            StatusText.Text = "API AI response received.";
+            var responseBuilder = new StringBuilder();
             var responseBox = new TextBox
             {
-                Text = answer,
+                Text = "Waiting for the response…",
                 IsReadOnly = true,
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
                 MinHeight = 220
             };
+            var streamStatus = new TextBlock { Text = "Streaming…", TextWrapping = TextWrapping.Wrap };
+            var copyButton = new Button { Content = "Copy" };
+            var responsePanel = new StackPanel { Spacing = 8 };
+            responsePanel.Children.Add(responseBox);
+            responsePanel.Children.Add(streamStatus);
+            copyButton.Click += (_, _) =>
+            {
+                if (responseBuilder.Length == 0) return;
+                var data = new DataPackage();
+                data.SetText(responseBuilder.ToString());
+                Clipboard.SetContent(data);
+                streamStatus.Text = "Response copied.";
+            };
+            responsePanel.Children.Add(copyButton);
+            using var streamCancellation = new CancellationTokenSource();
             var responseDialog = new ContentDialog
             {
                 Title = "API AI response",
-                Content = new ScrollViewer { MaxHeight = 560, Content = responseBox },
-                PrimaryButtonText = "Copy",
-                CloseButtonText = "Close",
+                Content = new ScrollViewer { MaxHeight = 560, Content = responsePanel },
+                CloseButtonText = "Cancel / Close",
                 XamlRoot = RootGrid.XamlRoot
             };
-            if (await responseDialog.ShowAsync() == ContentDialogResult.Primary)
+            responseDialog.Opened += async (_, _) =>
             {
-                var data = new DataPackage();
-                data.SetText(answer);
-                Clipboard.SetContent(data);
-            }
+                try
+                {
+                    await foreach (var chunk in AiApiClient.StreamAsync(
+                        key, _aiApiSettings, prompt, context, streamCancellation.Token))
+                    {
+                        responseBuilder.Append(chunk);
+                        responseBox.Text = responseBuilder.ToString();
+                        responseBox.SelectionStart = responseBox.Text.Length;
+                    }
+                    streamStatus.Text = responseBuilder.Length == 0
+                        ? "The API returned an empty response."
+                        : "Response complete.";
+                    StatusText.Text = "API AI response received.";
+                }
+                catch (OperationCanceledException)
+                {
+                    streamStatus.Text = "Request cancelled.";
+                    StatusText.Text = "API AI request cancelled.";
+                }
+                catch (Exception exception)
+                {
+                    streamStatus.Text = $"API AI failed: {exception.Message}";
+                    StatusText.Text = "API AI failed.";
+                }
+            };
+            responseDialog.Closed += (_, _) => streamCancellation.Cancel();
+            await responseDialog.ShowAsync();
         }
         catch (Exception exception)
         {
@@ -2546,4 +2721,7 @@ public sealed partial class MainWindow : Window
             // The window may be closing.
         }
     }
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
 }
