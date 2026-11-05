@@ -100,8 +100,8 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                         }
                     }
                     var length = end - start + 1;
-                    var status = partial ? "206 Partial Content" : "200 OK";
-                    var mediaHeader = $"HTTP/1.1 {status}\r\nContent-Type: video/webm\r\n" +
+                    var mediaStatus = partial ? "206 Partial Content" : "200 OK";
+                    var mediaHeader = $"HTTP/1.1 {mediaStatus}\r\nContent-Type: video/webm\r\n" +
                                       "Accept-Ranges: bytes\r\n" +
                                       (partial ? $"Content-Range: bytes {start}-{end}/{media.Length}\r\n" : "") +
                                       $"Content-Length: {length}\r\nConnection: close\r\n\r\n";
