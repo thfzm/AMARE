@@ -1,3 +1,9 @@
+using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -148,6 +154,26 @@ internal static class Phase21Probes
             var fullscreen = featureFlags.GetProperty("fullscreen").GetBoolean();
             var pip = featureFlags.GetProperty("pip").GetBoolean();
 
+            var audioData = Convert.ToBase64String(CreateSilentWav());
+            _ = await WebViewHelpers.EvalAsync(view,
+                $"(() => {{ const a=document.querySelector('#audio'); a.src='data:audio/wav;base64,{audioData}'; return true; }})()");
+            await WebViewHelpers.ClickSelectorAsync(view, "#audio-play");
+            var audioTime = 0.0;
+            for (var attempt = 0; attempt < 30 && audioTime <= 0; attempt++)
+            {
+                await Task.Delay(100);
+                var text = await WebViewHelpers.EvalStringAsync(view, "String(document.querySelector('#audio').currentTime)");
+                double.TryParse(text, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out audioTime);
+            }
+            if (audioTime <= 0) throw new InvalidOperationException("local audio did not start playing");
+            var audioState = await WebViewHelpers.EvalAsync(view,
+                "(() => { const a=document.querySelector('#audio'); a.pause(); a.volume=0.4; a.currentTime=0.2; return {paused:a.paused, volume:a.volume, currentTime:a.currentTime}; })()");
+            if (!audioState.GetProperty("paused").GetBoolean()
+                || Math.Abs(audioState.GetProperty("volume").GetDouble() - 0.4) > 0.01
+                || Math.Abs(audioState.GetProperty("currentTime").GetDouble() - 0.2) > 0.05)
+                throw new InvalidOperationException("audio pause/volume/seek state mismatch");
+
             view.ZoomFactor = 1.25;
             await Task.Delay(200);
             if (Math.Abs(view.ZoomFactor - 1.25) > 0.01)
@@ -159,6 +185,19 @@ internal static class Phase21Probes
             if (!string.Equals(view.CoreWebView2.DocumentTitle, "Page Two", StringComparison.Ordinal))
                 throw new InvalidOperationException($"redirect failed: {view.CoreWebView2.DocumentTitle}");
 
+            await WebViewHelpers.NavigateAsync(view, $"{server.BaseUrl}/ws.html");
+            var wsReconnect = "";
+            for (var attempt = 0; attempt < 50 && wsReconnect != "amare-reconnect"; attempt++)
+            {
+                await Task.Delay(100);
+                wsReconnect = await WebViewHelpers.EvalStringAsync(view, "window.__wsReconnect || ''");
+            }
+            if (wsReconnect != "amare-reconnect")
+                throw new InvalidOperationException($"WebSocket echo/reconnect failed: {wsReconnect}");
+            var wsState = await WebViewHelpers.EvalStringAsync(view, "window.__wsState || ''");
+            if (wsState != "closed")
+                throw new InvalidOperationException($"WebSocket did not close cleanly: {wsState}");
+
             var data = new Dictionary<string, object?>
             {
                 ["spa"] = true,
@@ -166,17 +205,85 @@ internal static class Phase21Probes
                 ["local_storage_reload"] = true,
                 ["upload"] = uploadName,
                 ["media_vp9"] = media,
+                ["media_audio_play_pause_volume_seek"] = true,
                 ["fullscreen_feature"] = fullscreen,
                 ["picture_in_picture_feature"] = pip,
                 ["zoom"] = 1.25,
                 ["redirect"] = true,
+                ["websocket_connect_echo_reconnect"] = true,
             };
             return Result("webview2_web_compat", ProbeStatus.Pass, true,
-                "local HTML/SPA/cookie/session/upload/media/zoom/redirect compatibility", data);
+                "local HTML/SPA/cookie/session/upload/audio/media/zoom/redirect/WebSocket compatibility", data);
         }
         finally
         {
             WebViewHelpers.DisposeView(host, view);
+        }
+    }
+
+    public static async Task<ProbeResult> CertificateErrorAsync(Control host, string root)
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-3), DateTimeOffset.UtcNow.AddDays(-1));
+
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var serverTask = Task.Run(async () =>
+        {
+            try
+            {
+                using var client = await listener.AcceptTcpClientAsync();
+                using var ssl = new SslStream(client.GetStream(), false);
+                await ssl.AuthenticateAsServerAsync(certificate, false,
+                    SslProtocols.Tls12 | SslProtocols.Tls13, false);
+                var body = Encoding.UTF8.GetBytes("<!doctype html><title>Certificate probe</title><h1>ok</h1>");
+                var header = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " +
+                    body.Length + "\r\nConnection: close\r\n\r\n");
+                await ssl.WriteAsync(header);
+                await ssl.WriteAsync(body);
+                await ssl.FlushAsync();
+            }
+            catch
+            {
+                // The client is expected to reject this self-signed/expired certificate.
+            }
+        });
+        var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-cert"));
+        try
+        {
+            var completion = new TaskCompletionSource<(bool Success, CoreWebView2WebErrorStatus Status)>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            void Handler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
+            {
+                view.NavigationCompleted -= Handler;
+                completion.TrySetResult((args.IsSuccess, args.WebErrorStatus));
+            }
+            view.NavigationCompleted += Handler;
+            view.CoreWebView2.Navigate($"https://127.0.0.1:{port}/");
+            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            if (result.Success)
+                throw new InvalidOperationException("self-signed/expired certificate was unexpectedly accepted");
+            var data = new Dictionary<string, object?>
+            {
+                ["navigation_success"] = false,
+                ["web_error_status"] = result.Status.ToString(),
+                ["certificate_rejected"] = true,
+                ["user_bypass_implemented"] = false,
+            };
+            return Result("webview2_certificate_error", ProbeStatus.Pass, true,
+                "self-signed/expired local certificate was rejected; no automatic bypass is implemented", data);
+        }
+        finally
+        {
+            WebViewHelpers.DisposeView(host, view);
+            listener.Stop();
+            await serverTask;
         }
     }
 
@@ -287,6 +394,32 @@ internal static class Phase21Probes
         {
             // All views are closed in the loop; environment objects are released on GC.
         }
+    }
+
+    private static byte[] CreateSilentWav()
+    {
+        const int sampleRate = 8000;
+        const int seconds = 1;
+        var dataLength = sampleRate * seconds * 2;
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+            writer.Write(36 + dataLength);
+            writer.Write(Encoding.ASCII.GetBytes("WAVE"));
+            writer.Write(Encoding.ASCII.GetBytes("fmt "));
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write((short)1);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * 2);
+            writer.Write((short)2);
+            writer.Write((short)16);
+            writer.Write(Encoding.ASCII.GetBytes("data"));
+            writer.Write(dataLength);
+            writer.Write(new byte[dataLength]);
+        }
+        return stream.ToArray();
     }
 
     private static async Task WaitNavigationAsync(WebView2 view, Action action, int timeoutSeconds = 10)

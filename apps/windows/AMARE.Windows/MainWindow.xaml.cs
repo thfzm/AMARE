@@ -744,7 +744,7 @@ public sealed partial class MainWindow : Window
             UpdateNavigationState(host);
             if (!args.IsSuccess && args.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
             {
-                StatusText.Text = $"Page failed to load: {args.WebErrorStatus}";
+                StatusText.Text = DescribeWebError(args.WebErrorStatus);
             }
             if (args.IsSuccess)
             {
@@ -1050,6 +1050,27 @@ public sealed partial class MainWindow : Window
 
     private BrowserTab? ActiveHost =>
         _tabs.ActiveTab is { } active && _hosts.TryGetValue(active.Id, out var host) ? host : null;
+
+    private static string DescribeWebError(CoreWebView2WebErrorStatus status) => status switch
+    {
+        CoreWebView2WebErrorStatus.CertificateCommonNameIsIncorrect
+            or CoreWebView2WebErrorStatus.CertificateExpired
+            or CoreWebView2WebErrorStatus.CertificateIsInvalid
+            or CoreWebView2WebErrorStatus.CertificateRevoked
+            or CoreWebView2WebErrorStatus.ClientCertificateContainsErrors
+            => "보안 인증서 오류로 페이지를 열 수 없습니다. 사이트 관리자에게 문의하고, 인증서 경고를 우회하지 마세요.",
+        CoreWebView2WebErrorStatus.HostNameNotResolved
+            => "호스트 이름을 찾을 수 없습니다. 주소와 네트워크 연결을 확인하세요.",
+        CoreWebView2WebErrorStatus.Disconnected
+            => "네트워크 연결이 끊어졌습니다. 연결을 확인한 뒤 다시 시도하세요.",
+        CoreWebView2WebErrorStatus.Timeout
+            => "페이지 응답 시간이 초과되었습니다. 잠시 후 다시 시도하세요.",
+        CoreWebView2WebErrorStatus.CannotConnect
+            => "서버에 연결할 수 없습니다. 주소와 방화벽을 확인하세요.",
+        CoreWebView2WebErrorStatus.OperationCanceled
+            => "페이지 로드가 취소되었습니다.",
+        _ => $"페이지를 불러오지 못했습니다: {status}"
+    };
 
     private void UpdateWindowTitle()
     {
@@ -1650,7 +1671,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.20.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.21.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");

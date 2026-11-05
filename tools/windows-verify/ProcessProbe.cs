@@ -43,6 +43,23 @@ internal static class ProcessProbe
         }
 
         long Sum(string type) => samples.Where(s => s.Type == type).Sum(s => s.WorkingSetBytes);
+        long testToolBytes = 0;
+        long amareMainBytes = 0;
+        try
+        {
+            using var current = Process.GetCurrentProcess();
+            testToolBytes = current.WorkingSet64;
+            foreach (var app in Process.GetProcessesByName("AMARE.Windows"))
+            {
+                try { amareMainBytes += app.WorkingSet64; }
+                catch { }
+                finally { app.Dispose(); }
+            }
+        }
+        catch
+        {
+            // Process accounting is best effort.
+        }
         return new MemorySnapshot(
             At: DateTimeOffset.UtcNow,
             TotalWorkingSetBytes: samples.Sum(s => s.WorkingSetBytes),
@@ -52,7 +69,9 @@ internal static class ProcessProbe
             GpuBytes: Sum("gpu"),
             UtilityBytes: Sum("utility"),
             OtherBytes: Sum("other") + Sum("unknown"),
-            Processes: samples);
+            Processes: samples,
+            TestToolBytes: testToolBytes,
+            AmareMainBytes: amareMainBytes);
     }
 
     private static string Classify(string commandLine)

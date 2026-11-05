@@ -14,10 +14,6 @@ internal static class Program
             Environment.SetEnvironmentVariable("AMARE_VERIFY_HEADLESS", "1");
             Environment.SetEnvironmentVariable("AMARE_VERIFY_AUTORUN", "1");
             Environment.SetEnvironmentVariable("AMARE_VERIFY_MANUAL", "0");
-            if (!string.Equals(Environment.GetEnvironmentVariable("AMARE_VERIFY_MEMORY"), "1", StringComparison.Ordinal))
-            {
-                Environment.SetEnvironmentVariable("AMARE_VERIFY_MEMORY", "0");
-            }
             Environment.SetEnvironmentVariable("AMARE_VERIFY_DRM", "0");
         }
 

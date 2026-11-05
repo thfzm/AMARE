@@ -45,12 +45,16 @@ internal sealed record MemorySnapshot(
     long GpuBytes,
     long UtilityBytes,
     long OtherBytes,
-    IReadOnlyList<ProcessSample> Processes);
+    IReadOnlyList<ProcessSample> Processes,
+    long TestToolBytes,
+    long AmareMainBytes);
 
 internal sealed record MemoryReport(
     int TabCount,
     MemorySnapshot Before,
+    MemorySnapshot AfterEmpty,
     MemorySnapshot AfterCreate,
+    MemorySnapshot AfterBackground,
     MemorySnapshot AfterSuspend,
     MemorySnapshot AfterClose,
     double AverageRendererBytesPerTab,

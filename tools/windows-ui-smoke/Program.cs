@@ -16,6 +16,15 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+
+    private const uint MouseLeftDown = 0x0002;
+    private const uint MouseLeftUp = 0x0004;
+
     private sealed record Result(string Name, bool Passed, string Detail);
 
     [STAThread]
@@ -53,6 +62,7 @@ internal static class Program
             });
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
+            Check("tab_drag_reorder", DragFirstTabToSecond);
             Check("tab_switch_shortcut", SwitchTabShortcut);
             Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("find_in_page", OpenFindAndSearch);
@@ -68,6 +78,7 @@ internal static class Program
             Check("bookmarks_menu", OpenAndCloseBookmarks);
             Check("downloads_menu", OpenAndCloseDownloads);
             Check("window_resize_maximize", ResizeMaximizeRestore);
+            Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
@@ -149,6 +160,43 @@ internal static class Program
         Thread.Sleep(500);
         NavigateToExample();
         return $"tabs {before}->{CountTabs()}";
+    }
+
+    private static string DragFirstTabToSecond()
+    {
+        var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
+        var before = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(before.Length >= 2, "need two tabs for drag");
+        var first = before[0];
+        var second = before[1];
+        var firstRuntime = first.GetRuntimeId();
+        var a = first.Current.BoundingRectangle;
+        var b = second.Current.BoundingRectangle;
+        var startX = (int)(a.X + a.Width / 2);
+        var startY = (int)(a.Y + a.Height / 2);
+        var endX = (int)(b.X + b.Width / 2);
+        var endY = (int)(b.Y + b.Height / 2);
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        SetCursorPos(startX, startY);
+        Thread.Sleep(250);
+        mouse_event(MouseLeftDown, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(250);
+        for (var i = 1; i <= 12; i++)
+        {
+            SetCursorPos(startX + (endX - startX) * i / 12, startY + (endY - startY) * i / 12);
+            Thread.Sleep(80);
+        }
+        mouse_event(MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(900);
+        var after = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(after.Length >= 2, "tabs disappeared after drag");
+        var moved = !after[0].GetRuntimeId().SequenceEqual(firstRuntime);
+        if (!moved) throw new InvalidOperationException("tab order did not change");
+        return "first tab reordered by drag";
     }
 
     private static string SwitchTabShortcut()
@@ -364,6 +412,37 @@ internal static class Program
         WaitFor(() => FindByName("Diagnostics") is null, TimeSpan.FromSeconds(8), "diagnostics dialog close");
         return "diagnostics dialog opened";
     }
+
+    private static string OpenAndCloseNewWindow()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        var before = WindowsForProcess(_process.Id);
+        var beforeIds = before.Select(window => string.Join(",", window.GetRuntimeId())).ToHashSet();
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("New window");
+        AutomationElement? created = null;
+        WaitFor(() =>
+        {
+            var current = WindowsForProcess(_process.Id);
+            created = current.FirstOrDefault(window => !beforeIds.Contains(string.Join(",", window.GetRuntimeId())));
+            return created is not null;
+        }, TimeSpan.FromSeconds(10), "new window");
+        if (created is null) throw new InvalidOperationException("new window not found");
+        if (created.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+        {
+            ((WindowPattern)pattern).Close();
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= before.Length, TimeSpan.FromSeconds(10), "new window close");
+        SetForegroundWindow(_process.MainWindowHandle);
+        return "new window opened and closed";
+    }
+
+    private static AutomationElement[] WindowsForProcess(int processId) =>
+        AutomationElement.RootElement.FindAll(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ProcessIdProperty, processId))
+            .Cast<AutomationElement>()
+            .Where(window => window.Current.ControlType == ControlType.Window)
+            .ToArray();
 
     private static string CreateTabsAndCheck()
     {

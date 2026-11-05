@@ -267,11 +267,23 @@ internal static class Probes
             {
                 var view = await WebViewHelpers.CreateViewWithEnvironmentAsync(host, env);
                 views.Add(view);
+            }
+            await Task.Delay(1000);
+            var afterEmpty = ProcessProbe.Capture();
+
+            foreach (var view in views)
+            {
                 await WebViewHelpers.NavigateAsync(view, url);
             }
-
             await Task.Delay(5000);
             var afterCreate = ProcessProbe.Capture();
+
+            foreach (var view in views)
+            {
+                view.Visible = false;
+            }
+            await Task.Delay(1000);
+            var afterBackground = ProcessProbe.Capture();
 
             foreach (var view in views)
             {
@@ -294,18 +306,26 @@ internal static class Probes
             var report = new MemoryReport(
                 30,
                 before,
+                afterEmpty,
                 afterCreate,
+                afterBackground,
                 afterSuspend,
                 afterClose,
                 averageRenderer,
                 reclaimed,
-                "Uses all msedgewebview2.exe processes visible to the user; other WebView2 apps can be included. Per-tab renderer mapping is approximate.");
+                "WebView2 totals include browser/renderer/GPU/utility. TestToolBytes is WindowsVerify; AmareMainBytes is AMARE.Windows if running. Other WebView2 apps can be included; per-tab renderer mapping is approximate.");
             var data = new Dictionary<string, object?> { ["memory"] = report };
-            var detail = $"before={before.TotalWorkingSetBytes / 1024 / 1024}MB " +
-                         $"after_create={afterCreate.TotalWorkingSetBytes / 1024 / 1024}MB " +
+            var detail = $"empty={afterEmpty.TotalWorkingSetBytes / 1024 / 1024}MB " +
+                         $"content={afterCreate.TotalWorkingSetBytes / 1024 / 1024}MB " +
+                         $"background={afterBackground.TotalWorkingSetBytes / 1024 / 1024}MB " +
                          $"after_suspend={afterSuspend.TotalWorkingSetBytes / 1024 / 1024}MB " +
                          $"after_close={afterClose.TotalWorkingSetBytes / 1024 / 1024}MB " +
+                         $"webview_browser={afterCreate.BrowserBytes / 1024 / 1024}MB " +
+                         $"renderer={afterCreate.RendererBytes / 1024 / 1024}MB " +
                          $"gpu={afterCreate.GpuBytes / 1024 / 1024}MB " +
+                         $"utility={afterCreate.UtilityBytes / 1024 / 1024}MB " +
+                         $"test_tool={afterCreate.TestToolBytes / 1024 / 1024}MB " +
+                         $"amare_main={afterCreate.AmareMainBytes / 1024 / 1024}MB " +
                          $"avg_renderer_per_tab={averageRenderer / 1024 / 1024:F1}MB " +
                          $"reclaimed={reclaimed}";
             return Result("memory_30_tabs", reclaimed ? ProbeStatus.Pass : ProbeStatus.Fail, true, detail, data);
