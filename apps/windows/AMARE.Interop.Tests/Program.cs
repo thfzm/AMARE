@@ -41,6 +41,7 @@ internal static class Program
         Phase2Tests.Register();
         Phase21Tests.Register();
         Phase22Tests.Register();
+        Phase23Tests.Register();
 
         Run("version", () =>
         {

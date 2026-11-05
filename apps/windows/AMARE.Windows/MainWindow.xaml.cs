@@ -27,6 +27,8 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueue _dispatcher;
     private readonly string _appDataRoot;
     private readonly ProfileDataCleanup _profileCleanup;
+    private readonly GitHubReleaseClient _releaseClient = new();
+    private readonly UpdateDownloader _updateDownloader = new();
 
     private AmareNative? _native;
     private ProfileClient? _profiles;
@@ -45,6 +47,9 @@ public sealed partial class MainWindow : Window
     private bool _aiOpen;
     private bool _fullScreen;
     private double _zoomFactor = 1.0;
+    private bool _updateCheckRunning;
+    private UpdatePreferences _updatePreferences = new(true, UpdateChannel.Stable, 0);
+    private AiApiSettings _aiApiSettings = new();
     private string _readerNonce = Guid.NewGuid().ToString("N");
     private DispatcherQueueTimer? _saveTimer;
     private string _profileId = "";
@@ -78,6 +83,7 @@ public sealed partial class MainWindow : Window
     private sealed record ReaderOption(string Id, string Name);
 
     private sealed record AiServiceOption(string Id, string Name, string Url);
+    private sealed record UpdatePreferences(bool CheckOnStartup, UpdateChannel Channel, long LastCheckUnixMs);
 
     public MainWindow()
     {
@@ -256,6 +262,8 @@ public sealed partial class MainWindow : Window
     private async Task InitializeAsync()
     {
         Directory.CreateDirectory(_appDataRoot);
+        LoadUpdatePreferences();
+        LoadAiApiSettings();
         _native = AmareNative.Create(Path.Combine(_appDataRoot, "data"));
         _profiles = new ProfileClient(_native);
         _settings = new SettingsClient(_native);
@@ -279,6 +287,10 @@ public sealed partial class MainWindow : Window
         _ = ResumeProfileCleanupAsync();
         AppLog.Info($"AMARE initialized profile={_profileId} engine={_engineId} restore_session={_restoreSession}");
         StatusText.Text = "Ready";
+        if (_updatePreferences.CheckOnStartup)
+        {
+            _ = CheckForUpdatesAsync(false);
+        }
     }
 
     private async Task LoadSettingsAsync()
@@ -1566,6 +1578,10 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, "Reader Mode", "", () => _ = OpenReaderAsync());
         AddMenu(menu, "Find in page", "Ctrl+F", OpenFind);
         AddMenu(menu, _aiOpen ? "Close AI panel" : "AI web panel", "", () => Ai_Click(AiButton, new RoutedEventArgs()));
+        AddMenu(menu, "API AI settings…", "", () => _ = ShowAiApiSettingsAsync());
+        AddMenu(menu, "Ask API AI…", "", () => _ = AskApiAiAsync());
+        menu.Items.Add(new MenuFlyoutSeparator());
+        AddMenu(menu, "Check for updates…", "", () => _ = CheckForUpdatesAsync(true));
         AddMenu(menu, "Zoom in", "Ctrl++", () => ChangeZoom(0.1));
         AddMenu(menu, "Zoom out", "Ctrl+-", () => ChangeZoom(-0.1));
         AddMenu(menu, "Reset zoom", "Ctrl+0", () => SetZoom(1.0));
@@ -1585,6 +1601,381 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(item, text);
         item.Click += (_, _) => action();
         menu.Items.Add(item);
+    }
+
+    private string CurrentAppVersion =>
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.17.0";
+
+    private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
+    private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
+
+    private void LoadUpdatePreferences()
+    {
+        try
+        {
+            if (File.Exists(UpdatePreferencesPath))
+            {
+                _updatePreferences = JsonSerializer.Deserialize<UpdatePreferences>(
+                    File.ReadAllText(UpdatePreferencesPath)) ?? _updatePreferences;
+            }
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"Update preferences could not be loaded: {exception.GetType().Name}");
+        }
+    }
+
+    private void SaveUpdatePreferences()
+    {
+        try
+        {
+            File.WriteAllText(UpdatePreferencesPath, JsonSerializer.Serialize(_updatePreferences));
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Update preferences could not be saved", exception);
+        }
+    }
+
+    private void LoadAiApiSettings()
+    {
+        try
+        {
+            if (File.Exists(AiApiSettingsPath))
+            {
+                _aiApiSettings = JsonSerializer.Deserialize<AiApiSettings>(
+                    File.ReadAllText(AiApiSettingsPath)) ?? _aiApiSettings;
+            }
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"AI API settings could not be loaded: {exception.GetType().Name}");
+        }
+    }
+
+    private void SaveAiApiSettings()
+    {
+        try
+        {
+            File.WriteAllText(AiApiSettingsPath, JsonSerializer.Serialize(_aiApiSettings));
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("AI API settings could not be saved", exception);
+        }
+    }
+
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_updateCheckRunning) return;
+        if (!manual)
+        {
+            var last = DateTimeOffset.FromUnixTimeMilliseconds(_updatePreferences.LastCheckUnixMs);
+            if (DateTimeOffset.UtcNow - last < TimeSpan.FromHours(24)) return;
+        }
+        _updateCheckRunning = true;
+        if (manual) StatusText.Text = "Checking GitHub Releases…";
+        try
+        {
+            var result = await _releaseClient.CheckAsync(CurrentAppVersion, _updatePreferences.Channel);
+            _updatePreferences = _updatePreferences with
+            {
+                LastCheckUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+            SaveUpdatePreferences();
+            if (!result.Succeeded)
+            {
+                StatusText.Text = result.Error ?? "Update check failed.";
+                if (manual) await ShowMessageAsync("Update check", result.Error ?? "Update check failed.");
+                return;
+            }
+            var update = result.Update;
+            if (!result.UpdateAvailable || update == null)
+            {
+                StatusText.Text = "AMARE is up to date.";
+                if (manual) await ShowMessageAsync("Update check", "AMARE is up to date.");
+                return;
+            }
+            await ShowUpdateDialogAsync(update);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Update check failed", exception);
+            StatusText.Text = $"Update check failed: {exception.Message}";
+            if (manual) await ShowMessageAsync("Update check", "Update check failed. Please try again later.");
+        }
+        finally
+        {
+            _updateCheckRunning = false;
+        }
+    }
+
+    private async Task ShowUpdateDialogAsync(AvailableUpdate update)
+    {
+        var notes = string.IsNullOrWhiteSpace(update.Notes) ? "No release notes provided." : update.Notes;
+        if (notes.Length > 4000) notes = notes[..4000] + "…";
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = $"Current version: {CurrentAppVersion}" });
+        panel.Children.Add(new TextBlock { Text = $"New version: {update.Version}" });
+        panel.Children.Add(new TextBlock
+        {
+            Text = update.Checksum == null
+                ? "This release has no SHA-256 checksum. Automatic download is blocked."
+                : $"Download: {update.Package.Name} ({update.Package.Size:N0} bytes)",
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new ScrollViewer
+        {
+            MaxHeight = 260,
+            Content = new TextBlock { Text = notes, TextWrapping = TextWrapping.Wrap }
+        });
+        var releaseLink = new HyperlinkButton { Content = "Open release page" };
+        releaseLink.Click += async (_, _) => await OpenUrlAsync(update.PageUrl);
+        panel.Children.Add(releaseLink);
+        var dialog = new ContentDialog
+        {
+            Title = update.Prerelease ? "Pre-release update available" : "Update available",
+            Content = panel,
+            PrimaryButtonText = update.Checksum == null ? "Open release page" : "Download & verify",
+            CloseButtonText = "Later",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (update.Checksum == null)
+        {
+            await OpenUrlAsync(update.PageUrl);
+            return;
+        }
+        await DownloadUpdateAsync(update);
+    }
+
+    private async Task DownloadUpdateAsync(AvailableUpdate update)
+    {
+        var destination = Path.Combine(_appDataRoot, "updates", update.Version);
+        StatusText.Text = $"Downloading AMARE {update.Version}…";
+        var result = await _updateDownloader.DownloadAsync(
+            update, destination,
+            (received, total) => StatusText.Text = total > 0
+                ? $"Downloading AMARE {update.Version}: {received * 100 / total}%"
+                : $"Downloading AMARE {update.Version}: {received:N0} bytes");
+        if (!result.Succeeded)
+        {
+            StatusText.Text = result.Error ?? "Update download failed.";
+            await ShowMessageAsync("Update download", result.Error ?? "Update download failed.");
+            return;
+        }
+        StatusText.Text = "Update downloaded and verified.";
+        var dialog = new ContentDialog
+        {
+            Title = "Update verified",
+            Content = $"SHA-256 verified. The downloaded package is staged at:\n{result.FilePath}\n\n" +
+                      "AMARE does not replace its running files automatically. Close AMARE before applying the portable update.",
+            PrimaryButtonText = "Open folder",
+            CloseButtonText = "Close",
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && result.FilePath != null)
+        {
+            await Launcher.LaunchFolderAsync(
+                await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
+        }
+    }
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        await new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = "Close",
+            XamlRoot = RootGrid.XamlRoot
+        }.ShowAsync();
+    }
+
+    private async Task OpenUrlAsync(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
+    }
+
+    private async Task ShowAiApiSettingsAsync()
+    {
+        var existingKey = AiCredentialStore.GetKey();
+        var keyBox = new PasswordBox { Password = existingKey ?? "", PlaceholderText = "OpenAI API key" };
+        var modelBox = new TextBox { Text = _aiApiSettings.Model, PlaceholderText = AiApiClient.DefaultModel };
+        var baseUrlBox = new TextBox { Text = _aiApiSettings.BaseUrl, PlaceholderText = AiApiClient.DefaultBaseUrl };
+        var testResult = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        var testButton = new Button { Content = "Test connection" };
+        testButton.Click += async (_, _) =>
+        {
+            try
+            {
+                testResult.Text = "Testing…";
+                var settings = new AiApiSettings(modelBox.Text.Trim(), baseUrlBox.Text.Trim());
+                var answer = await AiApiClient.CompleteAsync(
+                    keyBox.Password, settings, "Reply with OK only.", null);
+                testResult.Text = $"Connection OK: {answer[..Math.Min(answer.Length, 80)]}";
+            }
+            catch (Exception exception)
+            {
+                testResult.Text = $"Connection failed: {exception.Message}";
+            }
+        };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Optional API mode. The API key is stored only in Windows Credential Manager and is never written to logs or settings files.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock { Text = "Provider: OpenAI Chat Completions" });
+        panel.Children.Add(new TextBlock { Text = "API key" });
+        panel.Children.Add(keyBox);
+        panel.Children.Add(new TextBlock { Text = "Model" });
+        panel.Children.Add(modelBox);
+        panel.Children.Add(new TextBlock { Text = "Base URL" });
+        panel.Children.Add(baseUrlBox);
+        panel.Children.Add(testButton);
+        panel.Children.Add(testResult);
+        var dialog = new ContentDialog
+        {
+            Title = "API AI settings",
+            Content = new ScrollViewer { MaxHeight = 520, Content = panel },
+            PrimaryButtonText = "Save",
+            SecondaryButtonText = "Delete key",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = RootGrid.XamlRoot
+        };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Secondary)
+        {
+            AiCredentialStore.Delete();
+            StatusText.Text = "API key removed.";
+            return;
+        }
+        if (result != ContentDialogResult.Primary) return;
+        if (!string.IsNullOrWhiteSpace(keyBox.Password) && !AiCredentialStore.Save(keyBox.Password))
+        {
+            await ShowMessageAsync("API key", "Windows Credential Manager could not store the key.");
+            return;
+        }
+        _aiApiSettings = new AiApiSettings(
+            modelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : modelBox.Text.Trim(),
+            baseUrlBox.Text.Trim().Length == 0 ? AiApiClient.DefaultBaseUrl : baseUrlBox.Text.Trim());
+        SaveAiApiSettings();
+        StatusText.Text = "API AI settings saved. Web AI remains the default.";
+    }
+
+    private async Task AskApiAiAsync()
+    {
+        var key = AiCredentialStore.GetKey();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            await ShowMessageAsync("API AI", "Configure an API key first from the browser menu → API AI settings.");
+            return;
+        }
+        var host = ActiveHost;
+        if (host?.View.CoreWebView2 is null)
+        {
+            await ShowMessageAsync("API AI", "Open a page before asking API AI.");
+            return;
+        }
+        var promptBox = new TextBox
+        {
+            Text = "Summarize this page.",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 90
+        };
+        var includeArticle = new CheckBox { Content = "Include extracted article text (user-approved)", IsChecked = true };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Current page: {host.Model.Title}\n{host.Model.Url}",
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Page content is untrusted data. It is sent only after you press Send.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(promptBox);
+        panel.Children.Add(includeArticle);
+        var dialog = new ContentDialog
+        {
+            Title = "Ask API AI",
+            Content = new ScrollViewer { MaxHeight = 520, Content = panel },
+            PrimaryButtonText = "Send",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var prompt = promptBox.Text.Trim();
+        if (prompt.Length == 0) return;
+        try
+        {
+            StatusText.Text = "API AI request in progress…";
+            var context = $"Title: {host.Model.Title}\nURL: {host.Model.Url}";
+            var selection = JsonSerializer.Deserialize<string>(
+                await host.View.CoreWebView2.ExecuteScriptAsync(
+                    "window.getSelection ? window.getSelection().toString() : ''"));
+            if (!string.IsNullOrWhiteSpace(selection))
+            {
+                context += "\nSelected text:\n" + selection.Trim();
+            }
+            if (includeArticle.IsChecked == true)
+            {
+                var raw = await host.View.CoreWebView2.ExecuteScriptAsync(ReaderExtractionScript.Script);
+                var pageJson = JsonSerializer.Deserialize<string>(raw);
+                var page = string.IsNullOrWhiteSpace(pageJson)
+                    ? null
+                    : JsonSerializer.Deserialize<ReaderExtractedPage>(
+                        pageJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (page is not null)
+                {
+                    var text = string.Join("\n\n", page.Blocks
+                        .Where(block => block.Tag != "img")
+                        .Select(block => block.Text)
+                        .Where(text => !string.IsNullOrWhiteSpace(text)));
+                    if (text.Length > 20000) text = text[..20000];
+                    context += "\nArticle (untrusted data):\n" + text;
+                }
+            }
+            var answer = await AiApiClient.CompleteAsync(
+                key, _aiApiSettings, prompt, context);
+            StatusText.Text = "API AI response received.";
+            var responseBox = new TextBox
+            {
+                Text = answer,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                MinHeight = 220
+            };
+            var responseDialog = new ContentDialog
+            {
+                Title = "API AI response",
+                Content = new ScrollViewer { MaxHeight = 560, Content = responseBox },
+                PrimaryButtonText = "Copy",
+                CloseButtonText = "Close",
+                XamlRoot = RootGrid.XamlRoot
+            };
+            if (await responseDialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                var data = new DataPackage();
+                data.SetText(answer);
+                Clipboard.SetContent(data);
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"API AI failed: {exception.Message}";
+            await ShowMessageAsync("API AI", $"API AI failed: {exception.Message}");
+        }
     }
 
     private void ChangeZoom(double delta) => _ = ChangeZoomAsync(delta);
@@ -1634,12 +2025,14 @@ public sealed partial class MainWindow : Window
             MinWidth = 220
         };
         var restoreBox = new CheckBox { Content = "Restore previous tabs on startup", IsChecked = _restoreSession };
+        var updateBox = new CheckBox { Content = "Check GitHub Releases for updates on startup", IsChecked = _updatePreferences.CheckOnStartup };
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(new TextBlock { Text = "Appearance theme" });
         stack.Children.Add(themeBox);
         stack.Children.Add(new TextBlock { Text = "Search engine" });
         stack.Children.Add(engineBox);
         stack.Children.Add(restoreBox);
+        stack.Children.Add(updateBox);
         var dialog = new ContentDialog
         {
             Title = "Settings",
@@ -1667,6 +2060,8 @@ public sealed partial class MainWindow : Window
             _engineId = engine.Id;
             _restoreSession = restore;
             _themeId = theme;
+            _updatePreferences = _updatePreferences with { CheckOnStartup = updateBox.IsChecked == true };
+            SaveUpdatePreferences();
             ApplyTheme(theme);
             _initializingSettings = true;
             SearchEngineBox.SelectedItem = engine;

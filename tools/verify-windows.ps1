@@ -297,11 +297,11 @@ if ($SkipWinUI) {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
-        $stage = Join-Path $OutputDir "AMARE-0.16.0-win-x64"
+        $stage = Join-Path $OutputDir "AMARE-0.17.0-win-x64"
         if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item (Join-Path $exe.Directory.FullName "*") -Destination $stage -Recurse -Force
-        $zip = Join-Path $OutputDir "AMARE-0.16.0-win-x64.zip"
+        $zip = Join-Path $OutputDir "AMARE-0.17.0-win-x64.zip"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
         Write-Host "Portable package: $zip"
@@ -312,18 +312,18 @@ if ($SkipWinUI) {
             Where-Object { $_.FullName -match '\\x64\\' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $makeAppx) { throw "MakeAppx.exe was not found in the Windows SDK." }
-        $stage = Join-Path $OutputDir "AMARE-0.16.0-win-x64"
+        $stage = Join-Path $OutputDir "AMARE-0.17.0-win-x64"
         $stageAssets = Join-Path $stage "Assets"
         New-Item -ItemType Directory -Force -Path $stageAssets | Out-Null
         Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Assets\*") -Destination $stageAssets -Force
         Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Package.appxmanifest") -Destination (Join-Path $stage "AppxManifest.xml") -Force
-        $msix = Join-Path $OutputDir "AMARE-0.16.0-win-x64-unsigned.msix"
+        $msix = Join-Path $OutputDir "AMARE-0.17.0-win-x64-unsigned.msix"
         if (Test-Path $msix) { Remove-Item $msix -Force }
         & $makeAppx.FullName pack /d $stage /p $msix /o
         if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed with exit code $LASTEXITCODE." }
         Write-Host "Unsigned MSIX: $msix"
     }
-    $msix = Join-Path $OutputDir "AMARE-0.16.0-win-x64-unsigned.msix"
+    $msix = Join-Path $OutputDir "AMARE-0.17.0-win-x64-unsigned.msix"
     try {
         Add-AppxPackage -Path $msix -AllowUnsigned -ErrorAction Stop
         $package = Get-AppxPackage -Name "Amare.Browser" -ErrorAction Stop
@@ -352,7 +352,7 @@ Invoke-Step "webview2_probe_run" {
     dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
 } -Required $false
 
-    $appExe = Join-Path $OutputDir "AMARE-0.16.0-win-x64\AMARE.Windows.exe"
+    $appExe = Join-Path $OutputDir "AMARE-0.17.0-win-x64\AMARE.Windows.exe"
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
     try {
