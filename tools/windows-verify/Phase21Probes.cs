@@ -250,6 +250,14 @@ internal static class Phase21Probes
             var wsState = await WebViewHelpers.EvalStringAsync(view, "window.__wsState || ''");
             if (wsState != "closed")
                 throw new InvalidOperationException($"WebSocket did not close cleanly: {wsState}");
+            var reconnectReleased = false;
+            for (var attempt = 0; attempt < 30 && !reconnectReleased; attempt++)
+            {
+                await Task.Delay(100);
+                reconnectReleased = server.ActiveWebSockets == 0;
+            }
+            if (!reconnectReleased)
+                throw new InvalidOperationException("reconnect WebSocket remained active after close");
 
             var (_, wsView) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-ws-hold"));
             try

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Automation;
 using System.Windows.Forms;
+using WindowsVerify;
 
 internal static class Program
 {
@@ -64,6 +65,7 @@ internal static class Program
             Check("new_tab", CreateNewTab);
             Check("tab_switch_shortcut", SwitchTabShortcut);
             Check("tab_close_shortcut", CloseActiveTabShortcut);
+            Check("websocket_tab_close", CloseTabReleasesWebSocket);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -81,6 +83,7 @@ internal static class Program
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
+            Check("websocket_browser_close", CloseWindowReleasesWebSockets);
         }
         catch (Exception exception)
         {
@@ -215,6 +218,51 @@ internal static class Program
         if (list is null || !list.TryGetCurrentPattern(SelectionPattern.Pattern, out var pattern)) return "";
         var selection = ((SelectionPattern)pattern).Current.GetSelection();
         return selection.Length == 0 ? "" : string.Join(",", selection[0].GetRuntimeId());
+    }
+
+    private static string CloseTabReleasesWebSocket()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            WaitFor(() => CountTabs() >= 2, TimeSpan.FromSeconds(5), "websocket tab");
+            var edit = FindAddressEdit();
+            SetValue(edit, server.BaseUrl + "/ws-hold.html");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            WaitFor(() => server.ActiveWebSockets >= 1, TimeSpan.FromSeconds(15), "websocket connection");
+            var before = CountTabs();
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            WaitFor(() => CountTabs() < before, TimeSpan.FromSeconds(5), "websocket tab close");
+            WaitFor(() => server.ActiveWebSockets == 0, TimeSpan.FromSeconds(15), "websocket release");
+            return "tab close released WebSocket";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static string CloseWindowReleasesWebSockets()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            WaitFor(() => CountTabs() >= 2, TimeSpan.FromSeconds(5), "browser websocket tab");
+            var edit = FindAddressEdit();
+            SetValue(edit, server.BaseUrl + "/ws-hold.html");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            WaitFor(() => server.ActiveWebSockets >= 1, TimeSpan.FromSeconds(15), "browser websocket connection");
+            TryClose(graceful: true);
+            WaitFor(() => server.ActiveWebSockets == 0, TimeSpan.FromSeconds(15), "browser websocket release");
+            return "window close released WebSocket";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 
     private static string CloseActiveTabShortcut()

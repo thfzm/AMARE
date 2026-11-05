@@ -197,6 +197,7 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                     } else {
                       window.__wsReconnect = event.data;
                       window.__wsState = 'closed';
+                      ws.close();
                     }
                   };
                   ws.onerror = () => { window.__wsState = 'error'; };
