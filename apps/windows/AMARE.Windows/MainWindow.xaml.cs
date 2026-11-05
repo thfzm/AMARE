@@ -1116,7 +1116,7 @@ public sealed partial class MainWindow : Window
             host.Model.Url,
             host.Model.Title,
             host.Model.IsPinned,
-            host.View.CoreWebView2?.ZoomFactor ?? _zoomFactor);
+            _zoomFactor);
     }
 
     private async Task CompleteTransferAsync(Guid tabId)
@@ -1127,12 +1127,7 @@ public sealed partial class MainWindow : Window
     private async Task AddTransferredTabAsync(TabTransferSnapshot snapshot)
     {
         await CreateTabAsync(snapshot.Url, snapshot.Title, snapshot.Pinned, activate: true);
-        if (_hosts.TryGetValue(_tabs.ActiveTab?.Id ?? Guid.Empty, out var host)
-            && host.View.CoreWebView2 is { } core)
-        {
-            core.ZoomFactor = snapshot.ZoomFactor;
-            _zoomFactor = snapshot.ZoomFactor;
-        }
+        await SetZoomAsync(snapshot.ZoomFactor);
     }
 
     private void TabList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
