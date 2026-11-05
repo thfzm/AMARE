@@ -1294,13 +1294,16 @@ public sealed partial class MainWindow : Window
             return;
         }
         await ReaderWebView.EnsureCoreWebView2Async(_environment);
-        ReaderWebView.CoreWebView2.NavigationStarting += (_, args) =>
+        if (ReaderWebView.CoreWebView2 is { } readerCore)
         {
-            if (args.Uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            readerCore.NavigationStarting += (_, args) =>
             {
-                args.Cancel = true;
-            }
-        };
+                if (args.Uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    args.Cancel = true;
+                }
+            };
+        }
     }
 
     private void RenderReader()
@@ -1403,22 +1406,24 @@ public sealed partial class MainWindow : Window
         if (AiWebView.CoreWebView2 is null)
         {
             await AiWebView.EnsureCoreWebView2Async(_aiEnvironment);
-            var core = AiWebView.CoreWebView2;
-            core.NewWindowRequested += (_, args) =>
+            if (AiWebView.CoreWebView2 is { } core)
             {
-                args.Handled = true;
-                if (NavigationPolicy.CanOpenInNewTab(args.Uri))
+                core.NewWindowRequested += (_, args) =>
                 {
-                    core.Navigate(args.Uri);
-                }
-            };
-            core.NavigationCompleted += (_, args) =>
-            {
-                if (!args.IsSuccess)
+                    args.Handled = true;
+                    if (NavigationPolicy.CanOpenInNewTab(args.Uri))
+                    {
+                        core.Navigate(args.Uri);
+                    }
+                };
+                core.NavigationCompleted += (_, args) =>
                 {
-                    AiStatusText.Text = $"AI page failed: {args.WebErrorStatus}";
-                }
-            };
+                    if (!args.IsSuccess)
+                    {
+                        AiStatusText.Text = $"AI page failed: {args.WebErrorStatus}";
+                    }
+                };
+            }
         }
     }
 

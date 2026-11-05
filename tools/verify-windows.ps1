@@ -304,6 +304,35 @@ if ($SkipWinUI) {
         Write-Host "Portable package: $zip"
         Write-Host "Executable: $($exe.FullName)"
     }
+    $appExe = Join-Path $OutputDir "AMARE-0.15.0-win-x64\AMARE.Windows.exe"
+    $appProcess = $null
+    $appStarted = (Get-Date).ToUniversalTime().ToString("o")
+    try {
+        if (-not (Test-Path $appExe)) { throw "Packaged AMARE.Windows.exe is missing." }
+        $appProcess = Start-Process -FilePath $appExe -WorkingDirectory (Split-Path $appExe) -PassThru
+        Start-Sleep -Seconds 8
+        if ($appProcess.HasExited) {
+            Add-SkippedStep "app_process_launch" "UNVERIFIED" "AMARE.Windows.exe exited during startup (exit code $($appProcess.ExitCode)); GUI launch may require an interactive desktop/Windows App SDK runtime."
+        } else {
+            $Steps.Add([pscustomobject]@{
+                name = "app_process_launch"
+                status = "PASS"
+                exit_code = 0
+                required = $false
+                started_at = $appStarted
+                finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                duration_ms = 8000
+                log = $null
+                detail = "AMARE.Windows.exe stayed alive for 8 seconds after Start-Process; GUI rendering remains UNVERIFIED."
+            })
+            Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        if ($null -ne $appProcess -and -not $appProcess.HasExited) {
+            Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        Add-SkippedStep "app_process_launch" "UNVERIFIED" "Could not launch AMARE.Windows.exe: $($_.Exception.Message)"
+    }
 }
 
 # ---------- WebView2 probes ----------

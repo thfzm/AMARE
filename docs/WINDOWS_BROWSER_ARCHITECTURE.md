@@ -67,7 +67,8 @@ Request:
 - Settings: `settings.get/list_group/list_all/set/set_many/reset_key/reset_group/reset_all`
 - Search: `search.query`
 - Session: `session.save/latest/delete`
-- History: `history.top`
+- History: `history.top/list/record/clear`
+- Bookmarks: `bookmark.list/create/delete`
 
 Error code는 `amare.h`에 정의되어 있으며 C# `NativeErrorMapper`가 동일하게 매핑합니다.
 문자열은 UTF-8이며 `amare_string_free`로 해제합니다. panic은 Rust FFI 경계에서 catch됩니다.
@@ -78,7 +79,8 @@ Error code는 `amare.h`에 정의되어 있으며 C# `NativeErrorMapper`가 동�
 ## 4. C# Adapter
 
 - `AmareNative`: handle 소유, ABI 버전 검사, `Task.Run`+SemaphoreSlim으로 UI 스레드 차단 방지, dispose.
-- `ProfileClient`, `SettingsClient`, `SearchClient`, `SessionClient`, `HistoryClient`: method/params/result 변환.
+- `ProfileClient`, `SettingsClient`, `SearchClient`, `SessionClient`, `HistoryClient`, `BookmarkClient`: method/params/result 변환.
+- `AddressSuggestionProvider`, `ReaderPageBuilder`, `DownloadPolicy`, `TabManager`: Windows UI와 독립적인 로직.
 - `INativeBridge`: 테스트에서 fake bridge로 교체 가능.
 - JSON wire naming은 snake_case로 Rust serde와 일치합니다.
 - 오류는 `NativeException(NativeError, message, method)`로 통일합니다.

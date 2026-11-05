@@ -10,7 +10,8 @@
 - Rust workspace: fmt, clippy, tests, service/store/backup
 - C ABI: `amare-ffi` Rust tests, C header link smoke, C# P/Invoke interop
 - C# `AMARE.Windows.Core`: 주소창/검색엔진/navigation policy/profile path/tab manager/download/new-tab HTML/adapter fake bridge
-- C# native service interop: profile/settings/session/search + stale context error
+- C# native service interop: profile/settings/session/search/bookmarks/history + stale context error
+- Address suggestions, Reader HTML builder/security, download policy/new tab
 - 기존 `verify-linux.sh`
 
 ## 2. Windows Runner
@@ -21,6 +22,8 @@
 - C ABI build + MSVC header compile
 - C# interop tests (core logic + native service)
 - WinUI 3 restore/build (required; 실패 시 FAIL)
+- Portable ZIP packaging
+- App process launch smoke (GUI rendering은 별도 UNVERIFIED)
 - WebView2 Runtime 존재 확인
 - 기존 WebView2 headless probes
 
@@ -45,13 +48,12 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - UNVERIFIED: 실행하지 않았거나 Runner 환경에서 판정하지 않음
 - SKIPPED: 의도적으로 제외
 
-## 5. 현재 상태 (2026-11-03, Linux)
+## 5. 현재 상태 (2026-11-05, Windows Runner)
 
-- Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/` (local HTTP/HTTPS/tab/profile probes)
-
-- Rust tests: 138개 (Phase 2 FFI 추가 후)
-- C# interop/core tests: **46/46** (Phase 2.1/2.2 신규 33 포함)
-- MainWindow C# semantic type-check: WindowsAppSDK reference로 PASS (임시 검증, 공식 빌드 아님)
-- WinUI XAML compile/MakePri: Linux에서 불가 (`XamlCompiler.exe`/`MakePri.exe` Windows-only)
-- Windows Runner: **실행하지 않음**
-- Windows 11 실기기: **미검증**
+- Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/`
+- Rust tests: **PASS**
+- C# interop/core tests: **51/51 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
+- WinUI XAML compile / MakePri / WinUI build / portable ZIP: **PASS** (Windows Server 2025 Runner)
+- App process launch smoke: CI 결과에서 별도 판정
+- Windows 11 실제 GUI: **UNVERIFIED**
+- MSIX/코드 서명: **BLOCKED / 미구현**

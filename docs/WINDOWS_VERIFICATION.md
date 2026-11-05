@@ -24,7 +24,7 @@
 WebView2 Runtime이 없으면 설치 스크립트가 중단됩니다.
 공식 다운로드: <https://developer.microsoft.com/microsoft-edge/webview2/>
 
-> .NET 10/WinAppSDK 2.6.x 호환성은 Windows CI에서 확인 후 올립니다. 현재 스캐폴드는 .NET 8로 검증했습니다.
+> 0.15.0 기준 Windows Runner에서 .NET 8 / Windows App SDK 2.6.5 / WebView2 1.0.4314.35 조합으로 WinUI build와 package를 검증했습니다.
 
 ---
 

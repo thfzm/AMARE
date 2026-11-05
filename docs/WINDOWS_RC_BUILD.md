@@ -1,8 +1,8 @@
 # AMARE Windows Release Candidate 빌드/실행
 
-- 작성일: 2026-11-03
-- Phase 2.2: Release Candidate 준비
-- 주의: 현재는 **설치 프로그램/코드 서명/자동 업데이트가 없는 개발 RC**입니다.
+- 작성일: 2026-11-05
+- 버전: AMARE Windows **0.15.0**
+- 주의: 현재는 **portable ZIP만 제공하는 개발 빌드**이며 설치 프로그램/코드 서명/자동 업데이트는 없습니다.
 
 ---
 
@@ -76,8 +76,9 @@ Remove-Item "$env:LOCALAPPDATA\AMARE" -Recurse -Force
 
 | 항목 | 상태 |
 |---|---|
-| Release build | 구현, Windows 실기기/CI 미검증 |
-| 설치 프로그램 | **없음** |
+| Release build | WinUI CI build **PASS** |
+| Portable ZIP | `artifacts/windows/AMARE-0.15.0-win-x64.zip` |
+| 설치 프로그램/MSIX | **없음 / BLOCKED** |
 | Authenticode 서명 | **없음** |
 | 자동 업데이트 | **없음** |
 | Windows App SDK Runtime 의존성 | **UNVERIFIED — R-03 REVIEW** |
