@@ -737,7 +737,7 @@ public sealed partial class MainWindow : Window
                 UpdateToolbar();
             }
         };
-        core.ServerCertificateErrorDetected += (_, args) =>
+        core.ServerCertificateErrorDetected += (sender, args) =>
         {
             // Never allow a certificate error automatically. Cancel the navigation
             // and show the user an explicit, non-bypass error notice.
@@ -990,14 +990,6 @@ public sealed partial class MainWindow : Window
             // The process may already be shutting down.
         }
         WebViewHost.Children.Remove(host.View);
-        try
-        {
-            host.View.Dispose();
-        }
-        catch
-        {
-            // The control may already be disposed during app shutdown.
-        }
     }
 
     private void CloseAllTabs()
