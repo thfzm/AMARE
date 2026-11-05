@@ -347,7 +347,7 @@ if ($SkipWinUI) {
             Set-Content -Path (Join-Path $appDir "VERSION") -Value "0.17.0" -Encoding utf8
             Set-Content -Path (Join-Path $appDir "AMARE.Windows.exe") -Value "old-exe" -Encoding utf8
             Set-Content -Path (Join-Path $dataDir "user-data.txt") -Value "preserve-me" -Encoding utf8
-            Set-Content -Path (Join-Path $dataDir "settings.json") -Value "{\"theme\":\"dark\"}" -Encoding utf8
+            Set-Content -Path (Join-Path $dataDir "settings.json") -Value '{"theme":"dark"}' -Encoding utf8
             Set-Content -Path (Join-Path $dataDir "bookmarks.db") -Value "bookmarks" -Encoding utf8
             Set-Content -Path (Join-Path $dataDir "history.db") -Value "history" -Encoding utf8
             $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -360,6 +360,9 @@ if ($SkipWinUI) {
             }
             if ((Get-Content (Join-Path $dataDir "bookmarks.db") -Raw).Trim() -ne "bookmarks") {
                 throw "Helper changed bookmarks."
+            }
+            if ((Get-Content (Join-Path $dataDir "settings.json") -Raw) -notmatch 'theme') {
+                throw "Helper changed settings."
             }
             if ((Get-Content (Join-Path $dataDir "history.db") -Raw).Trim() -ne "history") {
                 throw "Helper changed history."
