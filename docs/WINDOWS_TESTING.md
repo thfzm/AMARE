@@ -55,7 +55,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Rust tests: **PASS**
 - C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **21/21 PASS** (window, address, tabs, switch/close, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, graceful/forced session restore, 6-tab stress)
+- UIAutomation GUI smoke: **22/22 PASS** (window, address, tabs, switch/close, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 6-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
@@ -63,8 +63,11 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Korean/space path clean ZIP launch PASS
 - Release preflight version/arch/assets/hashes PASS
 - AI mock success, 401/429/network errors, key redaction, SSE streaming, provider selection PASS
-- Local web compatibility: SPA, cookie/session, upload, media capability, zoom, redirect PASS
-- 5/10/20/30-tab WebView2 memory and startup/navigation/tab timing PASS
+- Local web compatibility: SPA, cookie/session, upload, WebSocket connect/echo/reconnect, audio play/pause/volume/seek, media capability, zoom, redirect PASS
+- Certificate error local probe: **UNVERIFIED** (timeout); no bypass implemented
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing PASS
+- Native tab drag reorder: **UNVERIFIED** (attempted; core TabManager.Move PASS)
+- New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace
 - GitHub Releases: 현재 public release 0개, 실제 공개 asset update flow UNVERIFIED
