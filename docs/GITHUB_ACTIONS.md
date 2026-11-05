@@ -4,9 +4,9 @@
 - 단계: Phase 2.2 Windows 검증 게이트/Release Candidate
 - 목적: Ubuntu에서 개발 → GitHub Push → Windows Runner 빌드/테스트 → Artifacts 확인
 - 원칙: **CI에서 검증하지 못한 항목은 PASS로 처리하지 않는다.**
-- 현재 상태: Windows 0.19.0 WinUI Debug/Release build, portable ZIP + updater helper, unsigned MSIX, clean path launch, C#/Rust interop 67/67, update apply/rollback/duplicate/health tests, release preflight, WebView2 probes **PASS** (Windows Server 2025 Runner). Windows 11 실제 GUI는 **UNVERIFIED**입니다. Linux **PASS**. Android CI는 0.14.0 최종 코드 `9110ddc`에서 **SUCCESS**했으며 Windows-only 변경에서는 path filter로 실행되지 않습니다.
-- 0.19.0 최종 코드 검증 run: [Windows #41999881216](https://github.com/thfzm/AMARE/actions/runs/41999881216) **success**, [Linux #41999881467](https://github.com/thfzm/AMARE/actions/runs/41999881467) **success**, Android [0.14.0 #41952767737](https://github.com/thfzm/AMARE/actions/runs/41952767737) **success**
-- AMARE 0.19.0: GUI UIAutomation **19/19 PASS**, WinUI Debug/Release, portable ZIP + updater helper, unsigned MSIX build, **130 PASS / 0 FAIL**, update apply/rollback/duplicate/health/cancel tests, clean Korean/space path, release preflight PASS; MSIX install은 unsigned publisher로 **BLOCKED**, GitHub Release 0개, public release는 생성하지 않음.
+- 현재 상태: Windows 0.20.0 WinUI Debug/Release build, portable ZIP + updater helper, unsigned MSIX, local web compatibility, 5/10/20/30-tab memory, clean path launch, C#/Rust interop 70/70, GUI 21/21, release preflight **PASS** (Windows Server 2025 Runner). Windows 11 실제 GUI는 **UNVERIFIED**입니다. Linux **PASS**. Android CI는 0.14.0 최종 코드 `9110ddc`에서 **SUCCESS**했으며 Windows-only 변경에서는 path filter로 실행되지 않습니다.
+- 0.20.0 최종 코드 검증 run: [Windows #42009964438](https://github.com/thfzm/AMARE/actions/runs/42009964438) **success**, [Linux #42009964461](https://github.com/thfzm/AMARE/actions/runs/42009964461) **success**, Android [0.14.0 #41952767737](https://github.com/thfzm/AMARE/actions/runs/41952767737) **success**
+- AMARE 0.20.0: GUI UIAutomation **21/21 PASS**, local web compatibility, 5/10/20/30-tab memory, forced session restore, WinUI Debug/Release, portable ZIP + updater helper, unsigned MSIX build, **136 PASS / 0 FAIL**, update safety and release preflight PASS; MSIX install은 unsigned publisher로 **BLOCKED**, GitHub Release 0개, public release는 생성하지 않음.
 - 상세 분석: [CI 재검증 보고서](CI_REVALIDATION_REPORT.md)
 
 ---

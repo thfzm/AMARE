@@ -53,20 +53,23 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 - Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/`
 - Rust tests: **PASS**
-- C# interop/core tests: **67/67 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
+- C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **19/19 PASS** (window, address, tabs, tab close, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, session restore, 6-tab stress)
+- UIAutomation GUI smoke: **21/21 PASS** (window, address, tabs, switch/close, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, graceful/forced session restore, 6-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
 - Repeat/downgrade/concurrent helper rejection, health-mark timeout, crash-after-apply recovery PASS
 - Korean/space path clean ZIP launch PASS
 - Release preflight version/arch/assets/hashes PASS
-- AI mock success, 401 key redaction, SSE streaming PASS
+- AI mock success, 401/429/network errors, key redaction, SSE streaming, provider selection PASS
+- Local web compatibility: SPA, cookie/session, upload, media capability, zoom, redirect PASS
+- 5/10/20/30-tab WebView2 memory and startup/navigation/tab timing PASS
 - AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace
 - GitHub Releases: 현재 public release 0개, 실제 공개 asset update flow UNVERIFIED
 - Portable ZIP/MSIX: **PASS**, helper 포함; unsigned MSIX install **BLOCKED**
+- Forced-kill session restore: **PASS** (6→6)
 - Release metadata: `VERSION`, `amare-update.json`, `RELEASE_NOTES.md`, SHA-256 sidecar, `checksums.txt`, release manifest **PASS**
 - API AI: provider 선택/streaming/cancel UI 및 mock provider PASS, 실제 key/Credential Manager end-to-end UNVERIFIED
 - Windows 11 actual GUI: **UNVERIFIED**
