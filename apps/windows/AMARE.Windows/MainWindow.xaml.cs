@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
     private bool _settingReader;
     private bool _aiOpen;
     private bool _fullScreen;
+    private double _zoomFactor = 1.0;
     private string _readerNonce = Guid.NewGuid().ToString("N");
     private DispatcherQueueTimer? _saveTimer;
     private string _profileId = "";
@@ -357,7 +358,7 @@ public sealed partial class MainWindow : Window
     private void UpdateBookmarkButton()
     {
         BookmarkIcon.Glyph = IsCurrentBookmarked() ? "\uE735" : "\uE734";
-        BookmarksButton.ToolTipService.ToolTip = IsCurrentBookmarked() ? "Remove bookmark" : "Bookmark this page";
+        ToolTipService.SetToolTip(BookmarksButton, IsCurrentBookmarked() ? "Remove bookmark" : "Bookmark this page");
     }
 
     private async Task ToggleBookmarkAsync()
@@ -1545,14 +1546,21 @@ public sealed partial class MainWindow : Window
         menu.Items.Add(item);
     }
 
-    private void ChangeZoom(double delta) => SetZoom((ActiveHost?.View.CoreWebView2?.ZoomFactor ?? 1.0) + delta);
+    private void ChangeZoom(double delta) => _ = ChangeZoomAsync(delta);
 
-    private void SetZoom(double value)
+    private void SetZoom(double value) => _ = SetZoomAsync(value);
+
+    private async Task ChangeZoomAsync(double delta) =>
+        await SetZoomAsync(Math.Clamp(_zoomFactor + delta, 0.25, 3.0));
+
+    private async Task SetZoomAsync(double value)
     {
+        _zoomFactor = Math.Clamp(value, 0.25, 3.0);
         if (ActiveHost?.View.CoreWebView2 is { } core)
         {
-            core.ZoomFactor = Math.Clamp(value, 0.25, 3.0);
-            StatusText.Text = $"Zoom: {core.ZoomFactor:P0}";
+            var script = $"document.documentElement.style.zoom = '{_zoomFactor.ToString(System.Globalization.CultureInfo.InvariantCulture)}';";
+            await core.ExecuteScriptAsync(script);
+            StatusText.Text = $"Zoom: {_zoomFactor:P0}";
         }
     }
 
