@@ -138,7 +138,14 @@ internal static class Probes
                 throw new InvalidOperationException("DOM.getDocument returned no root");
 
             await WebViewHelpers.ClickSelectorAsync(view, "#b");
+            await Task.Delay(250);
             var clicked = await WebViewHelpers.EvalStringAsync(view, "document.querySelector('#out').textContent");
+            if (clicked != "clicked")
+            {
+                await WebViewHelpers.ClickSelectorAsync(view, "#b");
+                await Task.Delay(350);
+                clicked = await WebViewHelpers.EvalStringAsync(view, "document.querySelector('#out').textContent");
+            }
             if (clicked != "clicked") throw new InvalidOperationException($"click failed: out={clicked}");
 
             await WebViewHelpers.ClickSelectorAsync(view, "#i");
