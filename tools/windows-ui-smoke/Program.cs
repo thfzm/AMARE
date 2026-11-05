@@ -174,22 +174,23 @@ internal static class Program
         var firstRuntime = first.GetRuntimeId();
         var a = first.Current.BoundingRectangle;
         var b = second.Current.BoundingRectangle;
-        var startX = (int)(a.X + a.Width / 2);
+        var startX = (int)(a.X + Math.Min(28, a.Width / 3));
         var startY = (int)(a.Y + a.Height / 2);
-        var endX = (int)(b.X + b.Width / 2);
+        var endX = (int)(b.X + Math.Min(28, b.Width / 3));
         var endY = (int)(b.Y + b.Height / 2);
         SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
         SetCursorPos(startX, startY);
-        Thread.Sleep(250);
+        Thread.Sleep(300);
         mouse_event(MouseLeftDown, 0, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(250);
-        for (var i = 1; i <= 12; i++)
+        Thread.Sleep(350);
+        for (var i = 1; i <= 20; i++)
         {
-            SetCursorPos(startX + (endX - startX) * i / 12, startY + (endY - startY) * i / 12);
-            Thread.Sleep(80);
+            SetCursorPos(startX + (endX - startX) * i / 20, startY + (endY - startY) * i / 20);
+            Thread.Sleep(100);
         }
+        Thread.Sleep(300);
         mouse_event(MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(900);
+        Thread.Sleep(1200);
         var after = list.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>().ToArray();
