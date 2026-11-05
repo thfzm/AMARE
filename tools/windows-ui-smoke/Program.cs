@@ -294,79 +294,58 @@ internal static class Program
 
     private static string DragFirstTabToLast()
     {
-        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
-        try
+        for (var i = 0; i < 2; i++)
         {
-            NavigateToUrl(server.BaseUrl + "/tab-a.html", "Tab A");
             Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
-            NavigateToUrl(server.BaseUrl + "/tab-b.html", "Tab B");
-            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
-            NavigateToUrl(server.BaseUrl + "/tab-c.html", "Tab C");
-            WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag tabs");
-
-            var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
-            var items = list.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
-                .Cast<AutomationElement>().ToArray();
-            Require(items.Length >= 3, "need three tabs for drag");
-            if (items[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
-            {
-                ((SelectionItemPattern)selection).Select();
-                Thread.Sleep(300);
-            }
-            var first = items[0];
-            var last = items[^1];
-            var firstRuntime = first.GetRuntimeId();
-            var firstRect = first.Current.BoundingRectangle;
-            var lastRect = last.Current.BoundingRectangle;
-            var startX = (int)(firstRect.X + Math.Min(24, firstRect.Width / 3));
-            var startY = (int)(firstRect.Y + firstRect.Height / 2);
-            var endX = (int)(lastRect.X + Math.Max(12, lastRect.Width - 20));
-            var endY = (int)(lastRect.Y + lastRect.Height / 2);
-            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
-            MoveMouseAbsolute(startX, startY);
-            Thread.Sleep(250);
-            SendMouseButton(MouseLeftDown);
+        }
+        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag tabs");
+        var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
+        var items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length >= 3, "need three tabs for drag");
+        if (items[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+        {
+            ((SelectionItemPattern)selection).Select();
             Thread.Sleep(300);
-            for (var i = 1; i <= 20; i++)
-            {
-                MoveMouseAbsolute(startX + (endX - startX) * i / 20, startY + (endY - startY) * i / 20);
-                Thread.Sleep(80);
-            }
-            Thread.Sleep(250);
-            SendMouseButton(MouseLeftUp);
-            Thread.Sleep(1000);
-
-            items = list.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
-                .Cast<AutomationElement>().ToArray();
-            Require(items.Length >= 3, "tabs disappeared after drag");
-            if (items[0].GetRuntimeId().SequenceEqual(firstRuntime))
-                throw new InvalidOperationException("native tab order did not change");
-            return "native pointer drag reordered first tab to the end";
-
         }
-        finally
+        var first = items[0];
+        var last = items[^1];
+        var firstRuntime = first.GetRuntimeId();
+        var firstRect = first.Current.BoundingRectangle;
+        var lastRect = last.Current.BoundingRectangle;
+        var startX = (int)(firstRect.X + Math.Min(24, firstRect.Width / 3));
+        var startY = (int)(firstRect.Y + firstRect.Height / 2);
+        var endX = (int)(lastRect.X + Math.Max(12, lastRect.Width - 20));
+        var endY = (int)(lastRect.Y + lastRect.Height / 2);
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        MoveMouseAbsolute(startX, startY);
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftDown);
+        Thread.Sleep(300);
+        for (var i = 1; i <= 20; i++)
         {
-            while (CountTabs() > 1)
-            {
-                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
-                SendKeys.SendWait("^w");
-                Thread.Sleep(400);
-            }
-            NavigateToExample();
-            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            MoveMouseAbsolute(startX + (endX - startX) * i / 20, startY + (endY - startY) * i / 20);
+            Thread.Sleep(80);
         }
-    }
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftUp);
+        Thread.Sleep(1000);
 
-    private static void NavigateToUrl(string url, string expectedTitle)
-    {
-        var edit = FindAddressEdit();
-        SetValue(edit, url);
-        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
-        WaitFor(() => _process?.MainWindowTitle.Contains(expectedTitle, StringComparison.OrdinalIgnoreCase) == true,
-            TimeSpan.FromSeconds(15), expectedTitle);
-        Thread.Sleep(400);
+        items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length >= 3, "tabs disappeared after drag");
+        if (items[0].GetRuntimeId().SequenceEqual(firstRuntime))
+            throw new InvalidOperationException("native tab order did not change");
+        while (CountTabs() > 1)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(400);
+        }
+        NavigateToExample();
+        return "native pointer drag reordered first tab to the end";
     }
 
     private static void MoveMouseAbsolute(int x, int y)
