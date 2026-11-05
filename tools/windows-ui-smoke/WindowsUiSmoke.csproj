@@ -8,4 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\windows-verify\LocalHttpServer.cs" Link="LocalHttpServer.cs" />
+  </ItemGroup>
 </Project>
