@@ -25,6 +25,32 @@ internal static class Program
 
     private const uint MouseLeftDown = 0x0002;
     private const uint MouseLeftUp = 0x0004;
+    private const uint MouseMove = 0x0001;
+    private const uint MouseAbsolute = 0x8000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public MouseInput Mouse;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, Input[] inputs, int size);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     private sealed record Result(string Name, bool Passed, string Detail);
 
@@ -66,6 +92,7 @@ internal static class Program
             Check("tab_switch_shortcut", SwitchTabShortcut);
             Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("websocket_tab_close", CloseTabReleasesWebSocket);
+            Check("tab_drag_reorder", DragFirstTabToLast);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -263,6 +290,106 @@ internal static class Program
         {
             server.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
+    }
+
+    private static string DragFirstTabToLast()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            NavigateToUrl(server.BaseUrl + "/tab-a.html", "Tab A");
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            NavigateToUrl(server.BaseUrl + "/tab-b.html", "Tab B");
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            NavigateToUrl(server.BaseUrl + "/tab-c.html", "Tab C");
+            WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag tabs");
+
+            var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
+            var items = list.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray();
+            Require(items.Length >= 3, "need three tabs for drag");
+            if (items[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+            {
+                ((SelectionItemPattern)selection).Select();
+                Thread.Sleep(300);
+            }
+            var first = items[0];
+            var last = items[^1];
+            var firstRuntime = first.GetRuntimeId();
+            var firstRect = first.Current.BoundingRectangle;
+            var lastRect = last.Current.BoundingRectangle;
+            var startX = (int)(firstRect.X + Math.Min(24, firstRect.Width / 3));
+            var startY = (int)(firstRect.Y + firstRect.Height / 2);
+            var endX = (int)(lastRect.X + Math.Max(12, lastRect.Width - 20));
+            var endY = (int)(lastRect.Y + lastRect.Height / 2);
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            MoveMouseAbsolute(startX, startY);
+            Thread.Sleep(250);
+            SendMouseButton(MouseLeftDown);
+            Thread.Sleep(300);
+            for (var i = 1; i <= 20; i++)
+            {
+                MoveMouseAbsolute(startX + (endX - startX) * i / 20, startY + (endY - startY) * i / 20);
+                Thread.Sleep(80);
+            }
+            Thread.Sleep(250);
+            SendMouseButton(MouseLeftUp);
+            Thread.Sleep(1000);
+
+            items = list.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray();
+            Require(items.Length >= 3, "tabs disappeared after drag");
+            if (items[0].GetRuntimeId().SequenceEqual(firstRuntime))
+                throw new InvalidOperationException("native tab order did not change");
+            return "native pointer drag reordered first tab to the end";
+
+        }
+        finally
+        {
+            while (CountTabs() > 1)
+            {
+                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+                SendKeys.SendWait("^w");
+                Thread.Sleep(400);
+            }
+            NavigateToExample();
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static void NavigateToUrl(string url, string expectedTitle)
+    {
+        var edit = FindAddressEdit();
+        SetValue(edit, url);
+        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+        WaitFor(() => _process?.MainWindowTitle.Contains(expectedTitle, StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(15), expectedTitle);
+        Thread.Sleep(400);
+    }
+
+    private static void MoveMouseAbsolute(int x, int y)
+    {
+        var width = Math.Max(1, GetSystemMetrics(0));
+        var height = Math.Max(1, GetSystemMetrics(1));
+        var input = new Input
+        {
+            Type = 0,
+            Mouse = new MouseInput
+            {
+                Dx = x * 65535 / width,
+                Dy = y * 65535 / height,
+                Flags = MouseMove | MouseAbsolute
+            }
+        };
+        SendInput(1, [input], Marshal.SizeOf<Input>());
+    }
+
+    private static void SendMouseButton(uint flag)
+    {
+        var input = new Input { Type = 0, Mouse = new MouseInput { Flags = flag } };
+        SendInput(1, [input], Marshal.SizeOf<Input>());
     }
 
     private static string CloseActiveTabShortcut()

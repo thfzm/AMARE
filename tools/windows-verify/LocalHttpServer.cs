@@ -149,6 +149,15 @@ internal sealed class LocalHttpServer : IAsyncDisposable
             "/page2.html" => """
                 <!doctype html><html><head><title>Page Two</title></head><body><h1>Page Two</h1></body></html>
                 """,
+            "/tab-a.html" => """
+                <!doctype html><html><head><title>Tab A</title></head><body><h1>Tab A</h1></body></html>
+                """,
+            "/tab-b.html" => """
+                <!doctype html><html><head><title>Tab B</title></head><body><h1>Tab B</h1></body></html>
+                """,
+            "/tab-c.html" => """
+                <!doctype html><html><head><title>Tab C</title></head><body><h1>Tab C</h1></body></html>
+                """,
             "/popup.html" => """
                 <!doctype html><html><head><title>Popup</title></head><body><h1>Popup</h1></body></html>
                 """,
