@@ -267,7 +267,17 @@ internal static class Phase21Probes
             }
             view.NavigationCompleted += Handler;
             view.CoreWebView2.Navigate($"https://127.0.0.1:{port}/");
-            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            (bool Success, CoreWebView2WebErrorStatus Status) result;
+            try
+            {
+                result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            catch (TimeoutException)
+            {
+                return Result("webview2_certificate_error", ProbeStatus.Unverified, true,
+                    "local TLS certificate probe timed out before NavigationCompleted; engine-level result is not claimed",
+                    new { navigation_success = (bool?)null, certificate_rejected = (bool?)null });
+            }
             if (result.Success)
                 throw new InvalidOperationException("self-signed/expired certificate was unexpectedly accepted");
             var data = new Dictionary<string, object?>

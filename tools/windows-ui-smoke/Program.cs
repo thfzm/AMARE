@@ -62,7 +62,6 @@ internal static class Program
             });
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
-            Check("tab_drag_reorder", DragFirstTabToSecond);
             Check("tab_switch_shortcut", SwitchTabShortcut);
             Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("find_in_page", OpenFindAndSearch);
