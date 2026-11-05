@@ -307,6 +307,42 @@ if ($SkipWinUI) {
         Write-Host "Portable package: $zip"
         Write-Host "Executable: $($exe.FullName)"
     }
+    Invoke-Step "winui_msix" {
+        $makeAppx = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin") -Recurse -Filter MakeAppx.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $makeAppx) { throw "MakeAppx.exe was not found in the Windows SDK." }
+        $stage = Join-Path $OutputDir "AMARE-0.16.0-win-x64"
+        $stageAssets = Join-Path $stage "Assets"
+        New-Item -ItemType Directory -Force -Path $stageAssets | Out-Null
+        Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Assets\*") -Destination $stageAssets -Force
+        Copy-Item (Join-Path (Get-Location) "apps\windows\AMARE.Windows\Package.appxmanifest") -Destination (Join-Path $stage "AppxManifest.xml") -Force
+        $msix = Join-Path $OutputDir "AMARE-0.16.0-win-x64-unsigned.msix"
+        if (Test-Path $msix) { Remove-Item $msix -Force }
+        & $makeAppx.FullName pack /d $stage /p $msix /o
+        if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed with exit code $LASTEXITCODE." }
+        Write-Host "Unsigned MSIX: $msix"
+    }
+    $msix = Join-Path $OutputDir "AMARE-0.16.0-win-x64-unsigned.msix"
+    try {
+        Add-AppxPackage -Path $msix -AllowUnsigned -ErrorAction Stop
+        $package = Get-AppxPackage -Name "Amare.Browser" -ErrorAction Stop
+        if (-not $package) { throw "MSIX package was not registered." }
+        $Steps.Add([pscustomobject]@{
+            name = "winui_msix_install"
+            status = "PASS"
+            exit_code = 0
+            required = $false
+            started_at = (Get-Date).ToUniversalTime().ToString("o")
+            finished_at = (Get-Date).ToUniversalTime().ToString("o")
+            duration_ms = 0
+            log = $null
+            detail = "Unsigned MSIX installed; package=$($package.PackageFullName)."
+        })
+        Write-Host "Installed package: $($package.PackageFullName)"
+    } catch {
+        Add-SkippedStep "winui_msix_install" "UNVERIFIED" "Unsigned MSIX install was not available: $($_.Exception.Message)"
+    }
 }
 
 # ---------- WebView2 probes ----------
