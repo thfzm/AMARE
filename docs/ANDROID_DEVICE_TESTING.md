@@ -1,6 +1,6 @@
 # Android 실제 기기 및 Emulator 테스트
 
-- 기준: Android 0.13.0
+- 기준: Android 0.14.0
 - 관련 문서: [Release](ANDROID_RELEASE.md), [보안](ANDROID_SECURITY.md)
 
 ## 1. 현재 개발 호스트
@@ -14,7 +14,7 @@
 `No connected devices!`로 실패합니다. 이는 테스트 실패가 아니라 실행 환경 부재입니다.
 
 2026-11-05 0.12.0 기준으로 원격 ADB에 연결한 Lenovo TB138FC(Android 14/SDK 34, arm64-v8a)에서
-Instrumentation 13개를 실제 실행해 **13/13 PASS**를 확인했습니다. 0.13.0 재검증 시점에는
+Instrumentation 13개를 실제 실행해 **13/13 PASS**를 확인했습니다. 0.14.0 재검증 시점에는
 태블릿 Tailscale이 오프라인이라 **BLOCKED**입니다.
 
 ## 2. GitHub Actions Emulator 시도 결과
@@ -48,7 +48,7 @@ PasswordRepositoryTest
 ```
 
 실행 결과는 CI에서 compile-only이며, 기기/AVD가 연결된 환경에서만 PASS로 표시합니다.
-2026-11-05 0.12.0 실기기 실행 결과는 **13/13 PASS**이며, 0.13.0은 **BLOCKED**입니다.
+2026-11-05 0.12.0 실기기 실행 결과는 **13/13 PASS**이며, 0.14.0은 **BLOCKED**입니다.
 
 ## 3. 실제 기기에서만 검증 가능한 항목
 
@@ -67,7 +67,7 @@ USB debugging을 켠 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-debug-arm64.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.14.0-debug-arm64.apk
 
 Debug APK SHA-256: `0d6edd2c8441796b0549e326c8aea031d16b76982cb1a856d2abfb60a13d1959`
 
@@ -134,8 +134,8 @@ credential, notification body를 로그에 기록하지 않습니다.
 
 ```bash
 tools/run-android-device-tests.sh \
-  artifacts/android/AMARE-0.13.0-debug-arm64.apk \
-  artifacts/android/AMARE-0.13.0-debug-androidTest.apk
+  artifacts/android/AMARE-0.14.0-debug-arm64.apk \
+  artifacts/android/AMARE-0.14.0-debug-androidTest.apk
 ```
 
 이 스크립트는 ADB 기기가 없으면 실패를 명확히 표시하고 UNVERIFIED로 남깁니다.
@@ -159,15 +159,15 @@ Instrumentation 테스트는 정상 앱 데이터를 지우지 않도록 격리 
 2. 비밀번호 손상 payload 테스트가 DB 생성 전에 raw SQLite를 열어 실패했습니다. 테스트에서 `PasswordDatabase`를 먼저 생성하도록 수정했습니다.
 3. 빈 legacy plaintext 테이블이 존재할 때 migration이 해당 encrypted 테이블을 삭제할 수 있었습니다. 이제 빈 legacy 테이블은 encrypted 데이터를 교체하지 않고 drop만 하며, `emptyLegacyPermissionTableDoesNotEraseEncryptedPermissions` 회귀 테스트를 추가했습니다.
 
-## 5.5 0.13.0 실행 결과
+## 5.5 0.14.0 실행 결과
 
 - ADB/Tailscale: 태블릿 `pad-pro-2022` 오프라인 (마지막 확인 6시간 전)
-- JVM: **40/40 PASS**
+- JVM: **44/44 PASS**
 - Lint: **0 errors / 8 warnings**
 - Debug/Release/AAB 빌드: **PASS**
 - Instrumentation 실행: **BLOCKED** — 연결된 기기 없음
-- 주소창 제안/검색엔진/테마/중지 UX 실기기 검증: **BLOCKED**
-- 0.12.0 실기기 13/13 PASS는 회귀 기준으로만 사용하며, 0.13.0 PASS로 대체하지 않음
+- Reader Mode / Find in Page / AI Web Panel 실기기 검증: **BLOCKED**
+- 0.12.0 실기기 13/13 PASS는 회귀 기준으로만 사용하며, 0.14.0 PASS로 대체하지 않음
 
 연결 후 `ANDROID_SERIAL=<serial> tools/run-android-device-tests.sh`로 재검증해야 합니다.
 좌표 기반 ADB 입력은 사용하지 않고, 앱 대상 Instrumentation/Intent만 사용합니다.

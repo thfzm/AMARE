@@ -3,21 +3,26 @@ package org.amare.browser
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.role.RoleManager
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -56,15 +61,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.amare.browser.data.Bookmark
 import org.amare.browser.data.DownloadRecord
@@ -74,6 +87,11 @@ import org.amare.browser.data.PasswordSummary
 import org.amare.browser.data.SitePermissionRecord
 import org.amare.browser.data.StoredLogin
 import org.amare.browser.security.PasswordRules
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 
 private enum class BrowserPanel(val title: String) {
@@ -93,8 +111,19 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val activeTab = viewModel.activeTab
     var panel by remember { mutableStateOf<BrowserPanel?>(null) }
 
-    BackHandler(enabled = panel != null || activeTab?.canGoBack == true) {
-        if (panel != null) panel = null else viewModel.goBack()
+    val hasReader = viewModel.readerContent != null || viewModel.readerLoading
+    val findState = viewModel.findState
+    BackHandler(
+        enabled = panel != null || hasReader || findState != null ||
+            viewModel.aiPanelOpen || activeTab?.canGoBack == true,
+    ) {
+        when {
+            viewModel.aiPanelOpen -> viewModel.closeAiPanel()
+            hasReader -> viewModel.closeReader()
+            findState != null -> viewModel.closeFind()
+            panel != null -> panel = null
+            else -> viewModel.goBack()
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -151,7 +180,29 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onHistory = { panel = BrowserPanel.HISTORY },
             onDownloads = { panel = BrowserPanel.DOWNLOADS },
             onSettings = { panel = BrowserPanel.SETTINGS },
+            onFind = {
+                panel = null
+                viewModel.openFind()
+            },
+            onReader = {
+                panel = null
+                viewModel.openReader()
+            },
+            onAi = {
+                panel = null
+                viewModel.openAiPanel()
+            },
         )
+
+        viewModel.findState?.let { state ->
+            FindBar(
+                state = state,
+                onQueryChange = viewModel::updateFindQuery,
+                onPrevious = { viewModel.findNext(false) },
+                onNext = { viewModel.findNext(true) },
+                onClose = viewModel::closeFind,
+            )
+        }
 
         viewModel.sessionNotice?.let { notice ->
             SessionNoticeBanner(
@@ -200,6 +251,24 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                         viewModel.openUrl(url)
                         panel = null
                     },
+                )
+            }
+
+            if (viewModel.readerLoading) {
+                ReaderLoadingOverlay(onClose = viewModel::closeReader)
+            }
+            viewModel.readerContent?.let { document ->
+                ReaderOverlay(
+                    document = document,
+                    settings = viewModel.readerSettings,
+                    onSettingsChange = viewModel::updateReaderSettings,
+                    onClose = viewModel::closeReader,
+                )
+            }
+            if (viewModel.aiPanelOpen) {
+                AiPanel(
+                    viewModel = viewModel,
+                    modifier = Modifier.align(Alignment.CenterEnd),
                 )
             }
         }
@@ -359,6 +428,9 @@ private fun LibraryBar(
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
     onSettings: () -> Unit,
+    onFind: () -> Unit,
+    onReader: () -> Unit,
+    onAi: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -368,6 +440,9 @@ private fun LibraryBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        TextButton(onClick = onFind) { Text("Find") }
+        TextButton(onClick = onReader) { Text("Reader") }
+        TextButton(onClick = onAi) { Text("AI") }
         TextButton(onClick = onBookmarks) { Text("Bookmarks") }
         TextButton(onClick = onHistory) { Text("History") }
         TextButton(onClick = onDownloads) { Text("Downloads") }
@@ -458,6 +533,422 @@ private fun BrowserContent(tab: BrowserTab) {
         onRelease = { view -> view.releaseSession() },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+@Composable
+private fun FindBar(
+    state: FindState,
+    onQueryChange: (String) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val count = when {
+        state.query.isBlank() -> ""
+        state.loading -> "…"
+        state.total <= 0 -> "No results"
+        else -> "${state.current}/${state.total}"
+    }
+    Surface(tonalElevation = 3.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                singleLine = true,
+                placeholder = { Text("Find in page") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+            )
+            Text(
+                count,
+                modifier = Modifier.padding(horizontal = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            IconButton(onClick = onPrevious, enabled = state.total > 0) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous match")
+            }
+            IconButton(onClick = onNext, enabled = state.total > 0) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next match")
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Close find")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderLoadingOverlay(onClose: () -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator()
+            Text(
+                "Reader Mode 준비 중…",
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onClose) { Text("취소") }
+        }
+    }
+}
+
+private data class ReaderPalette(
+    val background: Color,
+    val text: Color,
+    val muted: Color,
+    val surface: Color,
+    val accent: Color,
+)
+
+private fun readerPalette(theme: ReaderTheme): ReaderPalette = when (theme) {
+    ReaderTheme.LIGHT -> ReaderPalette(
+        background = Color(0xFFFCFBF8),
+        text = Color(0xFF202124),
+        muted = Color(0xFF5F6368),
+        surface = Color(0xFFF0EEE8),
+        accent = Color(0xFF2457A7),
+    )
+    ReaderTheme.DARK -> ReaderPalette(
+        background = Color(0xFF121212),
+        text = Color(0xFFE8E6E3),
+        muted = Color(0xFFA8A5A0),
+        surface = Color(0xFF232323),
+        accent = Color(0xFF9EC1FF),
+    )
+    ReaderTheme.SEPIA -> ReaderPalette(
+        background = Color(0xFFF5ECD8),
+        text = Color(0xFF3D3427),
+        muted = Color(0xFF776B59),
+        surface = Color(0xFFEADFC9),
+        accent = Color(0xFF7A4E1D),
+    )
+}
+
+@Composable
+private fun ReaderOverlay(
+    document: ReaderDocument,
+    settings: ReaderSettings,
+    onSettingsChange: (ReaderSettings) -> Unit,
+    onClose: () -> Unit,
+) {
+    val palette = readerPalette(settings.theme)
+    val family = readerFontFamily(settings.font)
+    val textLineHeight = (settings.textSizeSp * settings.lineHeight).sp
+    Surface(modifier = Modifier.fillMaxSize(), color = palette.background) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Reader Mode",
+                    modifier = Modifier.weight(1f),
+                    color = palette.text,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "Close reader", tint = palette.text)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = {
+                    onSettingsChange(settings.copy(textSizeSp = settings.textSizeSp - 1))
+                }) { Text("A−", color = palette.text) }
+                TextButton(onClick = {
+                    onSettingsChange(settings.copy(textSizeSp = settings.textSizeSp + 1))
+                }) { Text("A+", color = palette.text) }
+                TextButton(onClick = {
+                    onSettingsChange(settings.copy(lineHeight = settings.lineHeight - 0.1f))
+                }) { Text("줄−", color = palette.text) }
+                TextButton(onClick = {
+                    onSettingsChange(settings.copy(lineHeight = settings.lineHeight + 0.1f))
+                }) { Text("줄+", color = palette.text) }
+                ReaderFont.entries.forEach { font ->
+                    FilterChip(
+                        selected = settings.font == font,
+                        onClick = { onSettingsChange(settings.copy(font = font)) },
+                        label = { Text(font.label) },
+                    )
+                }
+                ReaderTheme.entries.forEach { theme ->
+                    FilterChip(
+                        selected = settings.theme == theme,
+                        onClick = { onSettingsChange(settings.copy(theme = theme)) },
+                        label = { Text(theme.label) },
+                    )
+                }
+                ReaderWidth.entries.forEach { width ->
+                    FilterChip(
+                        selected = settings.width == width,
+                        onClick = { onSettingsChange(settings.copy(width = width)) },
+                        label = { Text(width.label) },
+                    )
+                }
+            }
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .widthIn(max = settings.width.maxDp.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    item {
+                        Text(
+                            document.title,
+                            color = palette.text,
+                            fontFamily = family,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = (settings.textSizeSp + 10).sp,
+                            lineHeight = (settings.textSizeSp * settings.lineHeight + 12).sp,
+                        )
+                        Text(
+                            document.url,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
+                            color = palette.muted,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    items(document.blocks) { block ->
+                        ReaderBlockView(block, settings, palette, family, textLineHeight)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderBlockView(
+    block: ReaderBlock,
+    settings: ReaderSettings,
+    palette: ReaderPalette,
+    family: FontFamily,
+    textLineHeight: androidx.compose.ui.unit.TextUnit,
+) {
+    val bodyStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontFamily = family,
+        fontSize = settings.textSizeSp.sp,
+        lineHeight = textLineHeight,
+        color = palette.text,
+    )
+    when (block) {
+        is ReaderBlock.Heading -> Text(
+            ReaderMarkdown.plainText(block.text),
+            modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),
+            color = palette.text,
+            fontFamily = family,
+            fontWeight = FontWeight.Bold,
+            fontSize = (settings.textSizeSp + (7 - block.level) * 2).coerceAtLeast(settings.textSizeSp + 1).sp,
+            lineHeight = textLineHeight,
+        )
+        is ReaderBlock.Paragraph -> Text(
+            ReaderMarkdown.plainText(block.text),
+            modifier = Modifier.padding(vertical = 6.dp),
+            style = bodyStyle,
+        )
+        is ReaderBlock.ListItem -> Text(
+            "${if (block.ordered) "${block.index}." else "•"} ${ReaderMarkdown.plainText(block.text)}",
+            modifier = Modifier.padding(start = (block.depth * 16).dp, top = 2.dp, bottom = 2.dp),
+            style = bodyStyle,
+        )
+        is ReaderBlock.Quote -> Text(
+            "“${ReaderMarkdown.plainText(block.text)}”",
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+            color = palette.muted,
+            fontFamily = family,
+            fontSize = settings.textSizeSp.sp,
+            lineHeight = textLineHeight,
+            fontWeight = FontWeight.Medium,
+        )
+        is ReaderBlock.Code -> Surface(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            color = palette.surface,
+            shape = RoundedCornerShape(6.dp),
+        ) {
+            Text(
+                block.text,
+                modifier = Modifier.padding(12.dp).horizontalScroll(rememberScrollState()),
+                color = palette.text,
+                fontFamily = FontFamily.Monospace,
+                fontSize = (settings.textSizeSp - 2).coerceAtLeast(12).sp,
+            )
+        }
+        is ReaderBlock.Image -> Column(modifier = Modifier.padding(vertical = 10.dp)) {
+            ReaderImage(block.url, block.alt, palette)
+            if (block.alt.isNotBlank()) {
+                Text(
+                    block.alt,
+                    modifier = Modifier.padding(top = 4.dp),
+                    color = palette.muted,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderImage(url: String, alt: String, palette: ReaderPalette) {
+    var bitmap by remember(url) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var failed by remember(url) { mutableStateOf(false) }
+    LaunchedEffect(url) {
+        val loaded = withContext(Dispatchers.IO) {
+            runCatching {
+                val connection = URL(url).openConnection() as? HttpURLConnection
+                connection?.connectTimeout = 8_000
+                connection?.readTimeout = 8_000
+                connection?.inputStream?.use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+        bitmap = loaded?.asImageBitmap()
+        failed = loaded == null
+    }
+    when {
+        bitmap != null -> Image(
+            bitmap = bitmap!!,
+            contentDescription = alt,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+            contentScale = ContentScale.Fit,
+        )
+        failed -> Text(
+            alt.ifBlank { "이미지를 불러오지 못했습니다." },
+            color = palette.muted,
+            fontSize = 12.sp,
+        )
+        else -> Text("이미지 불러오는 중…", color = palette.muted, fontSize = 12.sp)
+    }
+}
+
+private fun readerFontFamily(font: ReaderFont): FontFamily = when (font) {
+    ReaderFont.SERIF -> FontFamily.Serif
+    ReaderFont.SANS -> FontFamily.SansSerif
+    ReaderFont.MONO -> FontFamily.Monospace
+}
+
+@Composable
+private fun AiPanel(viewModel: BrowserViewModel, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier = modifier.fillMaxHeight()) {
+        val panelWidth = if (maxWidth * 0.92f > 520.dp) 520.dp else maxWidth * 0.92f
+        Surface(
+            modifier = Modifier.width(panelWidth).fillMaxHeight(),
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "AI · ${viewModel.aiService.label}",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    IconButton(onClick = viewModel::closeAiPanel) {
+                        Icon(Icons.Default.Close, contentDescription = "Close AI panel")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    AiService.entries.forEach { service ->
+                        FilterChip(
+                            selected = viewModel.aiService == service,
+                            onClick = { viewModel.selectAiService(service) },
+                            label = { Text(service.label) },
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = viewModel::aiGoBack, enabled = viewModel.aiCanGoBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "AI back")
+                    }
+                    IconButton(onClick = viewModel::aiReload) {
+                        Icon(Icons.Default.Refresh, contentDescription = "AI reload")
+                    }
+                    TextButton(onClick = { viewModel.copyCurrentPageContext(false) }) {
+                        Text("페이지 정보 복사")
+                    }
+                    TextButton(onClick = { viewModel.copyCurrentPageContext(true) }) {
+                        Text("본문 포함 복사")
+                    }
+                }
+                Text(
+                    "문맥은 클립보드에만 복사되며 자동 전송되지 않습니다.",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                viewModel.aiNotice?.let { notice ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            notice,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(onClick = viewModel::dismissAiNotice) { Text("확인") }
+                    }
+                }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val session = viewModel.aiSession
+                    if (session == null) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else {
+                        key(session) {
+                            AndroidView(
+                                factory = { context ->
+                                    GeckoView(context).apply { setSession(session) }
+                                },
+                                update = { view ->
+                                    if (view.session !== session) view.setSession(session)
+                                },
+                                onRelease = { view -> view.releaseSession() },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "웹 AI 모드 · 로그인/팝업은 서비스 정책에 따라 제한될 수 있습니다.",
+                    modifier = Modifier.padding(8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable

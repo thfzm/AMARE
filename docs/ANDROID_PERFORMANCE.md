@@ -1,6 +1,6 @@
 # Android 성능 측정 준비
 
-- 기준: Android 0.13.0
+- 기준: Android 0.14.0
 - 실제 성능 수치: **부분 측정** (cold start 1회), 지속 부하/메모리는 **UNVERIFIED**
 - 원칙: 측정하지 않은 값을 추정하지 않음
 
@@ -11,7 +11,7 @@
 Android 버전: 14 / SDK 34
 SoC/RAM: 7,855,092 kB
 GeckoView 버전: 152.0.20260713164047
-AMARE 버전: 0.12.0 (측정), 0.13.0 (미측정)
+AMARE 버전: 0.12.0 (측정), 0.14.0 (미측정)
 APK ABI: arm64-v8a
 네트워크: 원격 ADB/Tailscale, HTTPS DuckDuckGo 로드
 화면 밀도/해상도: 320 dpi / 2560x1536
@@ -19,7 +19,7 @@ APK ABI: arm64-v8a
 ```
 
 2026-11-05 0.12.0 측정: `am start -W` cold launch `TotalTime: 1031 ms`.
-0.13.0은 기기 오프라인으로 **BLOCKED**이며, 반복 측정/백그라운드 복귀/탭 수별 메모리는
+0.14.0은 기기 오프라인으로 **BLOCKED**이며, 반복 측정/백그라운드 복귀/탭 수별 메모리는
 아직 UNVERIFIED입니다.
 
 ## 2. 측정 항목

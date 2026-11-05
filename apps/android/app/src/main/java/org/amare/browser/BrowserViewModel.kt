@@ -6,6 +6,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -20,6 +22,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
@@ -55,7 +58,9 @@ import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.ExperimentalGeckoViewApi
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.PageExtractionController
 import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.PromptResponse
 import org.mozilla.geckoview.WebNotification
@@ -135,6 +140,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private const val KEY_HTTPS_ONLY = "https_only"
         private const val KEY_SEARCH_ENGINE = "search_engine"
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_READER_TEXT_SIZE = "reader_text_size"
+        private const val KEY_READER_FONT = "reader_font"
+        private const val KEY_READER_LINE_HEIGHT = "reader_line_height"
+        private const val KEY_READER_WIDTH = "reader_width"
+        private const val KEY_READER_THEME = "reader_theme"
+        private const val KEY_AI_SERVICE = "ai_service"
+        private const val AI_CONTEXT_ID = "amare-ai-panel-v1"
+        private const val MAX_AI_CONTEXT_CHARS = 20_000
         private const val MAX_RESTORED_TABS = 8
         private const val MAX_RECOVERY_ATTEMPTS = 3
         private const val TAG = "BrowserViewModel"
@@ -240,6 +253,52 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     )
         private set
 
+    var readerSettings by mutableStateOf(
+        ReaderSettings(
+            textSizeSp = prefs.getInt(KEY_READER_TEXT_SIZE, 18).coerceIn(14, 30),
+            font = ReaderFont.fromId(prefs.getString(KEY_READER_FONT, null)),
+            lineHeight = prefs.getFloat(KEY_READER_LINE_HEIGHT, 1.65f).coerceIn(1.2f, 2.2f),
+            width = ReaderWidth.fromId(prefs.getString(KEY_READER_WIDTH, null)),
+            theme = ReaderTheme.fromId(prefs.getString(KEY_READER_THEME, null)),
+        ),
+    )
+        private set
+
+    var readerContent by mutableStateOf<ReaderDocument?>(null)
+        private set
+
+    var readerLoading by mutableStateOf(false)
+        private set
+
+    var findState by mutableStateOf<FindState?>(null)
+        private set
+
+    var aiPanelOpen by mutableStateOf(false)
+        private set
+
+    var aiSession by mutableStateOf<GeckoSession?>(null)
+        private set
+
+    var aiService by mutableStateOf(AiService.fromId(prefs.getString(KEY_AI_SERVICE, null)))
+        private set
+
+    var aiTitle by mutableStateOf("")
+        private set
+
+    var aiUrl by mutableStateOf("")
+        private set
+
+    var aiLoading by mutableStateOf(false)
+        private set
+
+    var aiCanGoBack by mutableStateOf(false)
+        private set
+
+    var aiNotice by mutableStateOf<String?>(null)
+        private set
+
+    private var readerRequestId = 0L
+    private var findRequestId = 0L
     private var nextTabId = 1L
 
     val activeTab: BrowserTab?
@@ -308,6 +367,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closeAllTabs() {
+        closeFind()
+        closeReader()
         val sessions = tabList.toList()
         tabList.clear()
         activeTabId = 0
@@ -409,6 +470,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteAllBrowserData() {
+        closeFind()
+        closeReader()
+        closeAiPanel()
         persistRunnable?.let { mainHandler.removeCallbacks(it) }
         persistRunnable = null
         val sessions = tabList.toList()
@@ -488,6 +552,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun newTab() {
+        closeFind()
+        closeReader()
         val tab = createTab(HOME_URL)
         activateTab(tab.id, persist = true)
         scheduleSessionPersist()
@@ -495,6 +561,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun selectTab(id: Long) {
         if (id != activeTabId && tabList.any { it.id == id }) {
+            closeFind()
+            closeReader()
             activateTab(id, persist = true)
         }
     }
@@ -502,6 +570,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun closeTab(id: Long) {
         val index = tabList.indexOfFirst { it.id == id }
         if (index < 0) return
+        if (id == activeTabId) {
+            closeFind()
+            closeReader()
+        }
 
         val closed = tabList.removeAt(index)
         recentlyClosed.add(
@@ -533,6 +605,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun navigate(input: String) {
         val tab = activeTab ?: return
         val url = UrlNormalizer.normalize(input, searchEngine) ?: return
+        closeReader()
+        markFindLoading()
         updateTab(tab.id) { it.copy(currentUrl = url, error = null) }
         tab.session.loadUri(url)
     }
@@ -540,15 +614,21 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun openUrl(url: String) {
         val tab = activeTab ?: return
         val normalized = UrlNormalizer.normalize(url, searchEngine) ?: return
+        closeReader()
+        markFindLoading()
         updateTab(tab.id) { it.copy(currentUrl = normalized, error = null) }
         tab.session.loadUri(normalized)
     }
 
     fun goBack() {
+        closeReader()
+        markFindLoading()
         activeTab?.session?.goBack()
     }
 
     fun goForward() {
+        closeReader()
+        markFindLoading()
         activeTab?.session?.goForward()
     }
 
@@ -558,6 +638,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             tab.session.stop()
             updateTab(tab.id) { it.copy(isLoading = false) }
         } else {
+            closeReader()
+            markFindLoading()
             updateTab(tab.id) { it.copy(error = null) }
             tab.session.reload()
         }
@@ -565,6 +647,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun retry() {
         val tab = activeTab ?: return
+        closeReader()
+        markFindLoading()
         updateTab(tab.id) { it.copy(error = null, isLoading = true) }
         tab.session.reload()
     }
@@ -579,6 +663,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             persistRunnable?.let { mainHandler.removeCallbacks(it) }
             persistRunnable = null
             persistSession(cleanShutdown = true)
+            closeAiPanel()
         }
     }
 
@@ -800,6 +885,305 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             history = history.map { AddressEntry(it.url, it.title) },
         )
 
+    fun openFind() {
+        if (activeTab == null) return
+        closeReader()
+        closeAiPanel()
+        findRequestId++
+        findState = FindState()
+        activeTab?.session?.finder?.setDisplayFlags(GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL)
+    }
+
+    fun updateFindQuery(query: String) {
+        val state = findState ?: return
+        if (query.isBlank()) {
+            findRequestId++
+            activeTab?.session?.finder?.clear()
+            findState = state.copy(
+                query = query,
+                current = 0,
+                total = 0,
+                found = false,
+                wrapped = false,
+                loading = false,
+            )
+            return
+        }
+        runFind(query, forward = true)
+    }
+
+    fun findNext(forward: Boolean) {
+        val state = findState ?: return
+        if (state.query.isBlank()) return
+        val tab = activeTab ?: return
+        val requestId = ++findRequestId
+        findState = state.copy(loading = true)
+        tab.session.finder.find(
+            null,
+            if (forward) GeckoSession.FINDER_FIND_FORWARD else GeckoSession.FINDER_FIND_BACKWARDS,
+        ).withHandler(mainHandler).accept(
+            { result ->
+                if (requestId == findRequestId) applyFindResult(result)
+            },
+            {
+                if (requestId == findRequestId) {
+                    findState = findState?.copy(loading = false, total = 0, found = false)
+                }
+            },
+        )
+    }
+
+    fun closeFind() {
+        findRequestId++
+        activeTab?.session?.finder?.clear()
+        activeTab?.session?.finder?.setDisplayFlags(0)
+        findState = null
+    }
+
+    @OptIn(ExperimentalGeckoViewApi::class)
+    fun openReader() {
+        val tab = activeTab ?: return
+        closeFind()
+        closeAiPanel()
+        val requestId = ++readerRequestId
+        readerContent = null
+        readerLoading = true
+        val extraction = runCatching {
+            tab.session.sessionPageExtractor
+                .getPageContent(PageExtractionController.ContentParams(true))
+        }.getOrElse {
+            readerLoading = false
+            sessionNotice = "Reader Mode를 시작하지 못했습니다."
+            return
+        }
+        extraction
+            .withHandler(mainHandler)
+            .accept(
+                { text ->
+                    if (requestId != readerRequestId) return@accept
+                    val document = ReaderMarkdown.parse(
+                        markdown = text.orEmpty(),
+                        title = tab.title.ifBlank { tab.currentUrl },
+                        url = tab.currentUrl,
+                    )
+                    readerLoading = false
+                    if (document.blocks.isEmpty()) {
+                        sessionNotice = "이 페이지에서는 Reader Mode 본문을 추출하지 못했습니다."
+                    } else {
+                        readerContent = document
+                    }
+                },
+                {
+                    if (requestId == readerRequestId) {
+                        readerLoading = false
+                        sessionNotice = "Reader Mode를 시작하지 못했습니다."
+                    }
+                },
+            )
+    }
+
+    fun closeReader() {
+        readerRequestId++
+        readerContent = null
+        readerLoading = false
+    }
+
+    fun updateReaderSettings(settings: ReaderSettings) {
+        readerSettings = settings.copy(
+            textSizeSp = settings.textSizeSp.coerceIn(14, 30),
+            lineHeight = settings.lineHeight.coerceIn(1.2f, 2.2f),
+        )
+        prefs.edit {
+            putInt(KEY_READER_TEXT_SIZE, readerSettings.textSizeSp)
+            putString(KEY_READER_FONT, readerSettings.font.id)
+            putFloat(KEY_READER_LINE_HEIGHT, readerSettings.lineHeight)
+            putString(KEY_READER_WIDTH, readerSettings.width.id)
+            putString(KEY_READER_THEME, readerSettings.theme.id)
+        }
+    }
+
+    fun openAiPanel() {
+        closeFind()
+        closeReader()
+        aiNotice = null
+        runCatching { ensureAiSession() }.onFailure {
+            aiNotice = "AI 패널을 열지 못했습니다."
+            return
+        }
+        aiPanelOpen = true
+    }
+
+    fun closeAiPanel() {
+        aiPanelOpen = false
+        aiSession?.let { session ->
+            runCatching { session.setActive(false) }
+            runCatching { session.close() }
+        }
+        aiSession = null
+        aiLoading = false
+        aiCanGoBack = false
+    }
+
+    fun selectAiService(service: AiService) {
+        aiService = service
+        prefs.edit { putString(KEY_AI_SERVICE, service.id) }
+        runCatching { aiSession?.loadUri(service.url) }.onFailure {
+            aiNotice = "AI 서비스를 열지 못했습니다."
+        }
+        if (aiSession == null && aiPanelOpen) {
+            runCatching { ensureAiSession() }.onFailure {
+                aiNotice = "AI 패널을 열지 못했습니다."
+            }
+        }
+    }
+
+    fun aiReload() {
+        aiSession?.reload()
+    }
+
+    fun aiGoBack() {
+        aiSession?.goBack()
+    }
+
+    fun dismissAiNotice() {
+        aiNotice = null
+    }
+
+    @OptIn(ExperimentalGeckoViewApi::class)
+    fun copyCurrentPageContext(includeBody: Boolean) {
+        val tab = activeTab ?: run {
+            aiNotice = "현재 페이지가 없습니다."
+            return
+        }
+        val header = buildString {
+            appendLine("AMARE page context")
+            appendLine("Title: ${tab.title.ifBlank { tab.currentUrl }}")
+            appendLine("URL: ${tab.currentUrl}")
+        }
+        if (!includeBody) {
+            copyToClipboard(header)
+            aiNotice = "페이지 제목과 URL을 복사했습니다. AI 패널에 붙여넣으세요."
+            return
+        }
+        val extraction = runCatching {
+            tab.session.sessionPageExtractor
+                .getPageContent(PageExtractionController.ContentParams(true))
+        }.getOrElse {
+            copyToClipboard(header)
+            aiNotice = "본문 추출에 실패해 제목과 URL만 복사했습니다."
+            return
+        }
+        extraction
+            .withHandler(mainHandler)
+            .accept(
+                { text ->
+                    val body = text.orEmpty().take(MAX_AI_CONTEXT_CHARS)
+                    copyToClipboard("$header\n---\n$body")
+                    aiNotice = "사용자 요청으로 페이지 본문을 복사했습니다. 자동 전송되지는 않습니다."
+                },
+                {
+                    copyToClipboard(header)
+                    aiNotice = "본문 추출에 실패해 제목과 URL만 복사했습니다."
+                },
+            )
+    }
+
+    private fun applyFindResult(result: GeckoSession.FinderResult?) {
+        findState = FindState(
+            query = result?.searchString ?: findState?.query.orEmpty(),
+            current = result?.current ?: 0,
+            total = result?.total?.coerceAtLeast(0) ?: 0,
+            found = result?.found == true,
+            wrapped = result?.wrapped == true,
+            loading = false,
+        )
+    }
+
+    private fun runFind(query: String, forward: Boolean) {
+        val tab = activeTab ?: return
+        val requestId = ++findRequestId
+        findState = FindState(
+            query = query,
+            current = 0,
+            total = 0,
+            loading = true,
+        )
+        tab.session.finder.find(
+            query,
+            if (forward) GeckoSession.FINDER_FIND_FORWARD else GeckoSession.FINDER_FIND_BACKWARDS,
+        ).withHandler(mainHandler).accept(
+            { result ->
+                if (requestId == findRequestId) applyFindResult(result)
+            },
+            {
+                if (requestId == findRequestId) {
+                    findState = findState?.copy(loading = false, total = 0, found = false)
+                }
+            },
+        )
+    }
+
+    private fun ensureAiSession() {
+        if (aiSession != null) return
+        val settings = GeckoSessionSettings.Builder()
+            .useTrackingProtection(true)
+            .contextId(AI_CONTEXT_ID)
+            .build()
+        val session = GeckoSession(settings)
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean,
+            ) {
+                if (!url.isNullOrBlank()) aiUrl = url
+            }
+
+            override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
+                aiCanGoBack = canGoBack
+            }
+
+            override fun onLoadError(
+                session: GeckoSession,
+                uri: String?,
+                error: WebRequestError,
+            ): GeckoResult<String>? {
+                aiLoading = false
+                aiNotice = describeError(error)
+                return null
+            }
+        }
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                aiLoading = true
+            }
+
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                aiLoading = false
+            }
+        }
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                if (!title.isNullOrBlank()) aiTitle = title
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                aiLoading = false
+                aiNotice = "AI 패널 페이지가 중단되었습니다."
+            }
+        }
+        session.open(runtime)
+        aiSession = session
+        session.loadUri(aiService.url)
+    }
+
+    private fun copyToClipboard(text: String) {
+        val clipboard = getApplication<Application>()
+            .getSystemService(ClipboardManager::class.java)
+        clipboard?.setPrimaryClip(ClipData.newPlainText("AMARE context", text))
+    }
+
     fun updateHttpsOnly(enabled: Boolean) {
         httpsOnly = enabled
         prefs.edit { putBoolean(KEY_HTTPS_ONLY, enabled) }
@@ -857,7 +1241,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         pendingAndroidPermission = androidPermissionQueue.pollFirst()
     }
 
+    private fun markFindLoading() {
+        findState = findState?.copy(loading = true, current = 0, total = 0, found = false)
+    }
+
     override fun onCleared() {
+        closeAiPanel()
         persistRunnable?.let { mainHandler.removeCallbacks(it) }
         persistRunnable = null
         tabList.forEach { runCatching { it.session.close() } }
@@ -990,6 +1379,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 hasUserGesture: Boolean,
             ) {
                 if (url.isNullOrBlank()) return
+                if (id == activeTabId) closeReader()
                 updateTab(id) { it.copy(currentUrl = url) }
                 loginFields.remove(id)
                 autofillOfferedFor.remove(id)
@@ -1040,6 +1430,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     val url = tab.currentUrl
                     if (url.startsWith("http://") || url.startsWith("https://")) {
                         repository.recordHistory(url, tab.title)
+                    }
+                    if (id == activeTabId) {
+                        findState?.query?.takeIf { it.isNotBlank() }?.let { query ->
+                            runFind(query, forward = true)
+                        }
                     }
                 }
                 session.flushSessionState()
