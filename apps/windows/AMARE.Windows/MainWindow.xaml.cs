@@ -683,7 +683,7 @@ public sealed partial class MainWindow : Window
                 UpdateToolbar();
             }
         };
-        core.NavigationCompleted += (_, args) =>
+        core.NavigationCompleted += (webview, args) =>
         {
             host.ShowingNewTab = false;
             host.Model.IsLoading = false;
