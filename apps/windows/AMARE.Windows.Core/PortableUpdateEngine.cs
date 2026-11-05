@@ -70,6 +70,18 @@ public static class PortableUpdateEngine
         {
             return Failure("AMARE executable is missing from the application directory.");
         }
+        using var updateLock = TryAcquireUpdateLock(request.DataDir);
+        if (updateLock == null)
+        {
+            return Failure("Another AMARE update process is already running.");
+        }
+        var currentVersion = ReadVersion(request.AppDir);
+        if (currentVersion != null
+            && SemanticVersion.Compare(currentVersion, request.Version) >= 0)
+        {
+            return Failure(
+                $"Update {request.Version} is not newer than installed version {currentVersion}.");
+        }
         var existing = PortableUpdateStateStore.Load(request.DataDir);
         if (existing != null && (existing.IsInProgress
             || existing.Status is PortableUpdateStatus.RollingBack or PortableUpdateStatus.Failed)
@@ -78,13 +90,14 @@ public static class PortableUpdateEngine
             return Failure("An interrupted update exists. Recover it before installing another update.");
         }
 
+        CleanupStaleWork(request.DataDir, existing);
         var workRoot = Path.Combine(request.DataDir, "updates", "work");
         var staging = Path.Combine(workRoot, "staging-" + Guid.NewGuid().ToString("N"));
         var backup = Path.Combine(workRoot, "backup-" + Guid.NewGuid().ToString("N"));
         var marker = string.IsNullOrWhiteSpace(request.HealthMarkerPath)
             ? Path.Combine(request.DataDir, "update-health.json")
             : request.HealthMarkerPath;
-        var previousVersion = ReadVersion(request.AppDir) ?? "unknown";
+        var previousVersion = currentVersion ?? "unknown";
         var state = new PortableUpdateState(
             SchemaVersion: 1,
             Status: PortableUpdateStatus.Preparing,
@@ -188,6 +201,11 @@ public static class PortableUpdateEngine
         bool launchApp = true,
         CancellationToken cancellationToken = default)
     {
+        using var updateLock = TryAcquireUpdateLock(dataDirectory);
+        if (updateLock == null)
+        {
+            return Failure("Another AMARE update process is already running.");
+        }
         var state = PortableUpdateStateStore.Load(dataDirectory);
         if (state == null)
         {
@@ -462,6 +480,37 @@ public static class PortableUpdateEngine
         new(false, false, error,
             state == null ? null : PortableUpdateStateStore.PathFor(state.DataDir),
             state?.BackupDir, state?.Status);
+
+    private static FileStream? TryAcquireUpdateLock(string dataDirectory)
+    {
+        try
+        {
+            Directory.CreateDirectory(dataDirectory);
+            var path = Path.Combine(dataDirectory, "update.lock");
+            return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static void CleanupStaleWork(string dataDirectory, PortableUpdateState? state)
+    {
+        var work = Path.Combine(dataDirectory, "updates", "work");
+        if (!Directory.Exists(work)) return;
+        var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (state != null)
+        {
+            protectedPaths.Add(Path.GetFullPath(state.BackupDir));
+            protectedPaths.Add(Path.GetFullPath(state.StagingDir));
+        }
+        foreach (var directory in Directory.EnumerateDirectories(work))
+        {
+            if (protectedPaths.Contains(Path.GetFullPath(directory))) continue;
+            TryDeleteDirectory(directory);
+        }
+    }
 
     private static void TryDeleteDirectory(string path)
     {

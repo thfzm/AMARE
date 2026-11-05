@@ -19,6 +19,11 @@ internal static class Phase24Tests
         Program.Run("windows_0_18_launch_failure_rolls_back", LaunchFailureRollsBack);
         Program.Run("windows_0_18_download_checksum_and_cancel", DownloadChecksumAndCancel);
         Program.Run("windows_0_18_ai_mock_errors_and_stream", AiMockErrorsAndStream);
+        Program.Run("windows_0_19_update_manifest_failures", ManifestFailures);
+        Program.Run("windows_0_19_update_rejects_repeat_and_downgrade", RejectRepeatAndDowngrade);
+        Program.Run("windows_0_19_update_rejects_concurrent_helper", RejectConcurrentHelper);
+        Program.Run("windows_0_19_update_health_marker_timeout", HealthMarkerTimeout);
+        Program.Run("windows_0_19_update_crash_after_apply_recovery", CrashAfterApplyRecovery);
     }
 
     private static string ValidatePackage()
@@ -46,7 +51,10 @@ internal static class Phase24Tests
         var result = Apply(temp.Root, app, data, package);
         Require(result.Succeeded, result.Error);
         Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "new-exe", "new entry not applied");
-        Require(File.ReadAllText(Path.Combine(data, "profile.db")) == "user-data", "user data changed");
+        Require(File.ReadAllText(Path.Combine(data, "profile.db")) == "user-data", "user profile changed");
+        Require(File.ReadAllText(Path.Combine(data, "settings.json")) == "settings", "settings changed");
+        Require(File.ReadAllText(Path.Combine(data, "bookmarks.db")) == "bookmarks", "bookmarks changed");
+        Require(File.ReadAllText(Path.Combine(data, "history.db")) == "history", "history changed");
         Require(PortableUpdateStateStore.Load(data)?.Status == PortableUpdateStatus.Succeeded, "state not succeeded");
         Require(!Directory.Exists(Path.Combine(data, "updates", "work")), "work directory should be cleaned");
         return "real-filesystem apply and user-data preservation";
@@ -60,6 +68,7 @@ internal static class Phase24Tests
         Require(!result.Succeeded && result.RolledBack, "expected automatic rollback");
         Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "old-exe", "old entry not restored");
         Require(File.ReadAllText(Path.Combine(data, "profile.db")) == "user-data", "user data changed");
+        Require(File.ReadAllText(Path.Combine(data, "bookmarks.db")) == "bookmarks", "bookmarks changed");
         Require(PortableUpdateStateStore.Load(data)?.Status == PortableUpdateStatus.RolledBack, "state not rolled back");
         return "failed replace restored previous app and preserved data";
     }
@@ -136,7 +145,22 @@ internal static class Phase24Tests
         var canceled = downloader.DownloadAsync(update, Path.Combine(temp.Root, "cancel"),
             cancellationToken: cancelSource.Token).GetAwaiter().GetResult();
         Require(!canceled.Succeeded && !string.IsNullOrWhiteSpace(canceled.Error), "cancel should fail cleanly");
-        return "download, checksum mismatch and cancellation";
+        var cancelDestination = Path.Combine(temp.Root, "cancel-during-download");
+        using var cancelHandler = new FakeHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith(".sha256", StringComparison.Ordinal))
+                return Text($"{hash}  AMARE-0.18.0-win-x64.zip");
+            throw new OperationCanceledException("cancel during download");
+        });
+        using var cancelHttp = new HttpClient(cancelHandler);
+        var during = new UpdateDownloader(cancelHttp).DownloadAsync(update, cancelDestination).GetAwaiter().GetResult();
+        Require(!during.Succeeded, "cancel during download should fail");
+        if (Directory.Exists(cancelDestination))
+        {
+            Require(!Directory.EnumerateFiles(cancelDestination, "*.part").Any(), "partial file was not cleaned");
+        }
+        return "download, checksum mismatch, cancellation and partial cleanup";
     }
 
     private static string AiMockErrorsAndStream()
@@ -184,19 +208,162 @@ internal static class Phase24Tests
             enumerator.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
         Require(string.Concat(chunks) == "hello", "stream chunks");
-        return "mock success, 401 redaction and SSE streaming";
+
+        using var rateHandler = new FakeHandler(_ => new HttpResponseMessage((HttpStatusCode)429)
+        {
+            Content = new StringContent("{\"error\":\"rate limited\"}", Encoding.UTF8, "application/json")
+        });
+        try
+        {
+            AiApiClient.CompleteAsync(key, settings, "hi", null, rateHandler).GetAwaiter().GetResult();
+            throw new InvalidOperationException("429 should throw");
+        }
+        catch (InvalidOperationException exception)
+        {
+            Require(exception.Message.Contains("429", StringComparison.Ordinal), "429 status not surfaced");
+        }
+
+        using var malformedHandler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"unexpected\":true}", Encoding.UTF8, "application/json")
+        });
+        var malformed = AiApiClient.CompleteAsync(key, settings, "hi", null, malformedHandler).GetAwaiter().GetResult();
+        Require(malformed.Contains("empty response", StringComparison.OrdinalIgnoreCase), "malformed response handling");
+
+        using var networkHandler = new FakeHandler(_ => throw new HttpRequestException("offline"));
+        try
+        {
+            AiApiClient.CompleteAsync(key, settings, "hi", null, networkHandler).GetAwaiter().GetResult();
+            throw new InvalidOperationException("network error should throw");
+        }
+        catch (HttpRequestException exception)
+        {
+            Require(!exception.Message.Contains(key, StringComparison.Ordinal), "key leaked in network error");
+        }
+
+        using var canceledStream = new CancellationTokenSource();
+        canceledStream.Cancel();
+        try
+        {
+            AiApiClient.StreamAsync(key, settings, "hi", null, streamHandler, canceledStream.Token)
+                .GetAsyncEnumerator().MoveNextAsync().AsTask().GetAwaiter().GetResult();
+            throw new InvalidOperationException("canceled stream should throw");
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected.
+        }
+
+        Require(AiProviderCatalog.Resolve("openai-compatible").Id == AiProviderCatalog.CompatibleId,
+            "provider selection");
+        try
+        {
+            AiApiClient.CompleteAsync("", settings, "hi", null, successHandler).GetAwaiter().GetResult();
+            throw new InvalidOperationException("empty key should be rejected");
+        }
+        catch (InvalidOperationException exception)
+        {
+            Require(exception.Message.Contains("not configured", StringComparison.OrdinalIgnoreCase), "empty key guard");
+        }
+        return "mock success, 401/429/network errors, redaction, SSE, cancel and provider selection";
+    }
+
+    private static string ManifestFailures()
+    {
+        using var temp = new TempTree();
+        var malformed = Path.Combine(temp.Root, "malformed.zip");
+        using (var archive = ZipFile.Open(malformed, ZipArchiveMode.Create))
+        {
+            AddText(archive, PortableUpdatePackage.ManifestName, "{ not valid json");
+            AddText(archive, "AMARE.Windows.exe", "new-exe");
+            AddText(archive, "VERSION", "0.18.0");
+        }
+        Require(!PortableUpdatePackage.Validate(malformed).Valid, "malformed manifest should fail");
+        var wrongArch = Path.Combine(temp.Root, "wrong-arch.zip");
+        using (var archive = ZipFile.Open(wrongArch, ZipArchiveMode.Create))
+        {
+            var manifest = new UpdatePackageManifest
+            {
+                Schema = 1, Product = "AMARE", Version = "0.18.0",
+                Architecture = "win-arm64", EntryPoint = "AMARE.Windows.exe"
+            };
+            AddText(archive, PortableUpdatePackage.ManifestName, JsonSerializer.Serialize(manifest));
+            AddText(archive, "AMARE.Windows.exe", "new-exe");
+        }
+        Require(!PortableUpdatePackage.Validate(wrongArch, "0.18.0", "win-x64").Valid, "arch mismatch should fail");
+        return "malformed manifest and architecture rejection";
+    }
+
+    private static string RejectRepeatAndDowngrade()
+    {
+        using var temp = new TempTree();
+        var (app, data, package) = CreateInstallation(temp.Root, "0.18.0");
+        var first = Apply(temp.Root, app, data, package);
+        Require(first.Succeeded, first.Error);
+        var repeated = Apply(temp.Root, app, data, package);
+        Require(!repeated.Succeeded && repeated.Error?.Contains("not newer", StringComparison.OrdinalIgnoreCase) == true,
+            "repeat update should be rejected");
+        var downgrade = CreatePackage(temp.Root, "0.17.0");
+        var old = Apply(temp.Root, app, data, downgrade, version: "0.17.0");
+        Require(!old.Succeeded && old.Error?.Contains("not newer", StringComparison.OrdinalIgnoreCase) == true,
+            "downgrade should be rejected");
+        Require(File.ReadAllText(Path.Combine(app, "VERSION")).Trim() == "0.18.0", "installed version changed");
+        return "repeat and downgrade rejected";
+    }
+
+    private static string RejectConcurrentHelper()
+    {
+        using var temp = new TempTree();
+        var (app, data, package) = CreateInstallation(temp.Root, "0.18.0");
+        var lockPath = Path.Combine(data, "update.lock");
+        Directory.CreateDirectory(data);
+        using var held = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        var result = Apply(temp.Root, app, data, package);
+        Require(!result.Succeeded && result.Error?.Contains("already running", StringComparison.OrdinalIgnoreCase) == true,
+            "concurrent update should be rejected");
+        Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "old-exe", "app changed under lock");
+        return "concurrent helper lock rejected";
+    }
+
+    private static string HealthMarkerTimeout()
+    {
+        using var temp = new TempTree();
+        var (app, data, package) = CreateProcessPackage(temp.Root, "0.18.0");
+        var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(package))).ToLowerInvariant();
+        var result = PortableUpdateEngine.ApplyAsync(new PortableUpdateRequest(
+            package, app, data, "0.18.0", hash,
+            LaunchApp: true, RelaunchAfterRollback: false, HealthTimeoutSeconds: 2)).GetAwaiter().GetResult();
+        Require(!result.Succeeded && result.RolledBack, "missing health marker should roll back");
+        Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "old-exe", "old app not restored");
+        return "missing health marker timed out and rolled back";
+    }
+
+    private static string CrashAfterApplyRecovery()
+    {
+        using var temp = new TempTree();
+        var (app, data, package) = CreateInstallation(temp.Root, "0.18.0");
+        var result = Apply(temp.Root, app, data, package, crashAfterApply: true);
+        Require(!result.Succeeded, "crash after apply should not report success");
+        Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "new-exe", "new files not staged");
+        var recovered = PortableUpdateEngine.RecoverAsync(data, launchApp: false).GetAwaiter().GetResult();
+        Require(recovered.Succeeded, recovered.Error);
+        Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "old-exe", "old app not restored");
+        Require(File.ReadAllText(Path.Combine(data, "bookmarks.db")) == "bookmarks", "bookmarks changed");
+        return "crash after apply recovered previous version";
     }
 
     private static PortableUpdateResult Apply(
         string root, string app, string data, string package,
-        bool failAfterApply = false, bool crashAfterBackup = false)
+        bool failAfterApply = false, bool crashAfterBackup = false, bool crashAfterApply = false,
+        string version = "0.18.0")
     {
         var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(package))).ToLowerInvariant();
         return PortableUpdateEngine.ApplyAsync(new PortableUpdateRequest(
-            package, app, data, "0.18.0", hash,
+            package, app, data, version, hash,
             LaunchApp: false,
             FailAfterApply: failAfterApply,
-            CrashAfterBackup: crashAfterBackup)).GetAwaiter().GetResult();
+            CrashAfterBackup: crashAfterBackup,
+            CrashAfterApply: crashAfterApply)).GetAwaiter().GetResult();
     }
 
     private static (string App, string Data, string Package) CreateInstallation(string root, string version)
@@ -209,7 +376,38 @@ internal static class Phase24Tests
         File.WriteAllText(Path.Combine(app, "AMARE.Windows.exe"), "old-exe");
         File.WriteAllText(Path.Combine(app, "old-only.txt"), "old");
         File.WriteAllText(Path.Combine(data, "profile.db"), "user-data");
+        File.WriteAllText(Path.Combine(data, "settings.json"), "settings");
+        File.WriteAllText(Path.Combine(data, "bookmarks.db"), "bookmarks");
+        File.WriteAllText(Path.Combine(data, "history.db"), "history");
         return (app, data, CreatePackage(root, version));
+    }
+
+    private static (string App, string Data, string Package) CreateProcessPackage(string root, string version)
+    {
+        var app = Path.Combine(root, "app");
+        var data = Path.Combine(root, "data");
+        Directory.CreateDirectory(app);
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(app, "VERSION"), "0.17.0\n");
+        File.WriteAllText(Path.Combine(app, "AMARE.Windows.exe"), "old-exe");
+        File.WriteAllText(Path.Combine(data, "profile.db"), "user-data");
+        var package = Path.Combine(root, $"AMARE-{version}-{Guid.NewGuid():N}.zip");
+        using var archive = ZipFile.Open(package, ZipArchiveMode.Create);
+        AddText(archive, "VERSION", version + "\n");
+        AddBytes(archive, "AMARE.Windows.exe", ProcessBytes(), 0x81ED);
+        AddText(archive, "AMARE.Updater.exe", "helper");
+        AddManifest(archive, version);
+        return (app, data, package);
+    }
+
+    private static byte[] ProcessBytes()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return File.ReadAllBytes(Path.Combine(Environment.SystemDirectory, "cmd.exe"));
+        }
+        var script = "#!/bin/sh\nsleep 30\n";
+        return Encoding.UTF8.GetBytes(script);
     }
 
     private static string CreatePackage(
@@ -226,20 +424,25 @@ internal static class Phase24Tests
         AddText(archive, "runtime/placeholder.txt", "runtime");
         if (includeManifest)
         {
-            var manifest = new UpdatePackageManifest
-            {
-                Schema = 1,
-                Product = "AMARE",
-                Version = version,
-                Architecture = "win-x64",
-                EntryPoint = "AMARE.Windows.exe",
-                Runtime = "win-x64-self-contained",
-                RequiredFiles = ["VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe"]
-            };
-            AddText(archive, PortableUpdatePackage.ManifestName, JsonSerializer.Serialize(manifest));
+            AddManifest(archive, version);
         }
         if (traversal) AddText(archive, "../escape.txt", "bad");
         return path;
+    }
+
+    private static void AddManifest(ZipArchive archive, string version)
+    {
+        var manifest = new UpdatePackageManifest
+        {
+            Schema = 1,
+            Product = "AMARE",
+            Version = version,
+            Architecture = "win-x64",
+            EntryPoint = "AMARE.Windows.exe",
+            Runtime = "win-x64-self-contained",
+            RequiredFiles = ["VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe"]
+        };
+        AddText(archive, PortableUpdatePackage.ManifestName, JsonSerializer.Serialize(manifest));
     }
 
     private static void AddText(ZipArchive archive, string name, string value)
@@ -247,6 +450,14 @@ internal static class Phase24Tests
         var entry = archive.CreateEntry(name);
         using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
         writer.Write(value);
+    }
+
+    private static void AddBytes(ZipArchive archive, string name, byte[] value, int unixMode = 0)
+    {
+        var entry = archive.CreateEntry(name);
+        if (unixMode != 0) entry.ExternalAttributes = unixMode << 16;
+        using var stream = entry.Open();
+        stream.Write(value);
     }
 
     private static HttpResponseMessage Text(string value, string mediaType = "application/json") =>

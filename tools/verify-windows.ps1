@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
-$Version = "0.18.0"
+$Version = "0.19.0"
 $PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir
@@ -339,7 +339,7 @@ if ($SkipWinUI) {
         $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
         if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
         if (-not (Test-Path $updater)) { throw "Updater helper is missing." }
-        $root = Join-Path $env:TEMP "amare-update-helper-smoke-$([guid]::NewGuid().ToString('N'))"
+        $root = Join-Path $env:TEMP "AMARE 0.19 테스트-$([guid]::NewGuid().ToString('N'))"
         $appDir = Join-Path $root "app"
         $dataDir = Join-Path $root "data"
         try {
@@ -347,6 +347,9 @@ if ($SkipWinUI) {
             Set-Content -Path (Join-Path $appDir "VERSION") -Value "0.17.0" -Encoding utf8
             Set-Content -Path (Join-Path $appDir "AMARE.Windows.exe") -Value "old-exe" -Encoding utf8
             Set-Content -Path (Join-Path $dataDir "user-data.txt") -Value "preserve-me" -Encoding utf8
+            Set-Content -Path (Join-Path $dataDir "settings.json") -Value "{\"theme\":\"dark\"}" -Encoding utf8
+            Set-Content -Path (Join-Path $dataDir "bookmarks.db") -Value "bookmarks" -Encoding utf8
+            Set-Content -Path (Join-Path $dataDir "history.db") -Value "history" -Encoding utf8
             $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
             & $updater apply --package $zip --app-dir $appDir --data-dir $dataDir --version $Version --sha256 $hash --architecture win-x64 --entry AMARE.Windows.exe --no-launch
             if ($LASTEXITCODE -ne 0) { throw "Updater helper exited with $LASTEXITCODE." }
@@ -355,10 +358,46 @@ if ($SkipWinUI) {
             if ((Get-Content (Join-Path $dataDir "user-data.txt") -Raw).Trim() -ne "preserve-me") {
                 throw "Helper changed user data."
             }
+            if ((Get-Content (Join-Path $dataDir "bookmarks.db") -Raw).Trim() -ne "bookmarks") {
+                throw "Helper changed bookmarks."
+            }
+            if ((Get-Content (Join-Path $dataDir "history.db") -Raw).Trim() -ne "history") {
+                throw "Helper changed history."
+            }
             $state = Get-Content (Join-Path $dataDir "update-state.json") -Raw | ConvertFrom-Json
             if ($state.status -ne "succeeded") { throw "Unexpected helper state: $($state.status)" }
             Write-Host "Helper applied $installed; user data preserved; state=$($state.status)"
+            & $updater apply --package $zip --app-dir $appDir --data-dir $dataDir --version $Version --sha256 $hash --architecture win-x64 --entry AMARE.Windows.exe --no-launch
+            if ($LASTEXITCODE -eq 0) { throw "Helper repeated the same update instead of rejecting it." }
+            if ((Get-Content (Join-Path $appDir "VERSION") -Raw).Trim() -ne $Version) {
+                throw "Rejected duplicate update changed the installed version."
+            }
+            Write-Host "Duplicate helper apply rejected as expected"
         } finally {
+            if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    Invoke-Step "portable_clean_launch" {
+        $zip = Join-Path $OutputDir "$PortableName.zip"
+        if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
+        $root = Join-Path $env:TEMP "AMARE 0.19 clean 테스트-$([guid]::NewGuid().ToString('N'))"
+        $appProcess = $null
+        try {
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            Expand-Archive -Path $zip -DestinationPath $root -Force
+            $exe = Join-Path $root "AMARE.Windows.exe"
+            if (-not (Test-Path $exe)) { throw "Clean extraction did not contain AMARE.Windows.exe." }
+            if (-not (Test-Path (Join-Path $root "AMARE.Updater.exe"))) { throw "Clean extraction did not contain AMARE.Updater.exe." }
+            $appProcess = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru
+            Start-Sleep -Seconds 8
+            $appProcess.Refresh()
+            if ($appProcess.HasExited) { throw "Clean portable app exited during startup (exit $($appProcess.ExitCode))." }
+            Write-Host "Clean path launch: $root; pid=$($appProcess.Id)"
+        } finally {
+            if ($null -ne $appProcess -and -not $appProcess.HasExited) {
+                Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Milliseconds 500
+            }
             if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
@@ -429,6 +468,24 @@ Invoke-Step "release_metadata" {
     Write-Utf8Json (Join-Path $OutputDir "AMARE-$Version-release-manifest.json") $releaseManifest
     Write-Host "Release metadata: AMARE-$Version-release-manifest.json"
 }
+Invoke-Step "release_preflight" {
+    $releaseManifest = Get-Content (Join-Path $OutputDir "AMARE-$Version-release-manifest.json") -Raw | ConvertFrom-Json
+    if ($releaseManifest.version -ne $Version) { throw "Release manifest version mismatch." }
+    if ($releaseManifest.architecture -ne "win-x64") { throw "Release manifest architecture mismatch." }
+    $assetNames = @($releaseManifest.assets | ForEach-Object { $_.name })
+    if (@($assetNames | Select-Object -Unique).Count -ne $assetNames.Count) { throw "Duplicate release asset names." }
+    foreach ($asset in $releaseManifest.assets) {
+        $path = Join-Path $OutputDir $asset.name
+        $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $asset.sha256) { throw "Release manifest hash mismatch: $($asset.name)" }
+    }
+    $zipHash = ($releaseManifest.assets | Where-Object { $_.name -eq "$PortableName.zip" }).sha256
+    $sidecar = ((Get-Content (Join-Path $OutputDir "$PortableName.zip.sha256") -Raw).Trim() -split '\s+')[0]
+    if ($zipHash -ne $sidecar) { throw "ZIP sidecar does not match release manifest." }
+    $checksumLines = @(Get-Content (Join-Path $OutputDir "checksums.txt") | Where-Object { $_.Trim().Length -gt 0 })
+    if ($checksumLines.Count -ne 2) { throw "checksums.txt should contain exactly two assets." }
+    Write-Host "Release preflight: version/arch/assets/hashes unique and consistent"
+}
 
 # ---------- WebView2 probes ----------
 Write-Host ""
@@ -437,7 +494,7 @@ Invoke-Step "webview2_probe_run" {
     dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
 } -Required $false
 
-    $appExe = Join-Path $OutputDir "AMARE-0.18.0-win-x64\AMARE.Windows.exe"
+    $appExe = Join-Path (Join-Path $OutputDir $PortableName) "AMARE.Windows.exe"
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
     try {

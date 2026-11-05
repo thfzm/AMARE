@@ -162,6 +162,14 @@ public static class PortableUpdatePackage
             }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             entry.ExtractToFile(target, overwrite: true);
+            if (!OperatingSystem.IsWindows())
+            {
+                var mode = (UnixFileMode)((entry.ExternalAttributes >> 16) & 0x1FF);
+                if (mode != 0)
+                {
+                    try { File.SetUnixFileMode(target, mode); } catch { }
+                }
+            }
         }
         var entryPath = Path.Combine(destinationDirectory,
             manifest.EntryPoint.Replace('/', Path.DirectorySeparatorChar));

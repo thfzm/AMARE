@@ -105,7 +105,7 @@ public sealed class GitHubReleaseClient
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         if (!_http.DefaultRequestHeaders.UserAgent.Any())
         {
-            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AMARE", "0.18"));
+            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AMARE", "0.19"));
         }
     }
 
@@ -242,6 +242,7 @@ public sealed class UpdateDownloader
             return new UpdateDownloadResult(false, null, null, 0,
                 "Release does not provide a SHA-256 checksum; update is blocked.");
         }
+        string? partPath = null;
         try
         {
             var expected = await ReadChecksumAsync(update.Checksum.DownloadUrl, cancellationToken);
@@ -253,7 +254,7 @@ public sealed class UpdateDownloader
             Directory.CreateDirectory(destinationDirectory);
             var fileName = Path.GetFileName(update.Package.Name);
             var finalPath = Path.Combine(destinationDirectory, fileName);
-            var partPath = finalPath + ".part";
+            partPath = finalPath + ".part";
             using var response = await _http.GetAsync(
                 update.Package.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -295,11 +296,25 @@ public sealed class UpdateDownloader
         }
         catch (OperationCanceledException)
         {
+            TryDeleteFile(partPath);
             return new UpdateDownloadResult(false, null, null, 0, "Download cancelled.");
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or FormatException)
         {
+            TryDeleteFile(partPath);
             return new UpdateDownloadResult(false, null, null, 0, $"Download failed: {exception.Message}");
+        }
+    }
+
+    private static void TryDeleteFile(string? path)
+    {
+        try
+        {
+            if (path != null && File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // A stale .part file is cleaned by the next download attempt.
         }
     }
 

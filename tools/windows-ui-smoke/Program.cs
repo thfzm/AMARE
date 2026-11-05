@@ -11,6 +11,7 @@ internal static class Program
     private static Process? _process;
     private static AutomationElement? _window;
     private static string? _exePath;
+    private static long _startupMs;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
@@ -33,7 +34,7 @@ internal static class Program
             Check("window_created", () =>
             {
                 Require(_window is not null, "main window not found");
-                return "AutomationElement main window found";
+                return $"AutomationElement main window found; startup_ms={_startupMs}";
             });
             Check("initial_ui", () =>
             {
@@ -52,14 +53,20 @@ internal static class Program
             });
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
+            Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
             Check("ai_panel", OpenAndCloseAiPanel);
             Check("settings_dialog", OpenAndCloseSettings);
             Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
+            Check("api_ai_no_key", OpenAndCloseApiAiNoKey);
             Check("update_check_dialog", OpenAndCloseUpdateCheck);
             Check("diagnostics_dialog", OpenAndCloseDiagnostics);
+            Check("history_dialog", OpenAndCloseHistory);
+            Check("bookmarks_menu", OpenAndCloseBookmarks);
+            Check("downloads_menu", OpenAndCloseDownloads);
+            Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
         }
@@ -87,6 +94,7 @@ internal static class Program
     private static void Launch(string exe)
     {
         var directory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory;
+        var started = Stopwatch.StartNew();
         _process = Process.Start(new ProcessStartInfo(exe)
         {
             WorkingDirectory = directory,
@@ -97,6 +105,8 @@ internal static class Program
             _process.Refresh();
             return _process.MainWindowHandle != IntPtr.Zero;
         }, TimeSpan.FromSeconds(20), "main window handle");
+        started.Stop();
+        _startupMs = started.ElapsedMilliseconds;
         _process.Refresh();
         SetForegroundWindow(_process.MainWindowHandle);
         _window = AutomationElement.FromHandle(_process.MainWindowHandle);
@@ -135,6 +145,15 @@ internal static class Program
         Thread.Sleep(500);
         NavigateToExample();
         return $"tabs {before}->{CountTabs()}";
+    }
+
+    private static string CloseActiveTabShortcut()
+    {
+        var before = CountTabs();
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        SendKeys.SendWait("^w");
+        WaitFor(() => CountTabs() < before, TimeSpan.FromSeconds(5), "tab close");
+        return $"tab_close {before}->{CountTabs()}";
     }
 
     private static string OpenFindAndSearch()
@@ -227,6 +246,70 @@ internal static class Program
         }
         WaitFor(() => FindByName("API AI settings") is null, TimeSpan.FromSeconds(8), "API AI settings dialog close");
         return "API AI settings dialog opened";
+    }
+
+    private static string OpenAndCloseApiAiNoKey()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Ask API AI…");
+        WaitFor(() =>
+        {
+            return FindByName("API AI") is not null || FindByName("Ask API AI") is not null;
+        }, TimeSpan.FromSeconds(8), "API AI no-key dialog");
+        var close = FindByName("Close") ?? FindByName("Cancel");
+        if (close is not null) Invoke(close);
+        SendKeys.SendWait("{ESC}");
+        return "API AI no-key guard opened";
+    }
+
+    private static string OpenAndCloseHistory()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("History");
+        WaitFor(() => FindByName("History") is not null, TimeSpan.FromSeconds(8), "History dialog");
+        var close = FindByName("Close");
+        if (close is not null) Invoke(close);
+        return "History dialog opened";
+    }
+
+    private static string OpenAndCloseBookmarks()
+    {
+        Invoke(FindById("BookmarksButton") ?? throw new InvalidOperationException("BookmarksButton missing"));
+        WaitFor(() =>
+        {
+            return FindByName("Bookmark current page") is not null
+                || FindByName("Remove current page bookmark") is not null;
+        }, TimeSpan.FromSeconds(5), "Bookmarks menu");
+        SendKeys.SendWait("{ESC}");
+        return "Bookmarks menu opened";
+    }
+
+    private static string OpenAndCloseDownloads()
+    {
+        Invoke(FindById("DownloadsButton") ?? throw new InvalidOperationException("DownloadsButton missing"));
+        WaitFor(() => FindByName("No downloads in this session") is not null
+            || FindByName("Downloads") is not null, TimeSpan.FromSeconds(5), "Downloads menu");
+        SendKeys.SendWait("{ESC}");
+        return "Downloads menu opened";
+    }
+
+    private static string ResizeMaximizeRestore()
+    {
+        if (_window is null || !_window.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+        {
+            throw new InvalidOperationException("WindowPattern unavailable");
+        }
+        var window = (WindowPattern)pattern;
+        if (!window.Current.CanMaximize) throw new InvalidOperationException("window cannot maximize");
+        window.SetWindowVisualState(WindowVisualState.Maximized);
+        Thread.Sleep(800);
+        if (window.Current.WindowVisualState != WindowVisualState.Maximized)
+        {
+            throw new InvalidOperationException("window did not maximize");
+        }
+        window.SetWindowVisualState(WindowVisualState.Normal);
+        Thread.Sleep(500);
+        return "maximized and restored";
     }
 
     private static string OpenAndCloseUpdateCheck()
