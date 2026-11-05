@@ -64,9 +64,9 @@ h2 { font-size:15px; color:var(--muted); font-weight:600; margin:32px 0 12px; }
 <button type="submit">Search</button>
 </form>
 <div class="entrypoints">
-<span class="chip">Bookmarks · next phase</span>
-<span class="chip">Library · next phase</span>
-<span class="chip">AI panel · next phase</span>
+<span class="chip">Bookmarks available</span>
+<span class="chip">History available</span>
+<span class="chip">AI web panel available</span>
 </div>
 <h2>Frequently visited</h2>
 """);

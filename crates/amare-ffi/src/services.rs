@@ -6,7 +6,9 @@
 //! released with `amare_string_free`.
 
 use crate::{AMARE_ERR_INTERNAL, set_last_error};
-use amare_core::{NewSessionTab, ProfileId, SearchKind, SettingValue};
+use amare_core::{
+    NewBookmark, NewHistoryVisit, NewSessionTab, ProfileId, SearchKind, SettingValue,
+};
 use amare_services::{
     ProfileContext, ProfileService, SearchPage, SearchRequest, SearchSort, ServiceError,
     SettingGroup, SettingSource, SettingsService,
@@ -14,6 +16,7 @@ use amare_services::{
 use serde_json::{Value, json};
 use std::ffi::c_char;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const AMARE_SERVICES_ABI_VERSION: u32 = 1;
 
@@ -477,6 +480,74 @@ fn dispatch(services: &AmareServices, request: &Value) -> Result<Value, CallFail
                 .ok_or_else(|| CallFailure::invalid("missing session_id"))?;
             let profile = profiles.profile_store(&context)?;
             Ok(json!({ "deleted": profile.sessions().delete(id)? }))
+        }
+        "bookmark.list" => {
+            let context = required_context(&params)?;
+            let limit = optional_u32(&params, "limit", 50)?;
+            let offset = optional_u64(&params, "offset", 0)?;
+            let profile = profiles.profile_store(&context)?;
+            let page = match params.get("query").and_then(Value::as_str) {
+                Some(query) if !query.trim().is_empty() => {
+                    profile.bookmarks().search(query, limit, offset)?
+                }
+                _ => profile
+                    .bookmarks()
+                    .list(amare_store::FolderScope::All, limit, offset)?,
+            };
+            Ok(json!(page))
+        }
+        "bookmark.create" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            let bookmark = profile.bookmarks().create(NewBookmark {
+                title: required_str(&params, "title")?,
+                url: required_str(&params, "url")?,
+                folder_id: params.get("folder_id").and_then(Value::as_i64),
+                position: params.get("position").and_then(Value::as_i64),
+            })?;
+            Ok(json!(bookmark))
+        }
+        "bookmark.delete" => {
+            let context = required_context(&params)?;
+            let id = params
+                .get("id")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| CallFailure::invalid("missing bookmark id"))?;
+            let profile = profiles.profile_store(&context)?;
+            Ok(json!({ "deleted": profile.bookmarks().delete(id)? }))
+        }
+        "history.record" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            let visited_at_ms = params
+                .get("visited_at_ms")
+                .and_then(Value::as_i64)
+                .unwrap_or_else(|| {
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64
+                });
+            profile.history().record_visit(NewHistoryVisit {
+                url: required_str(&params, "url")?,
+                title: optional_str(&params, "title")?.unwrap_or_default(),
+                visited_at_ms,
+            })?;
+            Ok(json!({ "recorded": true }))
+        }
+        "history.list" => {
+            let context = required_context(&params)?;
+            let limit = optional_u32(&params, "limit", 100)?;
+            let offset = optional_u64(&params, "offset", 0)?;
+            let query = params.get("query").and_then(Value::as_str);
+            let profile = profiles.profile_store(&context)?;
+            let page = profile.history().search(query, None, None, limit, offset)?;
+            Ok(json!(page))
+        }
+        "history.clear" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            Ok(json!({ "deleted": profile.history().clear()? }))
         }
         "history.top" => {
             let context = required_context(&params)?;

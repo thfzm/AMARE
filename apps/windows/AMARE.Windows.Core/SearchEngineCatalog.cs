@@ -10,7 +10,8 @@ public static class SearchEngineCatalog
     [
         new("duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q={query}"),
         new("google", "Google", "https://www.google.com/search?q={query}"),
-        new("bing", "Bing", "https://www.bing.com/search?q={query}")
+        new("bing", "Bing", "https://www.bing.com/search?q={query}"),
+        new("naver", "Naver", "https://search.naver.com/search.naver?query={query}")
     ];
 
     public static SearchEngineDescriptor Resolve(string? id) =>

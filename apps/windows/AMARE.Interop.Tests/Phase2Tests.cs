@@ -120,6 +120,39 @@ internal static class Phase2Tests
             return string.Join(",", bridge.Methods);
         });
 
+        Program.Run("native_services_bookmarks_and_history", () =>
+        {
+            var root = Path.Combine(Path.GetTempPath(), $"amare-data-test-{Environment.ProcessId}-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            try
+            {
+                using var native = AmareNative.Create(root);
+                var profiles = new ProfileClient(native);
+                var context = profiles.InitializeAsync().GetAwaiter().GetResult();
+                var bookmarks = new BookmarkClient(native);
+                var created = bookmarks.CreateAsync(context, "AMARE", "https://example.com/amare").GetAwaiter().GetResult();
+                if (created.Id <= 0 || created.Title != "AMARE") throw new InvalidOperationException("bookmark create");
+                var page = bookmarks.ListAsync(context, "AMARE").GetAwaiter().GetResult();
+                if (page.Items.Count != 1 || page.Items[0].Url != "https://example.com/amare")
+                    throw new InvalidOperationException("bookmark list");
+                if (!bookmarks.DeleteAsync(context, created.Id).GetAwaiter().GetResult())
+                    throw new InvalidOperationException("bookmark delete");
+
+                var history = new HistoryClient(native);
+                history.RecordAsync(context, "https://example.com/amare", "AMARE history").GetAwaiter().GetResult();
+                var historyPage = history.ListAsync(context, "AMARE").GetAwaiter().GetResult();
+                if (historyPage.Items.Count != 1 || historyPage.Items[0].Url != "https://example.com/amare")
+                    throw new InvalidOperationException("history list");
+                if (history.ClearAsync(context).GetAwaiter().GetResult() != 1)
+                    throw new InvalidOperationException("history clear");
+                return "bookmark/history round-trip";
+            }
+            finally
+            {
+                try { Directory.Delete(root, true); } catch { }
+            }
+        });
+
         Program.Run("native_services_profile_settings_session_search", () =>
         {
             var root = Path.Combine(Path.GetTempPath(), $"amare-native-test-{Environment.ProcessId}-{Guid.NewGuid():N}");

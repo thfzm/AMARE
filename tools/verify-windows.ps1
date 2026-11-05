@@ -290,6 +290,20 @@ if ($SkipWinUI) {
     Invoke-Step "windows_probe_build" {
         dotnet build tools/windows-verify/WindowsVerify.csproj -c Release -p:Platform=x64
     }
+    Invoke-Step "winui_package" {
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $exe) { throw "AMARE.Windows.exe was not produced by the WinUI build." }
+        $stage = Join-Path $OutputDir "AMARE-0.15.0-win-x64"
+        if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        Copy-Item (Join-Path $exe.Directory.FullName "*") -Destination $stage -Recurse -Force
+        $zip = Join-Path $OutputDir "AMARE-0.15.0-win-x64.zip"
+        if (Test-Path $zip) { Remove-Item $zip -Force }
+        Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
+        Write-Host "Portable package: $zip"
+        Write-Host "Executable: $($exe.FullName)"
+    }
 }
 
 # ---------- WebView2 probes ----------
