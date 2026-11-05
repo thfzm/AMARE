@@ -287,6 +287,9 @@ if ($SkipWinUI) {
     Invoke-Step "winui_build" {
         dotnet build apps/windows/AMARE.Windows/AMARE.Windows.csproj --no-restore -c Release -p:Platform=x64
     }
+    Invoke-Step "winui_build_debug" {
+        dotnet build apps/windows/AMARE.Windows/AMARE.Windows.csproj --no-restore -c Debug -p:Platform=x64
+    }
     Invoke-Step "windows_probe_build" {
         dotnet build tools/windows-verify/WindowsVerify.csproj -c Release -p:Platform=x64
     }
@@ -314,6 +317,13 @@ if ($SkipWinUI) {
         if ($appProcess.HasExited) {
             Add-SkippedStep "app_process_launch" "UNVERIFIED" "AMARE.Windows.exe exited during startup (exit code $($appProcess.ExitCode)); GUI launch may require an interactive desktop/Windows App SDK runtime."
         } else {
+            $appProcess.Refresh()
+            $windowHandle = $appProcess.MainWindowHandle
+            $windowDetail = if ($windowHandle -ne [IntPtr]::Zero) {
+                "a window handle was created"
+            } else {
+                "no main window handle was available in the CI session"
+            }
             $Steps.Add([pscustomobject]@{
                 name = "app_process_launch"
                 status = "PASS"
@@ -323,7 +333,7 @@ if ($SkipWinUI) {
                 finished_at = (Get-Date).ToUniversalTime().ToString("o")
                 duration_ms = 8000
                 log = $null
-                detail = "AMARE.Windows.exe stayed alive for 8 seconds after Start-Process; GUI rendering remains UNVERIFIED."
+                detail = "AMARE.Windows.exe stayed alive for 8 seconds after Start-Process; $windowDetail; GUI rendering remains UNVERIFIED."
             })
             Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
         }
