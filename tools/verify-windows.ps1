@@ -294,9 +294,9 @@ if ($SkipWinUI) {
         dotnet build tools/windows-verify/WindowsVerify.csproj -c Release -p:Platform=x64
     }
     Invoke-Step "winui_package" {
-        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if (-not $exe) { throw "AMARE.Windows.exe was not produced by the WinUI build." }
+        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
         $stage = Join-Path $OutputDir "AMARE-0.15.0-win-x64"
         if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
