@@ -487,9 +487,9 @@ public sealed partial class MainWindow : Window
             };
             var historySearch = new TextBox
             {
-                PlaceholderText = "Search history",
-                AutomationProperties.AutomationId = "HistorySearchBox"
+                PlaceholderText = "Search history"
             };
+            AutomationProperties.SetAutomationId(historySearch, "HistorySearchBox");
             historySearch.TextChanged += (_, _) =>
             {
                 var query = historySearch.Text.Trim();
