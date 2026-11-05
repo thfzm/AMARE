@@ -175,6 +175,51 @@ internal static class Phase21Probes
                 || Math.Abs(audioState.GetProperty("currentTime").GetDouble() - 0.2) > 0.05)
                 throw new InvalidOperationException("audio pause/volume/seek state mismatch");
 
+            await WebViewHelpers.ClickSelectorAsync(view, "#video-play");
+            var videoTime = 0.0;
+            for (var attempt = 0; attempt < 30 && videoTime <= 0; attempt++)
+            {
+                await Task.Delay(100);
+                var text = await WebViewHelpers.EvalStringAsync(view, "String(document.querySelector('#video').currentTime)");
+                double.TryParse(text, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out videoTime);
+            }
+            if (videoTime <= 0) throw new InvalidOperationException("local video did not start playing");
+            var videoState = await WebViewHelpers.EvalAsync(view,
+                "(() => { const v=document.querySelector('#video'); v.pause(); v.volume=0.4; v.currentTime=0.2; return {paused:v.paused, volume:v.volume, currentTime:v.currentTime}; })()");
+            if (!videoState.GetProperty("paused").GetBoolean()
+                || Math.Abs(videoState.GetProperty("volume").GetDouble() - 0.4) > 0.01
+                || Math.Abs(videoState.GetProperty("currentTime").GetDouble() - 0.2) > 0.05)
+                throw new InvalidOperationException("video pause/volume/seek state mismatch");
+            var unsupported = await WebViewHelpers.EvalStringAsync(view,
+                "document.createElement('video').canPlayType('video/x-unsupported-codec')");
+            var fullscreenActual = false;
+            var pipActual = false;
+            try
+            {
+                await WebViewHelpers.ClickSelectorAsync(view, "#fullscreen");
+                await Task.Delay(700);
+                fullscreenActual = await WebViewHelpers.EvalStringAsync(view,
+                    "document.fullscreenElement?.id || ''") == "video";
+                if (fullscreenActual) _ = await WebViewHelpers.EvalAsync(view, "document.exitFullscreen()");
+            }
+            catch
+            {
+                // Feature support and actual fullscreen permission are recorded separately.
+            }
+            try
+            {
+                await WebViewHelpers.ClickSelectorAsync(view, "#pip");
+                await Task.Delay(700);
+                pipActual = await WebViewHelpers.EvalStringAsync(view,
+                    "document.pictureInPictureElement?.id || ''") == "video";
+                if (pipActual) _ = await WebViewHelpers.EvalAsync(view, "document.exitPictureInPicture()");
+            }
+            catch
+            {
+                // PiP may require window/permission support.
+            }
+
             view.ZoomFactor = 1.25;
             await Task.Delay(200);
             if (Math.Abs(view.ZoomFactor - 1.25) > 0.01)
@@ -199,6 +244,31 @@ internal static class Phase21Probes
             if (wsState != "closed")
                 throw new InvalidOperationException($"WebSocket did not close cleanly: {wsState}");
 
+            var (_, wsView) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-ws-hold"));
+            try
+            {
+                await WebViewHelpers.NavigateAsync(wsView, $"{server.BaseUrl}/ws-hold.html");
+                var wsOpen = false;
+                for (var attempt = 0; attempt < 30 && !wsOpen; attempt++)
+                {
+                    await Task.Delay(100);
+                    wsOpen = await WebViewHelpers.EvalStringAsync(wsView, "String(window.__wsOpen)") == "true";
+                }
+                if (!wsOpen) throw new InvalidOperationException("held WebSocket did not connect");
+                if (server.ActiveWebSockets < 1) throw new InvalidOperationException("server did not track active WebSocket");
+            }
+            finally
+            {
+                WebViewHelpers.DisposeView(host, wsView);
+            }
+            var websocketReleased = false;
+            for (var attempt = 0; attempt < 30 && !websocketReleased; attempt++)
+            {
+                await Task.Delay(100);
+                websocketReleased = server.ActiveWebSockets == 0;
+            }
+            if (!websocketReleased) throw new InvalidOperationException("WebSocket connection was not released after tab close");
+
             var data = new Dictionary<string, object?>
             {
                 ["spa"] = true,
@@ -207,14 +277,19 @@ internal static class Phase21Probes
                 ["upload"] = uploadName,
                 ["media_vp9"] = media,
                 ["media_audio_play_pause_volume_seek"] = true,
+                ["media_video_play_pause_volume_seek"] = true,
+                ["media_unsupported_codec"] = string.IsNullOrEmpty(unsupported),
                 ["fullscreen_feature"] = fullscreen,
+                ["fullscreen_actual"] = fullscreenActual,
                 ["picture_in_picture_feature"] = pip,
+                ["picture_in_picture_actual"] = pipActual,
                 ["zoom"] = 1.25,
                 ["redirect"] = true,
                 ["websocket_connect_echo_reconnect"] = true,
+                ["websocket_tab_close_cleanup"] = true,
             };
             return Result("webview2_web_compat", ProbeStatus.Pass, true,
-                "local HTML/SPA/cookie/session/upload/audio/media/zoom/redirect/WebSocket compatibility", data);
+                "local HTML/SPA/cookie/session/upload/audio/video/fullscreen/PiP/zoom/redirect/WebSocket compatibility", data);
         }
         finally
         {

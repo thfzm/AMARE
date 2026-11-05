@@ -20,6 +20,8 @@ internal sealed class LocalHttpServer : IAsyncDisposable
 
     public int Port { get; }
     public string BaseUrl => $"http://127.0.0.1:{Port}";
+    public int ActiveWebSockets => Volatile.Read(ref _activeWebSockets);
+    private int _activeWebSockets;
 
     public static Task<LocalHttpServer> StartAsync()
     {
@@ -78,6 +80,17 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                     await HandleWebSocketAsync(stream, headers, _cts.Token);
                     return;
                 }
+                if (path == "/media.webm")
+                {
+                    var media = await File.ReadAllBytesAsync(
+                        Path.Combine(AppContext.BaseDirectory, "assets", "sample.webm"), _cts.Token);
+                    var mediaHeader = "HTTP/1.1 200 OK\r\nContent-Type: video/webm\r\n" +
+                                      $"Content-Length: {media.Length}\r\nConnection: close\r\n\r\n";
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes(mediaHeader), _cts.Token);
+                    await stream.WriteAsync(media, _cts.Token);
+                    await stream.FlushAsync(_cts.Token);
+                    return;
+                }
                 if (path == "/slow.html")
                 {
                     await Task.Delay(3_000, _cts.Token);
@@ -123,7 +136,10 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                 <button id="spa-button" onclick="document.getElementById('spa').textContent='spa-updated'">spa</button>
                 <div id="spa">initial</div>
                 <input id="upload" type="file" />
-                <video id="video" controls></video>
+                <video id="video" controls src="/media.webm"></video>
+                <button id="video-play" onclick="document.getElementById('video').play().catch(()=>{})">video</button>
+                <button id="fullscreen" onclick="document.getElementById('video').requestFullscreen().catch(()=>{})">fullscreen</button>
+                <button id="pip" onclick="document.getElementById('video').requestPictureInPicture().catch(()=>{})">pip</button>
                 <audio id="audio" controls></audio>
                 <button id="audio-play" onclick="document.getElementById('audio').play().catch(()=>{})">audio</button>
                 <a id="redirect" href="/redirect">redirect</a>
@@ -134,6 +150,16 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                 """,
             "/download.txt" => "AMARE download probe",
             "/redirect" => "",
+            "/ws-hold.html" => """
+                <!doctype html><html><head><title>WebSocket Hold</title></head><body>
+                <h1>WebSocket Hold</h1>
+                <script>
+                window.__wsOpen = false;
+                const ws = new WebSocket('ws://' + location.host + '/ws');
+                ws.onopen = () => { window.__wsOpen = true; };
+                </script>
+                </body></html>
+                """,
             "/ws.html" => """
                 <!doctype html><html><head><title>WebSocket</title></head><body>
                 <h1>WebSocket</h1>
@@ -194,12 +220,19 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                         $"Sec-WebSocket-Accept: {accept}\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(handshake), cancellationToken);
         await stream.FlushAsync(cancellationToken);
-
-        while (!cancellationToken.IsCancellationRequested)
+        Interlocked.Increment(ref _activeWebSockets);
+        try
         {
-            var payload = await ReadFrameAsync(stream, cancellationToken);
-            if (payload == null) return;
-            await WriteTextFrameAsync(stream, Encoding.UTF8.GetString(payload), cancellationToken);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var payload = await ReadFrameAsync(stream, cancellationToken);
+                if (payload == null) return;
+                await WriteTextFrameAsync(stream, Encoding.UTF8.GetString(payload), cancellationToken);
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeWebSockets);
         }
     }
 

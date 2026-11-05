@@ -14,4 +14,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="assets\sample.webm" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
