@@ -278,8 +278,11 @@ public sealed class UpdateDownloader
                 return new UpdateDownloadResult(false, null, null, info.Length,
                     "Downloaded file size does not match the release metadata.");
             }
-            await using var file = File.OpenRead(partPath);
-            var actual = Convert.ToHexString(await SHA256.HashDataAsync(file, cancellationToken)).ToLowerInvariant();
+            string actual;
+            await using (var file = File.OpenRead(partPath))
+            {
+                actual = Convert.ToHexString(await SHA256.HashDataAsync(file, cancellationToken)).ToLowerInvariant();
+            }
             if (!CryptographicOperations.FixedTimeEquals(
                 Convert.FromHexString(actual), Convert.FromHexString(expected)))
             {
