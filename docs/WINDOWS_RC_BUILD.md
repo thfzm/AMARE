@@ -1,7 +1,7 @@
 # AMARE Windows Release Candidate 빌드/실행
 
 - 작성일: 2026-11-05
-- 버전: AMARE Windows **0.23.0**
+- 버전: AMARE Windows **0.24.0**
 - 주의: 현재는 **portable ZIP + updater helper를 제공하는 개발 빌드**이며 signed 설치 프로그램/MSIX 자동 업데이트/공개 Release는 없습니다.
 
 ---
@@ -77,8 +77,8 @@ Remove-Item "$env:LOCALAPPDATA\AMARE" -Recurse -Force
 | 항목 | 상태 |
 |---|---|
 | Release build | WinUI CI build **PASS** |
-| Portable ZIP | `artifacts/windows/AMARE-0.23.0-win-x64.zip` |
-| Unsigned MSIX | `artifacts/windows/AMARE-0.23.0-win-x64-unsigned.msix` |
+| Portable ZIP | `artifacts/windows/AMARE-0.24.0-win-x64.zip` |
+| Unsigned MSIX | `artifacts/windows/AMARE-0.24.0-win-x64-unsigned.msix` |
 | MSIX install | **BLOCKED** — publisher unsigned namespace / no certificate |
 | 코드 서명 | **BLOCKED** |
 | Authenticode 서명 | **없음** |
