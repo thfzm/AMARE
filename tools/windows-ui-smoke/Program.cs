@@ -163,11 +163,19 @@ internal static class Program
     {
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Reader Mode");
-        WaitFor(() =>
+        try
         {
-            var close = FindById("ReaderCloseButton");
-            return close is not null && !close.Current.IsOffscreen;
-        }, TimeSpan.FromSeconds(30), "Reader close button visibility");
+            WaitFor(() =>
+            {
+                var close = FindById("ReaderCloseButton");
+                return close is not null && !close.Current.IsOffscreen;
+            }, TimeSpan.FromSeconds(30), "Reader close button visibility");
+        }
+        catch
+        {
+            DumpTree();
+            throw;
+        }
         var title = FindById("ReaderTitleText")?.Current.Name ?? "";
         Invoke(FindById("ReaderCloseButton") ?? throw new InvalidOperationException("ReaderCloseButton missing"));
         return string.IsNullOrWhiteSpace(title) ? "reader opened/closed" : $"reader={title}";
@@ -176,11 +184,19 @@ internal static class Program
     private static string OpenAndCloseAiPanel()
     {
         Invoke(FindById("AiButton") ?? throw new InvalidOperationException("AiButton missing"));
-        WaitFor(() =>
+        try
         {
-            var close = FindById("AiCloseButton");
-            return close is not null && !close.Current.IsOffscreen;
-        }, TimeSpan.FromSeconds(30), "AI close button visibility");
+            WaitFor(() =>
+            {
+                var close = FindById("AiCloseButton");
+                return close is not null && !close.Current.IsOffscreen;
+            }, TimeSpan.FromSeconds(30), "AI close button visibility");
+        }
+        catch
+        {
+            DumpTree();
+            throw;
+        }
         Invoke(FindById("AiCloseButton") ?? throw new InvalidOperationException("AiCloseButton missing"));
         return "AI panel opened/closed";
     }
