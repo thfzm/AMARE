@@ -106,6 +106,7 @@ function Invoke-Step {
     $logPath = Join-Path $OutputDir "$Name.log"
     Write-Host ""
     Write-Host "=== $Name ===" -ForegroundColor Cyan
+    $global:LASTEXITCODE = 0
     & $Command *>&1 | Tee-Object -FilePath $logPath
     $exitCode = $LASTEXITCODE
     $finished = (Get-Date).ToUniversalTime().ToString("o")
@@ -376,6 +377,7 @@ if ($SkipWinUI) {
                 throw "Rejected duplicate update changed the installed version."
             }
             Write-Host "Duplicate helper apply rejected as expected"
+            $global:LASTEXITCODE = 0
         } finally {
             if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
         }
@@ -402,6 +404,7 @@ if ($SkipWinUI) {
                 Start-Sleep -Milliseconds 500
             }
             if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+            $global:LASTEXITCODE = 0
         }
     }
     Invoke-Step "winui_msix" {
