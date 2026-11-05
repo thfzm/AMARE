@@ -1,13 +1,11 @@
 package org.amare.browser
 
 import java.net.URI
-import java.net.URLEncoder
 
 object UrlNormalizer {
-    private const val SEARCH_PREFIX = "https://duckduckgo.com/?q="
     private val schemePattern = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
-    fun normalize(input: String): String? {
+    fun normalize(input: String, searchEngine: SearchEngine = SearchEngine.DUCKDUCKGO): String? {
         val value = input.trim()
         if (value.isEmpty()) return null
 
@@ -15,15 +13,14 @@ object UrlNormalizer {
             return when {
                 value.startsWith("https://", ignoreCase = true) ||
                     value.startsWith("http://", ignoreCase = true) -> validate(value)
-                else -> search(value)
+                else -> search(value, searchEngine)
             }
         }
 
-        return if (looksLikeHost(value)) validate("https://$value") else search(value)
+        return if (looksLikeHost(value)) validate("https://$value") else search(value, searchEngine)
     }
 
-    private fun search(query: String): String =
-        SEARCH_PREFIX + URLEncoder.encode(query, Charsets.UTF_8.name()).replace("+", "%20")
+    private fun search(query: String, engine: SearchEngine): String = engine.searchUrl(query)
 
     private fun looksLikeHost(value: String): Boolean {
         if (value.any(Char::isWhitespace)) return false

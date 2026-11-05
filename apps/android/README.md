@@ -1,8 +1,6 @@
 # AMARE Android
 
-GeckoView 기반 Android 브라우저 셸입니다. Debug/Release/AAB 빌드, 정적 검증,
-실기기 Instrumentation 13/13, 주요 UI smoke 테스트를 완료했습니다. 일부 고급 UI
-시나리오와 Release 서명은 아직 **UNVERIFIED/BLOCKED**입니다.
+GeckoView 기반 Android 브라우저 셸입니다. 0.13.0에서 주소창 로컬 제안/검색엔진 선택/Material You 테마/중지 UX를 추가했습니다. JVM 40/40과 Release/AAB 빌드는 PASS이며, 0.13.0 실기기 검증은 태블릿 오프라인으로 **BLOCKED**입니다. 0.12.0 기준 실기기 Instrumentation 13/13 PASS 결과를 회귀 기준으로 유지합니다.
 
 ## 구현 상태
 
@@ -13,7 +11,10 @@ GeckoView 기반 Android 브라우저 셸입니다. Debug/Release/AAB 빌드, �
 - HTTPS 페이지 로드, 로딩 진행률, 페이지 제목 표시
 - HTTPS-only 기본 정책(HTTP는 보안 패널에서 명시적으로 해제해야 허용)
 - 뒤로 가기, 앞으로 가기, 새로고침/중지
-- 주소창 입력, URL 정규화, HTTPS DuckDuckGo 검색 fallback
+- 주소창 입력, URL 정규화, 검색엔진 선택(DuckDuckGo/Google/Bing/Naver)
+- 주소창 로컬 제안: 열린 탭/북마크/방문 기록 + 선택한 엔진 검색 제안
+- Material You 동적 색상(Android 12+) 및 시스템/라이트/다크 테마 선택
+- 로딩 중에는 새로고침 버튼이 중지 버튼으로 전환
 - 여러 탭 생성/선택/종료
 - 시스템 뒤로 가기와 브라우저 뒤로 가기 연결
 - 네트워크/SSL/HTTPS 오류 메시지와 재시도 UI
@@ -51,7 +52,8 @@ GeckoView 기반 Android 브라우저 셸입니다. Debug/Release/AAB 빌드, �
 
 ### 미구현 또는 미검증
 
-- 실제 기기 GeckoView 초기화/HTTPS 렌더링: **PASS**
+- 0.13.0 실기기 주소창 제안/검색엔진/테마 검증: **BLOCKED** (태블릿 Tailscale 오프라인)
+- 0.12.0 기준 실제 기기 GeckoView 초기화/HTTPS 렌더링: **PASS**
 - 실제 기기 주소창 입력/뒤로/앞으로/새로고침: **UNVERIFIED**
 - 실제 기기에서의 로그인 폼 감지/저장 prompt/자동완성 동작: **UNVERIFIED**
 - 실제 기기에서의 웹 알림 표시/클릭 및 `window.open` 동작: **UNVERIFIED**
@@ -100,25 +102,25 @@ app/build/outputs/bundle/release/app-release.aab
 배포용으로 복사한 로컬 파일:
 
 ```text
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-universal.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned-arm64.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned-universal.apk
-/home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-release-unsigned.aab
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-debug-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-debug-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-release-unsigned-arm64.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-release-unsigned-universal.apk
+/home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-release-unsigned.aab
 ```
 
 ## APK 정보
 
 - Package: `org.amare.browser`
-- Version: `0.12.0` (`versionCode 12`)
+- Version: `0.13.0` (`versionCode 13`)
 - minSdk: 29 (Android 10)
 - targetSdk/compileSdk: 36
 - Debug 서명: Android Debug key
-- Debug arm64 APK: 129,788,911 bytes
-- Debug universal APK: 291,410,485 bytes
-- Release arm64 APK: 92,637,772 bytes, unsigned
-- Release universal APK: 243,196,114 bytes, unsigned
-- Release AAB: 244,159,332 bytes, unsigned
+- Debug arm64 APK: 129,839,587 bytes
+- Debug universal APK: 291,461,161 bytes
+- Release arm64 APK: 92,683,392 bytes, unsigned
+- Release universal APK: 243,241,738 bytes, unsigned
+- Release AAB: 244,225,983 bytes, unsigned
 - 설치 후 GeckoView native library extraction 때문에 추가 저장 공간 필요
 - 필요 권한: `INTERNET`, `ACCESS_NETWORK_STATE`, 카메라/마이크/위치, Android 13+ 알림 권한 및 GeckoView가 병합한 권한
 - 북마크/방문 기록/다운로드 메타데이터: 앱 전용 SQLite `amare_browser.db`
@@ -133,7 +135,7 @@ USB debugging이 켜진 기기를 연결한 뒤:
 ```bash
 export PATH=/home/ubuntu/android-sdk/platform-tools:$PATH
 adb devices
-adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.12.0-debug-arm64.apk
+adb install -r /home/ubuntu/AMARE/artifacts/android/AMARE-0.13.0-debug-arm64.apk
 ```
 
 Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다.
@@ -160,7 +162,9 @@ Release APK/AAB는 unsigned이므로 실제 배포 전 서명이 필요합니다
 ## 테스트
 
 ```text
-Android JVM unit tests: 33/33 PASS
+Android JVM unit tests: 40/40 PASS
+  AddressSuggestionsTest: 4
+  SearchEngineTest: 3
   UrlNormalizerTest: 5
   DownloadNamingTest: 4
   PermissionRulesTest: 5
@@ -172,14 +176,15 @@ Android JVM unit tests: 33/33 PASS
   NotificationRulesTest: 2
   PopupRulesTest: 1
   SessionRecoveryPolicyTest: 2
-Android instrumentation tests: 13/13 PASS (Lenovo TB138FC, Android 14, arm64-v8a)
+Android instrumentation tests: 0.12.0 baseline 13/13 PASS; 0.13.0 BLOCKED (device offline)
 Android lint: 0 errors / 8 warnings
 Android release: assembleRelease / bundleRelease PASS, unsigned
 ```
 
-실기기에서 DB migration/Keystore AES-GCM/비밀번호 repository/세션 snapshot은
-Instrumentation 13/13로 PASS했습니다. GeckoView 다운로드 파일 열기/권한/자동완성
-UI/웹 알림은 아직 **UNVERIFIED**입니다.
+0.12.0 실기기에서 DB migration/Keystore AES-GCM/비밀번호 repository/세션 snapshot은
+Instrumentation 13/13로 PASS했습니다. 0.13.0 주소창 제안/검색엔진/테마는 JVM 테스트와
+컴파일만 PASS했으며, 태블릿이 오프라인이라 기기 실행은 **BLOCKED**입니다. GeckoView
+다운로드 파일 열기/권한/자동완성 UI/웹 알림도 **UNVERIFIED**입니다.
 Release 서명 키가 없으므로 Release APK/AAB는 **unsigned**입니다.
 HTTPS-only 기본값은 켜짐이며, 보안 패널에서 사용자가 해제할 수 있습니다.
 로컬 호스트는 aarch64이며 `/dev/kvm`이 없습니다. GitHub hosted runner도 KVM 권한이 없어

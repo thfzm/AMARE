@@ -133,6 +133,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private const val KEY_URLS = "open_urls"
         private const val KEY_ACTIVE = "active_index"
         private const val KEY_HTTPS_ONLY = "https_only"
+        private const val KEY_SEARCH_ENGINE = "search_engine"
+        private const val KEY_THEME_MODE = "theme_mode"
         private const val MAX_RESTORED_TABS = 8
         private const val MAX_RECOVERY_ATTEMPTS = 3
         private const val TAG = "BrowserViewModel"
@@ -226,6 +228,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         private set
 
     var httpsOnly by mutableStateOf(prefs.getBoolean(KEY_HTTPS_ONLY, true))
+        private set
+
+    var searchEngine by mutableStateOf(
+        SearchEngine.fromId(prefs.getString(KEY_SEARCH_ENGINE, null)),
+    )
+        private set
+
+    var themeMode by mutableStateOf(
+        ThemeMode.fromId(prefs.getString(KEY_THEME_MODE, null)),
+    )
         private set
 
     private var nextTabId = 1L
@@ -520,14 +532,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun navigate(input: String) {
         val tab = activeTab ?: return
-        val url = UrlNormalizer.normalize(input) ?: return
+        val url = UrlNormalizer.normalize(input, searchEngine) ?: return
         updateTab(tab.id) { it.copy(currentUrl = url, error = null) }
         tab.session.loadUri(url)
     }
 
     fun openUrl(url: String) {
         val tab = activeTab ?: return
-        val normalized = UrlNormalizer.normalize(url) ?: return
+        val normalized = UrlNormalizer.normalize(url, searchEngine) ?: return
         updateTab(tab.id) { it.copy(currentUrl = normalized, error = null) }
         tab.session.loadUri(normalized)
     }
@@ -768,6 +780,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             sessionNotice = "Android notifications are blocked. Enable them in system settings."
         }
     }
+
+    fun updateSearchEngine(engine: SearchEngine) {
+        searchEngine = engine
+        prefs.edit { putString(KEY_SEARCH_ENGINE, engine.id) }
+    }
+
+    fun updateThemeMode(mode: ThemeMode) {
+        themeMode = mode
+        prefs.edit { putString(KEY_THEME_MODE, mode.id) }
+    }
+
+    fun addressSuggestions(query: String): List<AddressSuggestion> =
+        AddressSuggestions.suggest(
+            query = query,
+            engine = searchEngine,
+            openTabs = tabs.map { AddressEntry(it.currentUrl, it.title) },
+            bookmarks = bookmarks.map { AddressEntry(it.url, it.title) },
+            history = history.map { AddressEntry(it.url, it.title) },
+        )
 
     fun updateHttpsOnly(enabled: Boolean) {
         httpsOnly = enabled

@@ -1,6 +1,6 @@
 # Android 통합 테스트 계획
 
-- 기준: Android 0.12.0
+- 기준: Android 0.13.0
 - 원칙: 실제 실행하지 않은 항목은 PASS로 표시하지 않음
 - 관련 문서: [기기 테스트](ANDROID_DEVICE_TESTING.md), [보안](ANDROID_SECURITY.md), [Release](ANDROID_RELEASE.md)
 
@@ -16,9 +16,10 @@
 
 현재 환경:
 
-- JVM tests: 33/33 PASS
-- Instrumentation: **13/13 실기기 PASS**
-- 실제 기기: Lenovo TB138FC, Android 14/SDK 34, arm64-v8a
+- JVM tests: **40/40 PASS** (0.13.0)
+- Instrumentation: **13/13 PASS (0.12.0 기준선)**
+- 실제 기기: Lenovo TB138FC, Android 14/SDK 34, arm64-v8a (현재 오프라인)
+- 0.13.0 실기기 재검증: **BLOCKED**
 - hosted CI emulator: KVM 없음, ADB 불안정 (CI는 compile-only 유지)
 - self-hosted KVM runner: 미확보
 
@@ -37,7 +38,9 @@
 자동화:
 
 - 탭/세션 정책과 SessionRecoveryPolicy: JVM PASS
-- Session snapshot DB: **Instrumentation PASS**
+- Address suggestions/search engine: **JVM PASS** (0.13.0)
+- Theme mode persistence: build PASS, device UNVERIFIED
+- Session snapshot DB: **Instrumentation PASS** (0.12.0 기준선)
 - 실제 GeckoView 렌더링: **Device PASS** (DuckDuckGo/example.com)
 - 실제 GeckoView 입력: Device UNVERIFIED
 - 세션 복구/force-stop: **Device PASS**
@@ -174,7 +177,7 @@ cd apps/android
 실기기에서 수동 설치:
 
 ```bash
-adb install -r artifacts/android/AMARE-0.12.0-debug-arm64.apk
+adb install -r artifacts/android/AMARE-0.13.0-debug-arm64.apk
 ```
 
 ## 5. 성능 측정 준비

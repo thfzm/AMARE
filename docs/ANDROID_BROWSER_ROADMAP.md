@@ -1,8 +1,9 @@
 # Android 브라우저 완성도 및 다음 우선순위
 
-- 기준: Android 0.12.0
+- 기준: Android 0.13.0
 - 범위: 미구현 기능의 기존 구조 호환성 분석 및 우선순위 제안
-- 이번 단계에서는 아래 기능을 구현하지 않았습니다.
+- 0.13.0에서 주소창 로컬 제안, 검색엔진 선택, Material You/테마 선택, 로딩 중지 UX를 구현했습니다.
+- 이번 단계에서도 WebExtension/AI/Reader/PiP/PiP 배속은 구현하지 않았습니다.
 
 ## 1. 현재 기반
 
@@ -59,11 +60,12 @@
 
 ## 3. 권장 순서
 
-1. **P0**: 실제 기기 검증 + Release 서명/배포 (0.12.0에서 실기기 테스트 자동화/격리 DB/ABI 최적화 검증 추가, 실제 기기 검증은 남음)
-2. **P1**: 비밀번호/자동완성
-3. **P2**: `window.open`/새 탭, 웹 알림
-4. **P3**: WebExtension, AI 패널
-5. **P4**: Research/Library 및 Rust 공통 서비스 Android 탑재
+1. **P0 (0.13.0 완료)**: 주소창 제안, 검색엔진 선택, 테마, 로딩/중지 UX
+2. **P0 (남음)**: 0.13.0 실기기 검증 + Release 서명/배포
+3. **P1**: Reader mode, find-in-page, 세션/탭 UX 고도화
+4. **P2**: 광고/트래커 필터, PiP/영상 배속, AI 웹 패널
+5. **P3**: WebExtension, Agent/API AI 연동
+6. **P4**: Research/Library 및 Rust 공통 서비스 Android 탑재
 
 ## 4. Android 1.0.0 출시 기준
 
@@ -80,9 +82,9 @@
 - 설치/업데이트 검증
 - 치명적 보안 문제 없음
 
-현재 0.12.0은 위 항목 중 실제 기기/서명/성능 검증이 **UNVERIFIED**이므로
-1.0.0 출시 가능 상태가 아닙니다. WebExtension, AI 패널, Research/Library는
-Android 1.0.0 필수 범위에서 제외합니다.
+현재 0.13.0은 JVM/빌드는 PASS지만 기기 오프라인으로 실기기 재검증이 **BLOCKED**이고,
+Release 서명/성능 검증도 남아 있어 1.0.0 출시 가능 상태가 아닙니다. WebExtension,
+AI 패널, Research/Library는 Android 1.0.0 필수 범위에서 제외합니다.
 
 ## 5. 공통 원칙
 

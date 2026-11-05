@@ -1,6 +1,6 @@
 # Android Release 및 서명
 
-- 기준: Android 0.12.0
+- 기준: Android 0.13.0
 - 관련 문서: [보안](ANDROID_SECURITY.md), [기기 테스트](ANDROID_DEVICE_TESTING.md)
 
 ## 1. 빌드
@@ -23,18 +23,18 @@ export ANDROID_HOME=/home/ubuntu/android-sdk
 `-PamareAbi=arm64-v8a`로 ARM64 전용 APK를 만들 수 있습니다. AAB는 표준 universal
 구성으로 빌드합니다.
 
-0.12.0 실제 크기:
+0.13.0 실제 크기:
 
 | 산출물 | 크기 |
 |---|---:|
-| arm64 Debug APK | 129,788,911 bytes |
-| universal Debug APK | 291,410,485 bytes |
-| arm64 Release APK | 92,637,772 bytes |
-| universal Release APK | 243,196,114 bytes |
-| Release AAB | 244,159,332 bytes |
+| arm64 Debug APK | 129,839,587 bytes |
+| universal Debug APK | 291,461,161 bytes |
+| arm64 Release APK | 92,683,392 bytes |
+| universal Release APK | 243,241,738 bytes |
+| Release AAB | 244,225,983 bytes |
 
-위 수치는 2026-11-05 실기기 검증 수정 후 재빌드 결과입니다. Release 산출물은
-서명 키가 없어 모두 unsigned입니다.
+위 수치는 2026-11-05 0.13.0 재빌드 결과입니다. Release 산출물은 서명 키가 없어
+모두 unsigned입니다.
 
 ## 2. 로컬 서명
 

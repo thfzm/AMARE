@@ -35,6 +35,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -129,6 +133,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             onReload = viewModel::reloadOrStop,
             onNavigate = viewModel::navigate,
             onToggleBookmark = viewModel::toggleCurrentBookmark,
+            onSuggest = viewModel::addressSuggestions,
         )
 
         TabStrip(
@@ -228,12 +233,16 @@ private fun BrowserToolbar(
     onReload: () -> Unit,
     onNavigate: (String) -> Unit,
     onToggleBookmark: () -> Unit,
+    onSuggest: (String) -> List<AddressSuggestion>,
 ) {
     val focusManager = LocalFocusManager.current
     var address by remember(tab?.id) { mutableStateOf(tab?.currentUrl.orEmpty()) }
+    var suggestions by remember(tab?.id) { mutableStateOf(emptyList<AddressSuggestion>()) }
+    var showSuggestions by remember(tab?.id) { mutableStateOf(false) }
 
     LaunchedEffect(tab?.id, tab?.currentUrl) {
         address = tab?.currentUrl.orEmpty()
+        showSuggestions = false
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -242,25 +251,69 @@ private fun BrowserToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            OutlinedTextField(
-                value = address,
-                onValueChange = { address = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                placeholder = { Text("Search or enter address") },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Uri,
-                    imeAction = ImeAction.Go,
-                ),
-                keyboardActions = KeyboardActions(
-                    onGo = {
-                        focusManager.clearFocus()
-                        onNavigate(address)
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = {
+                        address = it
+                        suggestions = onSuggest(it)
+                        showSuggestions = true
                     },
-                ),
-            )
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focus ->
+                            if (focus.isFocused) {
+                                suggestions = onSuggest(address)
+                                showSuggestions = true
+                            }
+                        },
+                    singleLine = true,
+                    placeholder = { Text("Search or enter address") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Uri,
+                        imeAction = ImeAction.Go,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onGo = {
+                            showSuggestions = false
+                            focusManager.clearFocus()
+                            onNavigate(address)
+                        },
+                    ),
+                )
+                DropdownMenu(
+                    expanded = showSuggestions && suggestions.isNotEmpty(),
+                    onDismissRequest = { showSuggestions = false },
+                ) {
+                    suggestions.forEach { suggestion ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(
+                                        suggestion.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        suggestionLabel(suggestion.kind),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                address = suggestion.url
+                                showSuggestions = false
+                                focusManager.clearFocus()
+                                onNavigate(suggestion.url)
+                            },
+                        )
+                    }
+                }
+            }
             IconButton(
                 onClick = {
+                    showSuggestions = false
                     focusManager.clearFocus()
                     onNavigate(address)
                 },
@@ -281,7 +334,10 @@ private fun BrowserToolbar(
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Forward")
             }
             IconButton(onClick = onReload) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reload or stop")
+                Icon(
+                    if (tab?.isLoading == true) Icons.Default.Close else Icons.Default.Refresh,
+                    contentDescription = if (tab?.isLoading == true) "Stop" else "Reload",
+                )
             }
             TextButton(onClick = onToggleBookmark, enabled = tab != null) {
                 Text(if (isBookmarked) "★ Saved" else "☆ Save")
@@ -1049,6 +1105,38 @@ private fun SettingsPanel(
         SettingsButton("사이트 권한 관리") { onOpenPanel(BrowserPanel.PERMISSIONS) }
         SettingsButton("비밀번호 관리") { onOpenPanel(BrowserPanel.PASSWORDS) }
 
+        SettingsSection("검색")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SearchEngine.entries.forEach { engine ->
+                FilterChip(
+                    selected = viewModel.searchEngine == engine,
+                    onClick = { viewModel.updateSearchEngine(engine) },
+                    label = { Text(engine.label) },
+                )
+            }
+        }
+
+        SettingsSection("화면")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ThemeMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = viewModel.themeMode == mode,
+                    onClick = { viewModel.updateThemeMode(mode) },
+                    label = { Text(mode.label) },
+                )
+            }
+        }
+
         SettingsSection("데이터 관리")
         SettingsButton("방문 기록 삭제") {
             pendingAction = DataAction(
@@ -1308,6 +1396,13 @@ private fun ErrorOverlay(message: String, onRetry: () -> Unit) {
             }
         }
     }
+}
+
+private fun suggestionLabel(kind: AddressSuggestionKind): String = when (kind) {
+    AddressSuggestionKind.OPEN_TAB -> "열린 탭"
+    AddressSuggestionKind.BOOKMARK -> "북마크"
+    AddressSuggestionKind.HISTORY -> "방문 기록"
+    AddressSuggestionKind.SEARCH -> "검색"
 }
 
 private fun downloadStatusText(download: DownloadRecord): String {
