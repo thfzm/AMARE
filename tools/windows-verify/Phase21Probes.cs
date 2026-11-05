@@ -185,12 +185,20 @@ internal static class Phase21Probes
                     System.Globalization.CultureInfo.InvariantCulture, out videoTime);
             }
             if (videoTime <= 0) throw new InvalidOperationException("local video did not start playing");
+            _ = await WebViewHelpers.EvalAsync(view,
+                "(() => { const v=document.querySelector('#video'); v.pause(); v.volume=0.4; v.currentTime=0.2; return true; })()");
+            await Task.Delay(350);
             var videoState = await WebViewHelpers.EvalAsync(view,
-                "(() => { const v=document.querySelector('#video'); v.pause(); v.volume=0.4; v.currentTime=0.2; return {paused:v.paused, volume:v.volume, currentTime:v.currentTime}; })()");
-            if (!videoState.GetProperty("paused").GetBoolean()
-                || Math.Abs(videoState.GetProperty("volume").GetDouble() - 0.4) > 0.01
-                || Math.Abs(videoState.GetProperty("currentTime").GetDouble() - 0.2) > 0.05)
-                throw new InvalidOperationException("video pause/volume/seek state mismatch");
+                "(() => { const v=document.querySelector('#video'); return {paused:v.paused, volume:v.volume, currentTime:v.currentTime, duration:v.duration}; })()");
+            var videoPaused = videoState.GetProperty("paused").GetBoolean();
+            var videoVolume = videoState.GetProperty("volume").GetDouble();
+            var videoPosition = videoState.GetProperty("currentTime").GetDouble();
+            var videoDuration = videoState.GetProperty("duration").GetDouble();
+            if (!videoPaused
+                || Math.Abs(videoVolume - 0.4) > 0.01
+                || Math.Abs(videoPosition - 0.2) > 0.05)
+                throw new InvalidOperationException(
+                    $"video pause/volume/seek state mismatch: paused={videoPaused} volume={videoVolume} current={videoPosition} duration={videoDuration}");
             var unsupported = await WebViewHelpers.EvalStringAsync(view,
                 "document.createElement('video').canPlayType('video/x-unsupported-codec')");
             var fullscreenActual = false;
