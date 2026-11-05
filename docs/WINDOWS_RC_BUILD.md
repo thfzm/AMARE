@@ -78,7 +78,9 @@ Remove-Item "$env:LOCALAPPDATA\AMARE" -Recurse -Force
 |---|---|
 | Release build | WinUI CI build **PASS** |
 | Portable ZIP | `artifacts/windows/AMARE-0.15.0-win-x64.zip` |
-| 설치 프로그램/MSIX | **없음 / BLOCKED** |
+| Unsigned MSIX | `artifacts/windows/AMARE-0.16.0-win-x64-unsigned.msix` |
+| MSIX install | **BLOCKED** — publisher unsigned namespace / no certificate |
+| 코드 서명 | **BLOCKED** |
 | Authenticode 서명 | **없음** |
 | 자동 업데이트 | **없음** |
 | Windows App SDK Runtime 의존성 | **UNVERIFIED — R-03 REVIEW** |

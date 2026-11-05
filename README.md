@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.15.0 Windows Desktop First** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows WinUI build와 core/interop tests는 CI에서 PASS했지만 Windows 11 실제 GUI와 Android 실기기 실행 결과는 **UNVERIFIED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
+현재 저장소는 **AMARE 0.16.0 Windows Real-World Readiness** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. Windows GUI UIAutomation 10/10, WinUI Debug/Release, portable ZIP, unsigned MSIX build가 PASS했지만 Windows 11 실기기·DPI/IME/멀티모니터와 MSIX 서명/설치는 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
 
 ## 핵심 원칙
 
@@ -110,7 +110,8 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Phase 2: **Windows WinUI 3 + WebView2 브라우저 본체 + C ABI/C# Adapter 구현** — Windows Runner/실기기 검증 UNVERIFIED
 - Phase 2.1: **Windows 안정화 + 프로필/세션/탭 검증 하네스 + WebView2 probe + 성능/체크리스트** — Windows 실행 UNVERIFIED
 - Phase 2.2: **Windows 검증 게이트 + 통합 결과 JSON + RC 빌드/실행 절차 + GitHub 연결 안내** — Windows GUI UNVERIFIED
-- Windows 0.15.0: **탭/주소 제안/북마크/방문 기록/다운로드/설정/Reader/Find/AI Web Panel/로고** 구현 — WinUI build·interop PASS, Windows 11 GUI UNVERIFIED
+- Windows 0.15.0: **탭/주소 제안/북마크/방문 기록/다운로드/설정/Reader/Find/AI Web Panel/로고** 구현 — WinUI build·interop PASS
+- Windows 0.16.0: **실제 GUI UIAutomation 10/10 PASS**, WinUI Debug/Release, portable ZIP, unsigned MSIX build PASS; MSIX install/서명 BLOCKED, Windows 11 실기기 UNVERIFIED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수

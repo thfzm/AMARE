@@ -7,16 +7,21 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | 영역 | 상태 |
 |---|---|
 | WinUI 3 XAML/C# build | **PASS** (Windows Runner, Windows Server 2025) |
-| WebView2 tabs/address/navigation | 구현, CI build PASS |
+| 실제 GUI UIAutomation | **PASS 10/10** (window/address/tabs/Find/Reader/AI/settings/session) |
+| WebView2 tabs/address/navigation | 구현, GUI automation PASS |
 | Bookmarks/History Rust persistence | **PASS** (C# native interop round-trip) |
 | Downloads detection/persistent list | 구현, GUI **UNVERIFIED** |
-| Session restore | 구현, Windows GUI **UNVERIFIED** |
-| Reader Mode | 구현, GUI **UNVERIFIED** |
-| Find in Page (WebView2 Find API) | 구현, GUI **UNVERIFIED** |
-| AI Web Panel (ChatGPT/Gemini/Claude web) | 구현, GUI/login **UNVERIFIED** |
+| Session restore | 구현, GUI UIAutomation **PASS** |
+| Reader Mode | 구현, GUI UIAutomation **PASS** |
+| Find in Page (WebView2 Find API) | 구현, GUI UIAutomation **PASS** (1/2) |
+| AI Web Panel (ChatGPT/Gemini/Claude web) | 패널 open/close **PASS**; 실제 로그인/OAuth **UNVERIFIED** |
 | Logo/ICO | 원본 `AMARE_logo.png`에서 파생, package 포함 |
-| Windows 11 real device/GUI | **UNVERIFIED** |
-| Code signing/MSIX installer | **BLOCKED/NOT IMPLEMENTED** |
+| MSIX package | **PASS (unsigned)** |
+| MSIX install | **BLOCKED** — unsigned publisher namespace |
+| Windows 11 real device/GUI | **UNVERIFIED** (Runner is Windows Server 2025) |
+| DPI 100/125/150/200%, multi-monitor, Korean IME | **UNVERIFIED** |
+| Code signing | **BLOCKED** — no distribution certificate |
+| API-based AI | **NOT IMPLEMENTED (P2)** |
 
 ## Build
 
