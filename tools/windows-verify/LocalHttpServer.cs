@@ -100,10 +100,21 @@ internal sealed class LocalHttpServer : IAsyncDisposable
             "/popup.html" => """
                 <!doctype html><html><head><title>Popup</title></head><body><h1>Popup</h1></body></html>
                 """,
+            "/compat.html" => """
+                <!doctype html><html><head><title>Compatibility</title></head><body>
+                <h1>Compatibility</h1>
+                <button id="spa-button" onclick="document.getElementById('spa').textContent='spa-updated'">spa</button>
+                <div id="spa">initial</div>
+                <input id="upload" type="file" />
+                <video id="video" controls></video>
+                <a id="redirect" href="/redirect">redirect</a>
+                </body></html>
+                """,
             "/slow.html" => """
                 <!doctype html><html><head><title>Slow</title></head><body><h1>Slow</h1></body></html>
                 """,
             "/download.txt" => "AMARE download probe",
+            "/redirect" => "",
             _ => null,
         };
         if (page is null)
@@ -114,6 +125,10 @@ internal sealed class LocalHttpServer : IAsyncDisposable
             ? "Content-Disposition: attachment; filename=\"probe.txt\"\r\n"
             : "";
         var contentType = path == "/download.txt" ? "text/plain" : "text/html";
+        if (path == "/redirect")
+        {
+            return ("302 Found", "text/html", "", "Location: /page2.html\r\n");
+        }
         return ("200 OK", contentType, page, headers);
     }
 

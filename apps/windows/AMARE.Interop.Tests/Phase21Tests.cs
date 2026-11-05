@@ -285,6 +285,8 @@ internal static class Phase21Tests
             Assert(BrowserShortcutPolicy.Resolve(true, true, false, "T") == BrowserCommand.RestoreClosedTab, "ctrl+shift+t");
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "r") == BrowserCommand.Reload, "ctrl+r");
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "f") == BrowserCommand.Find, "ctrl+f");
+            Assert(BrowserShortcutPolicy.Resolve(true, false, false, "Tab") == BrowserCommand.NextTab, "ctrl+tab");
+            Assert(BrowserShortcutPolicy.Resolve(true, true, false, "Tab") == BrowserCommand.PreviousTab, "ctrl+shift+tab");
             return "control shortcuts";
         });
 

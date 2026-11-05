@@ -99,6 +99,87 @@ internal static class Phase21Probes
         }
     }
 
+    public static async Task<ProbeResult> WebCompatibilityAsync(Control host, string root)
+    {
+        await using var server = await LocalHttpServer.StartAsync();
+        var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-compat"));
+        try
+        {
+            await WebViewHelpers.NavigateAsync(view, $"{server.BaseUrl}/compat.html");
+            if (!string.Equals(view.CoreWebView2.DocumentTitle, "Compatibility", StringComparison.Ordinal))
+                throw new InvalidOperationException($"unexpected compatibility title: {view.CoreWebView2.DocumentTitle}");
+
+            await WebViewHelpers.ClickSelectorAsync(view, "#spa-button");
+            var spa = await WebViewHelpers.EvalStringAsync(view, "document.querySelector('#spa').textContent");
+            if (spa != "spa-updated") throw new InvalidOperationException($"SPA update failed: {spa}");
+
+            _ = await WebViewHelpers.EvalAsync(view,
+                "document.cookie='amare_compat=1; path=/'; localStorage.setItem('amare_compat','1'); true");
+            await WebViewHelpers.NavigateAsync(view, $"{server.BaseUrl}/compat.html");
+            var cookie = await WebViewHelpers.EvalStringAsync(view, "document.cookie");
+            var local = await WebViewHelpers.EvalStringAsync(view, "localStorage.getItem('amare_compat')");
+            if (!cookie.Contains("amare_compat", StringComparison.Ordinal) || local != "1")
+                throw new InvalidOperationException("cookie/localStorage did not persist across reload");
+
+            var uploadPath = Path.Combine(root, "upload-test.txt");
+            File.WriteAllText(uploadPath, "upload probe");
+            var document = await view.CoreWebView2.CallDevToolsProtocolMethodAsync("DOM.getDocument", "{\"depth\":1}");
+            using var documentJson = JsonDocument.Parse(document);
+            var rootNode = documentJson.RootElement.GetProperty("root").GetProperty("nodeId").GetInt32();
+            var query = await view.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "DOM.querySelector",
+                JsonSerializer.Serialize(new { nodeId = rootNode, selector = "#upload" }));
+            using var queryJson = JsonDocument.Parse(query);
+            var nodeId = queryJson.RootElement.GetProperty("nodeId").GetInt32();
+            if (nodeId == 0) throw new InvalidOperationException("upload input node missing");
+            await view.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "DOM.setFileInputFiles",
+                JsonSerializer.Serialize(new { nodeId, files = new[] { uploadPath } }));
+            await Task.Delay(300);
+            var uploadName = await WebViewHelpers.EvalStringAsync(view,
+                "document.querySelector('#upload').files[0]?.name ?? ''");
+            if (uploadName != "upload-test.txt") throw new InvalidOperationException($"upload failed: {uploadName}");
+
+            var media = await WebViewHelpers.EvalStringAsync(view,
+                "document.createElement('video').canPlayType('video/webm; codecs=\"vp9\"')");
+            if (string.IsNullOrWhiteSpace(media)) throw new InvalidOperationException("VP9 media capability missing");
+            var featureFlags = await WebViewHelpers.EvalAsync(view,
+                "({fullscreen: document.fullscreenEnabled === true, pip: typeof HTMLVideoElement !== 'undefined' && 'requestPictureInPicture' in HTMLVideoElement.prototype})");
+            var fullscreen = featureFlags.GetProperty("fullscreen").GetBoolean();
+            var pip = featureFlags.GetProperty("pip").GetBoolean();
+
+            view.ZoomFactor = 1.25;
+            await Task.Delay(200);
+            if (Math.Abs(view.ZoomFactor - 1.25) > 0.01)
+                throw new InvalidOperationException($"zoom failed: {view.ZoomFactor}");
+            view.ZoomFactor = 1.0;
+
+            await WebViewHelpers.NavigateAsync(view, $"{server.BaseUrl}/redirect");
+            await Task.Delay(200);
+            if (!string.Equals(view.CoreWebView2.DocumentTitle, "Page Two", StringComparison.Ordinal))
+                throw new InvalidOperationException($"redirect failed: {view.CoreWebView2.DocumentTitle}");
+
+            var data = new Dictionary<string, object?>
+            {
+                ["spa"] = true,
+                ["cookie_reload"] = true,
+                ["local_storage_reload"] = true,
+                ["upload"] = uploadName,
+                ["media_vp9"] = media,
+                ["fullscreen_feature"] = fullscreen,
+                ["picture_in_picture_feature"] = pip,
+                ["zoom"] = 1.25,
+                ["redirect"] = true,
+            };
+            return Result("webview2_web_compat", ProbeStatus.Pass, true,
+                "local HTML/SPA/cookie/session/upload/media/zoom/redirect compatibility", data);
+        }
+        finally
+        {
+            WebViewHelpers.DisposeView(host, view);
+        }
+    }
+
     public static async Task<ProbeResult> HttpsNavigationAsync(Control host, string root)
     {
         var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-https"));

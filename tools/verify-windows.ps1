@@ -7,7 +7,7 @@ param(
 
 if ($CI) {
     $SkipManual = $true
-    $SkipMemory = $true
+    $SkipMemory = $false
     $env:AMARE_VERIFY_CI = "1"
     $env:AMARE_VERIFY_HEADLESS = "1"
     $env:AMARE_VERIFY_DRM = "0"
@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
-$Version = "0.19.0"
+$Version = "0.20.0"
 $PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir

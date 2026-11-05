@@ -53,6 +53,7 @@ internal static class Program
             });
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
+            Check("tab_switch_shortcut", SwitchTabShortcut);
             Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
@@ -69,6 +70,7 @@ internal static class Program
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
+            Check("session_restore_forced", RestartAfterForcedKill);
         }
         catch (Exception exception)
         {
@@ -127,14 +129,16 @@ internal static class Program
 
     private static string NavigateToExample()
     {
+        var started = Stopwatch.StartNew();
         var edit = FindAddressEdit();
         SetValue(edit, "https://example.com/");
         var go = WaitFindById("GoButton", TimeSpan.FromSeconds(5));
         Invoke(go);
         WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
             TimeSpan.FromSeconds(15), "Example Domain title");
+        started.Stop();
         Thread.Sleep(4000);
-        return _process!.MainWindowTitle;
+        return $"{_process!.MainWindowTitle}; navigation_ms={started.ElapsedMilliseconds}";
     }
 
     private static string CreateNewTab()
@@ -145,6 +149,24 @@ internal static class Program
         Thread.Sleep(500);
         NavigateToExample();
         return $"tabs {before}->{CountTabs()}";
+    }
+
+    private static string SwitchTabShortcut()
+    {
+        var before = SelectedTabRuntimeId();
+        if (string.IsNullOrEmpty(before)) throw new InvalidOperationException("tab selection not exposed");
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        SendKeys.SendWait("^{TAB}");
+        WaitFor(() => SelectedTabRuntimeId() != before, TimeSpan.FromSeconds(5), "tab switch");
+        return "ctrl+tab switched active tab";
+    }
+
+    private static string SelectedTabRuntimeId()
+    {
+        var list = FindById("TabList");
+        if (list is null || !list.TryGetCurrentPattern(SelectionPattern.Pattern, out var pattern)) return "";
+        var selection = ((SelectionPattern)pattern).Current.GetSelection();
+        return selection.Length == 0 ? "" : string.Join(",", selection[0].GetRuntimeId());
     }
 
     private static string CloseActiveTabShortcut()
@@ -345,25 +367,46 @@ internal static class Program
 
     private static string CreateTabsAndCheck()
     {
+        var started = Stopwatch.StartNew();
         for (var i = 0; i < 5; i++)
         {
             Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
         }
         WaitFor(() => CountTabs() >= 6, TimeSpan.FromSeconds(8), "six tabs");
+        started.Stop();
         _process!.Refresh();
-        return $"tabs={CountTabs()} working_set_mb={_process.WorkingSet64 / 1024 / 1024}";
+        return $"tabs={CountTabs()} working_set_mb={_process.WorkingSet64 / 1024 / 1024} create5_ms={started.ElapsedMilliseconds}";
     }
 
     private static string RestartAndCheckSession()
     {
         var tabsBefore = CountTabs();
         Require(tabsBefore > 0, "no tabs before restart");
+        var started = Stopwatch.StartNew();
         TryClose(graceful: true);
         WaitFor(() => _process?.HasExited == true, TimeSpan.FromSeconds(15), "process exit");
+        started.Stop();
+        var closeMs = started.ElapsedMilliseconds;
+        _process = null;
+        _window = null;
+        started.Restart();
+        Launch(_exePath!);
+        WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "restored tabs");
+        started.Stop();
+        return $"tabs_before={tabsBefore} tabs_after={CountTabs()} close_ms={closeMs} restore_ms={started.ElapsedMilliseconds}";
+    }
+
+    private static string RestartAfterForcedKill()
+    {
+        var tabsBefore = CountTabs();
+        Require(tabsBefore > 0, "no tabs before forced restart");
+        Thread.Sleep(1200);
+        _process!.Kill(entireProcessTree: true);
+        WaitFor(() => _process?.HasExited == true, TimeSpan.FromSeconds(15), "forced process exit");
         _process = null;
         _window = null;
         Launch(_exePath!);
-        WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "restored tabs");
+        WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "forced restore tabs");
         return $"tabs_before={tabsBefore} tabs_after={CountTabs()}";
     }
 

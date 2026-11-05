@@ -152,6 +152,8 @@ public sealed partial class MainWindow : Window
         AddAccelerator(VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, BrowserCommand.RestoreClosedTab);
         AddAccelerator(VirtualKey.R, VirtualKeyModifiers.Control, BrowserCommand.Reload);
         AddAccelerator(VirtualKey.F, VirtualKeyModifiers.Control, BrowserCommand.Find);
+        AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, BrowserCommand.NextTab);
+        AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, BrowserCommand.PreviousTab);
         AddAccelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, BrowserCommand.Back);
         AddAccelerator(VirtualKey.Right, VirtualKeyModifiers.Menu, BrowserCommand.Forward);
     }
@@ -194,6 +196,12 @@ public sealed partial class MainWindow : Window
                 case BrowserCommand.Find:
                     OpenFind();
                     break;
+                case BrowserCommand.NextTab:
+                    ActivateRelativeTab(1);
+                    break;
+                case BrowserCommand.PreviousTab:
+                    ActivateRelativeTab(-1);
+                    break;
                 case BrowserCommand.Back:
                     if (ActiveHost?.View.CoreWebView2?.CanGoBack == true)
                     {
@@ -222,6 +230,15 @@ public sealed partial class MainWindow : Window
             return;
         }
         await CreateTabAsync(snapshot.Url, snapshot.Title, snapshot.Pinned, activate: true);
+    }
+
+    private void ActivateRelativeTab(int delta)
+    {
+        if (_tabs.Tabs.Count < 2 || _tabs.ActiveTab is null) return;
+        var index = _tabs.Tabs.IndexOf(_tabs.ActiveTab);
+        if (index < 0) return;
+        var next = (index + delta + _tabs.Tabs.Count) % _tabs.Tabs.Count;
+        SelectTab(_tabs.Tabs[next]);
     }
 
     private void ReloadActive()
@@ -458,17 +475,33 @@ public sealed partial class MainWindow : Window
         try
         {
             var page = await _history.ListAsync(_context, null, 200);
+            var entries = page.Items.ToArray();
             var list = new ListView
             {
-                ItemsSource = page.Items,
+                ItemsSource = entries,
                 DisplayMemberPath = "Title",
                 IsItemClickEnabled = true,
                 SelectionMode = ListViewSelectionMode.None,
                 MaxHeight = 440,
                 MinWidth = 520
             };
+            var historySearch = new TextBox
+            {
+                PlaceholderText = "Search history",
+                AutomationProperties.AutomationId = "HistorySearchBox"
+            };
+            historySearch.TextChanged += (_, _) =>
+            {
+                var query = historySearch.Text.Trim();
+                list.ItemsSource = string.IsNullOrWhiteSpace(query)
+                    ? entries
+                    : entries.Where(entry =>
+                        entry.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                        || entry.Url.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+            };
             var panel = new StackPanel { Spacing = 8 };
             panel.Children.Add(new TextBlock { Text = $"{page.Total} visited pages" });
+            panel.Children.Add(historySearch);
             panel.Children.Add(list);
             var dialog = new ContentDialog
             {
@@ -1617,7 +1650,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.19.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.20.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");

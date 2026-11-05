@@ -89,6 +89,7 @@ internal sealed class VerifyForm : Form
             Log("");
 
             await Add("webview2_local_navigation", () => Phase21Probes.LocalNavigationAsync(this, _root));
+            await Add("webview2_web_compat", () => Phase21Probes.WebCompatibilityAsync(this, _root));
             await Add("webview2_https_navigation", () => Phase21Probes.HttpsNavigationAsync(this, _root));
             await Add("webview2_tab_lifecycle_10", () => Phase21Probes.TabLifecycleAsync(this, _root));
             await Add("profile_isolation", () => Probes.ProfileIsolationAsync(this, _root));

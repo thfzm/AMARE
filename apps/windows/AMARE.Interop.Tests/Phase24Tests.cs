@@ -24,6 +24,9 @@ internal static class Phase24Tests
         Program.Run("windows_0_19_update_rejects_concurrent_helper", RejectConcurrentHelper);
         Program.Run("windows_0_19_update_health_marker_timeout", HealthMarkerTimeout);
         Program.Run("windows_0_19_update_crash_after_apply_recovery", CrashAfterApplyRecovery);
+        Program.Run("windows_0_20_corrupt_update_state", CorruptUpdateState);
+        Program.Run("windows_0_20_tab_manager_30_sequential", TabManager30);
+        Program.Run("windows_0_20_ai_settings_roundtrip", AiSettingsRoundtrip);
     }
 
     private static string ValidatePackage()
@@ -350,6 +353,42 @@ internal static class Phase24Tests
         Require(File.ReadAllText(Path.Combine(app, "AMARE.Windows.exe")) == "old-exe", "old app not restored");
         Require(File.ReadAllText(Path.Combine(data, "bookmarks.db")) == "bookmarks", "bookmarks changed");
         return "crash after apply recovered previous version";
+    }
+
+    private static string CorruptUpdateState()
+    {
+        using var temp = new TempTree();
+        File.WriteAllText(Path.Combine(temp.Root, PortableUpdateStateStore.FileName), "{ invalid json");
+        Require(PortableUpdateStateStore.Load(temp.Root) is null, "corrupt state should be ignored");
+        Require(!PortableUpdateRecovery.NeedsRecovery(temp.Root), "corrupt state must not trigger recovery");
+        return "corrupt update state ignored without data changes";
+    }
+
+    private static string TabManager30()
+    {
+        var manager = new TabManager();
+        for (var i = 0; i < 30; i++)
+        {
+            manager.AddTab($"https://example.com/{i}", $"Tab {i}");
+        }
+        Require(manager.Tabs.Count == 30 && manager.ActiveTab is not null, "30 tabs not created");
+        foreach (var tab in manager.Tabs.ToArray())
+        {
+            manager.Close(tab.Id);
+        }
+        Require(manager.Tabs.Count == 1, "last tab should be replaced");
+        Require(manager.Diagnostics().Created == 31 && manager.Diagnostics().Closed == 30, "tab diagnostics");
+        return "30 sequential tabs with last-tab replacement";
+    }
+
+    private static string AiSettingsRoundtrip()
+    {
+        var settings = new AiApiSettings("gpt-test", "https://api.example/v1", AiProviderCatalog.CompatibleId);
+        var json = JsonSerializer.Serialize(settings);
+        var loaded = JsonSerializer.Deserialize<AiApiSettings>(json);
+        Require(loaded?.Provider == AiProviderCatalog.CompatibleId, "provider not persisted");
+        Require(loaded?.Model == "gpt-test" && loaded.BaseUrl == "https://api.example/v1", "settings not persisted");
+        return "provider/model/base URL JSON round-trip";
     }
 
     private static PortableUpdateResult Apply(

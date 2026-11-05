@@ -9,7 +9,9 @@ public enum BrowserCommand
     Reload,
     Back,
     Forward,
-    Find
+    Find,
+    NextTab,
+    PreviousTab
 }
 
 public static class BrowserShortcutPolicy
@@ -27,6 +29,8 @@ public static class BrowserShortcutPolicy
                 (true, "T") => BrowserCommand.RestoreClosedTab,
                 (false, "R") => BrowserCommand.Reload,
                 (false, "F") => BrowserCommand.Find,
+                (false, "TAB") => BrowserCommand.NextTab,
+                (true, "TAB") => BrowserCommand.PreviousTab,
                 _ => null
             };
         }
