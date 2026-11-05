@@ -1293,6 +1293,7 @@ public sealed partial class MainWindow : Window
             AppLog.Info($"Reader content extracted words={page.WordCount} blocks={page.Blocks.Count}");
             ReaderTitleText.Text = string.IsNullOrWhiteSpace(page.Title) ? "Reader" : page.Title;
             await EnsureReaderAsync();
+            WebViewHost.Visibility = Visibility.Collapsed;
             RenderReader();
             ReaderHost.Visibility = Visibility.Visible;
             StatusText.Text = $"Reader Mode · {page.WordCount} words";
@@ -1355,6 +1356,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         ReaderHost.Visibility = Visibility.Collapsed;
+        if (!_aiOpen) WebViewHost.Visibility = Visibility.Visible;
         try { ReaderWebView.CoreWebView2?.Stop(); } catch { }
         _readerPage = null;
     }
@@ -1393,7 +1395,8 @@ public sealed partial class MainWindow : Window
         }
         CloseFind();
         CloseReader();
-        AiColumn.Width = new GridLength(380);
+        WebViewHost.Visibility = Visibility.Collapsed;
+        AiColumn.Width = new GridLength(1, GridUnitType.Star);
         AiPanelHost.Visibility = Visibility.Visible;
         _aiOpen = true;
         StatusText.Text = "AI web panel opened";
@@ -1467,6 +1470,7 @@ public sealed partial class MainWindow : Window
         _aiOpen = false;
         AiPanelHost.Visibility = Visibility.Collapsed;
         AiColumn.Width = new GridLength(0);
+        WebViewHost.Visibility = Visibility.Visible;
         try { AiWebView.CoreWebView2?.Stop(); } catch { }
     }
 
