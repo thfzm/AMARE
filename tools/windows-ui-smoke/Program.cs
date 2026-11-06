@@ -578,7 +578,7 @@ internal static class Program
             if (retry)
             {
                 Invoke(retryButton);
-                WaitFor(() => FindByName("보안 인증서 오류") is null, TimeSpan.FromSeconds(5), "certificate retry close");
+                Thread.Sleep(1800);
                 dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
                 close = dialog.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.NameProperty, "닫기"))
