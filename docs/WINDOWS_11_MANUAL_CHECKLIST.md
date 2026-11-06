@@ -112,13 +112,14 @@ Next action:
 | W11-46 | AI/일반 탭 분리 | AI 로그인 후 일반 브라우저 확인 | 저장소/로그인 상태 분리 |  |  |  |  |
 | W11-47 | 테마 | System/Light/Dark 변경 | 즉시 반영, 재시작 후 유지 |  |  |  |  |
 
-## 0.27 update / API AI
+## 0.28 update / API AI
 - [ ] GitHub Release가 실제로 발행된 뒤 `Check for updates…` → 다운로드 → manifest/SHA-256 → helper 적용 → 재실행 확인
 - [ ] 동일 버전 재적용/다운그레이드가 거부되고 helper가 중복 실행되지 않는지 확인
 - [ ] 한글·공백 경로에서 ZIP 압축 해제/실행/업데이트 확인
 - [ ] Windows 11 실기기에서 DPI 100/125/150/200%, 멀티모니터, 한글 IME로 일상 브라우징 검증
 - [ ] 실제 탭 드래그/창 밖/창 간 이동, WebSocket 연결 정리, video fullscreen/PiP 확인
-- [ ] local TLS self-signed/expired/host mismatch/error page 안전 복귀 확인
+- [x] local TLS self-signed/expired/host mismatch event + Cancel dialog (Windows Runner)
+- [ ] local TLS error page 뒤로/다시 시도/오류 탭 종료/다른 탭 유지 확인
 - [ ] `ServerCertificateErrorDetected` Cancel dialog가 실제 Windows 11에서 표시되는지 확인
 - [ ] 실제 탭 드래그 전체 조합/창 밖/창 간 이동을 실제 포인터로 확인
 - [ ] 창 간 이동 후 URL/title/zoom/back-forward/scroll/page state 확인

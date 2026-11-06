@@ -6,8 +6,8 @@
 
 - Replace the manual `SslStream` certificate probe with an in-process Kestrel HTTPS test server.
 - Verify TLS handshake independently with a normal .NET client before WebView2 navigation.
-- Validate actual `ServerCertificateErrorDetected` and the Korean certificate warning dialog with UIAutomation.
-- Add native drag middle→first, middle→other-middle, and same-position tests.
+- Validate actual `ServerCertificateErrorDetected` for self-signed, expired, and hostname-mismatch certificates, plus the Korean certificate warning dialog with UIAutomation.
+- Add native drag middle→first, middle→other-middle, same-position, and cancel tests; verify cross-window forward and reverse transfers.
 - Keep the 0.27 cross-window transfer, WebSocket lifecycle, session, update, and storage regressions.
 
 ## Security

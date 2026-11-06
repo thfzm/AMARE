@@ -55,7 +55,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Rust tests: **PASS**
 - C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **30/30 PASS** (window, address, tabs, switch/close, native drag first→last/last→first/first→middle/middle→last, cross-window move, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 6-tab stress)
+- UIAutomation GUI smoke: **34/34 PASS** (window, address, tabs, switch/close, native drag 8 combos+cancel, actual certificate dialog, cross-window forward+reverse, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 7-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
@@ -65,12 +65,12 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - AI mock success, 401/429/network errors, key redaction, SSE streaming, provider selection PASS
 - Local web compatibility: SPA, cookie/session, upload, WebSocket connect/echo/reconnect, audio/video play/pause/volume/seek, fullscreen/PiP actual, media capability, zoom, redirect PASS
 - SQLite/WAL recovery: **4/4 PASS** (WAL checkpoint/reopen, corrupt copy, missing DB restore, future schema copy)
-- Native tab drag: **UNVERIFIED** (actual native reorder not reproduced); core Move PASS; new window open/close PASS
+- Native tab drag: **PASS** actual pointer first→last, last→first, first→middle, middle→last, middle→first, middle→other-middle, same-position, cancel; cross-window forward+reverse **PASS**; rapid/tear-off/create-close-move **UNVERIFIED**
 - WebSocket actual AMARE tab-close and browser-close cleanup: **PASS**; connect/echo/reconnect PASS
-- Certificate error: **UNVERIFIED** (local TLS probe timeout); no bypass
-- Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning code; local TLS probe **UNVERIFIED** (event timeout); no bypass implemented
-- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing PASS (0.22 values in report)
-- Native tab drag reorder: **UNVERIFIED** (attempted; core TabManager.Move PASS)
+- Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event + actual Korean dialog; no bypass
+- Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning; actual self-signed/expired/hostname-mismatch **PASS**; trusted local CA **UNVERIFIED**; no bypass
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.28 values in report)
+- Native tab drag reorder: **PASS** actual pointer 8 combos; cross-window forward+reverse **PASS**
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace
