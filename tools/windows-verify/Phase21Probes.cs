@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -319,6 +320,54 @@ internal static class Phase21Probes
         }
     }
 
+    private static bool RunCertutil(string arguments, out string output)
+    {
+        output = "";
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "certutil.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            if (process is null) return false;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(15000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                output = "timeout";
+                return false;
+            }
+            output = stdout.Result + stderr.Result;
+            return process.ExitCode == 0;
+        }
+        catch (Exception exception)
+        {
+            output = exception.GetType().Name;
+            return false;
+        }
+    }
+
+    private static bool TrustExists(string thumbprint)
+    {
+        try
+        {
+            using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+            check.Open(OpenFlags.ReadOnly);
+            return check.Certificates
+                .Find(X509FindType.FindByThumbprint, thumbprint, false).Count > 0;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
     public static async Task<ProbeResult> LocalTrustedCaAsync(Control host, string root)
     {
         using var caKey = RSA.Create(2048);
@@ -353,14 +402,20 @@ internal static class Phase21Probes
             pfx, (string?)null,
             X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.UserKeySet);
 
-        var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+        using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
+        var cerPath = Path.Combine(Path.GetTempPath(), $"amare-test-ca-{Guid.NewGuid():N}.cer");
+        File.WriteAllBytes(cerPath, publicCa.Export(X509ContentType.Cert));
         var trustInstalled = false;
         var trustRemoved = false;
         try
         {
-            store.Open(OpenFlags.ReadWrite);
-            using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
-            store.Add(publicCa);
+            if (!RunCertutil($"-f -addstore -user Root \"{cerPath}\"", out var addOutput)
+                || !TrustExists(publicCa.Thumbprint))
+            {
+                return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
+                    "Local test CA could not be installed non-interactively; trust-store check skipped",
+                    new { tls_handshake_ok = false, trust_installed = false, reason = addOutput });
+            }
             trustInstalled = true;
 
             using var chain = new X509Chain();
@@ -411,20 +466,9 @@ internal static class Phase21Probes
                     view.CoreWebView2.Navigate(url);
                     var (success, error) = await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
-                    try
-                    {
-                        using var publicCaForRemoval = new X509Certificate2(ca.Export(X509ContentType.Cert));
-                        store.Remove(publicCaForRemoval);
-                        trustInstalled = false;
-                        using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
-                        check.Open(OpenFlags.ReadOnly);
-                        trustRemoved = check.Certificates
-                            .Find(X509FindType.FindByThumbprint, publicCaForRemoval.Thumbprint, false).Count == 0;
-                    }
-                    catch
-                    {
-                        trustRemoved = false;
-                    }
+                    RunCertutil($"-f -delstore -user Root \"{publicCa.Thumbprint}\"", out _);
+                    trustInstalled = false;
+                    trustRemoved = !TrustExists(publicCa.Thumbprint);
 
                     var passed = success && trustRemoved;
                     return Result("webview2_local_trusted_ca",
@@ -463,21 +507,10 @@ internal static class Phase21Probes
         {
             if (trustInstalled)
             {
-                try
-                {
-                    using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
-                    store.Remove(publicCa);
-                    using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
-                    check.Open(OpenFlags.ReadOnly);
-                    trustRemoved = check.Certificates
-                        .Find(X509FindType.FindByThumbprint, publicCa.Thumbprint, false).Count == 0;
-                }
-                catch
-                {
-                    trustRemoved = false;
-                }
+                RunCertutil($"-f -delstore -user Root \"{publicCa.Thumbprint}\"", out _);
+                trustRemoved = !TrustExists(publicCa.Thumbprint);
             }
-            try { store.Close(); } catch { }
+            try { File.Delete(cerPath); } catch { }
         }
     }
 
