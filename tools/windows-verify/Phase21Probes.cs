@@ -376,11 +376,7 @@ internal static class Phase21Probes
             using var tcp = new TcpClient();
             await tcp.ConnectAsync(IPAddress.Loopback, new Uri(url).Port);
             using var ssl = new SslStream(tcp.GetStream(), false, (_, _, _, _) => true);
-            await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
-            {
-                TargetHost = "localhost",
-                RemoteCertificateValidationCallback = (_, _, _, _) => true
-            }).WaitAsync(TimeSpan.FromSeconds(10));
+            await ssl.AuthenticateAsClientAsync("localhost").WaitAsync(TimeSpan.FromSeconds(10));
             if (!ssl.IsAuthenticated) throw new AuthenticationException("TLS client did not authenticate");
             tlsProtocol = ssl.SslProtocol.ToString();
         }
