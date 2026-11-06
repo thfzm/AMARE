@@ -850,8 +850,8 @@ internal static class Program
             }
             Thread.Sleep(300);
             SendMouseButton(MouseLeftUp);
-            WaitFor(() => CountTabs(targetWindow) >= 2, TimeSpan.FromSeconds(15), "cross-window transfer");
-            if (CountTabs(sourceWindow) < 1) throw new InvalidOperationException("source window lost its replacement tab");
+            WaitFor(() => CountTabs(targetWindow) == 2, TimeSpan.FromSeconds(15), "cross-window target count");
+            WaitFor(() => CountTabs(sourceWindow) == 1, TimeSpan.FromSeconds(15), "cross-window source count");
             var firstMove = $"target={CountTabs(targetWindow)} source={CountTabs(sourceWindow)}";
 
             sourceWindow = AutomationElement.FromHandle(sourceHandle);
@@ -897,8 +897,9 @@ internal static class Program
             }
             Thread.Sleep(300);
             SendMouseButton(MouseLeftUp);
-            WaitFor(() => CountTabs(sourceWindow) >= 2, TimeSpan.FromSeconds(15), "reverse cross-window transfer");
-            if (CountTabs(targetWindow) < 1) throw new InvalidOperationException("target window lost its remaining tab");
+            WaitFor(() => CountTabs(sourceWindow) == 2, TimeSpan.FromSeconds(15), "reverse cross-window source count");
+            targetWindow = AutomationElement.FromHandle(targetHandle);
+            WaitFor(() => CountTabs(targetWindow) == 1, TimeSpan.FromSeconds(15), "reverse cross-window target count");
             return $"cross-window forward {firstMove}; reverse target={CountTabs(targetWindow)} source={CountTabs(sourceWindow)}";
         }
         finally
