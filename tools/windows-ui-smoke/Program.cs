@@ -105,6 +105,7 @@ internal static class Program
             Check("tab_drag_middle_to_first", () => DragTabCombination(1, 0));
             Check("tab_drag_middle_to_other_middle", () => DragTabWithCount(1, 2, 4, true));
             Check("tab_drag_same_position", () => DragTabWithCount(0, 0, 3, false));
+            Check("tab_drag_cancel", DragTabCancel);
             Check("certificate_error_ui", CertificateErrorUi);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
@@ -457,6 +458,57 @@ internal static class Program
         return $"tab_close {before}->{CountTabs()}";
     }
 
+    private static string DragTabCancel()
+    {
+        for (var i = CountTabs(); i < 3; i++)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(250);
+        }
+        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "cancel drag tabs");
+        var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
+        var items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length >= 3, "need three tabs for cancel drag");
+        var before = items.Select(item => item.GetRuntimeId()).ToArray();
+        var source = items[1].Current.BoundingRectangle;
+        var target = items[0].Current.BoundingRectangle;
+        var startX = (int)(source.X + Math.Min(24, source.Width / 3));
+        var startY = (int)(source.Y + source.Height / 2);
+        var endX = (int)(target.X + Math.Min(12, target.Width / 4));
+        var endY = (int)(target.Y + target.Height / 2);
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        MoveMouseAbsolute(startX, startY);
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftDown);
+        Thread.Sleep(300);
+        for (var i = 1; i <= 10; i++)
+        {
+            MoveMouseAbsolute(startX + (endX - startX) * i / 10, startY + (endY - startY) * i / 10);
+            Thread.Sleep(70);
+        }
+        MoveMouseAbsolute(endX, endY + 120);
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftUp);
+        Thread.Sleep(700);
+        items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length == 3, "cancel drag changed tab count");
+        var after = items.Select(item => item.GetRuntimeId()).ToArray();
+        if (!before.Zip(after, (a, b) => a.SequenceEqual(b)).All(same => same))
+            throw new InvalidOperationException("cancel drag changed tab order");
+        while (CountTabs() > 1)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(350);
+        }
+        NavigateToExample();
+        return "native drag cancelled outside tab strip without reorder";
+    }
+
     private static string CertificateErrorUi()
     {
         var server = CertificateTestServer.StartAsync().GetAwaiter().GetResult();
@@ -800,7 +852,54 @@ internal static class Program
             SendMouseButton(MouseLeftUp);
             WaitFor(() => CountTabs(targetWindow) >= 2, TimeSpan.FromSeconds(15), "cross-window transfer");
             if (CountTabs(sourceWindow) < 1) throw new InvalidOperationException("source window lost its replacement tab");
-            return $"cross-window target tabs={CountTabs(targetWindow)} source tabs={CountTabs(sourceWindow)}";
+            var firstMove = $"target={CountTabs(targetWindow)} source={CountTabs(sourceWindow)}";
+
+            sourceWindow = AutomationElement.FromHandle(sourceHandle);
+            targetWindow = AutomationElement.FromHandle(targetHandle);
+            var reverseItems = FindByIdIn(targetWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            var reverseTargets = FindByIdIn(sourceWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            Require(reverseItems.Length >= 1 && reverseTargets.Length >= 1, "reverse transfer tabs missing");
+            reverseItems[0].SetFocus();
+            if (reverseItems[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var reverseSelection))
+                ((SelectionItemPattern)reverseSelection).Select();
+            Thread.Sleep(400);
+            sourceWindow = AutomationElement.FromHandle(sourceHandle);
+            targetWindow = AutomationElement.FromHandle(targetHandle);
+            reverseItems = FindByIdIn(targetWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            reverseTargets = FindByIdIn(sourceWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            Require(reverseItems.Length >= 1 && reverseTargets.Length >= 1, "reverse transfer tabs missing after focus");
+            var reverseSourceRect = reverseItems[0].Current.BoundingRectangle;
+            var reverseTargetRect = reverseTargets[0].Current.BoundingRectangle;
+            var reverseStartX = (int)(reverseSourceRect.X + Math.Min(24, reverseSourceRect.Width / 3));
+            var reverseStartY = (int)(reverseSourceRect.Y + reverseSourceRect.Height / 2);
+            var reverseEndX = (int)(reverseTargetRect.X + Math.Min(12, reverseTargetRect.Width / 4));
+            var reverseEndY = (int)(reverseTargetRect.Y + reverseTargetRect.Height / 2);
+            SetForegroundWindow(targetHandle);
+            Thread.Sleep(300);
+            MoveMouseAbsolute(reverseStartX, reverseStartY);
+            Thread.Sleep(300);
+            SendMouseButton(MouseLeftDown);
+            Thread.Sleep(300);
+            for (var i = 1; i <= 25; i++)
+            {
+                MoveMouseAbsolute(
+                    reverseStartX + (reverseEndX - reverseStartX) * i / 25,
+                    reverseStartY + (reverseEndY - reverseStartY) * i / 25);
+                Thread.Sleep(90);
+            }
+            Thread.Sleep(300);
+            SendMouseButton(MouseLeftUp);
+            WaitFor(() => CountTabs(sourceWindow) >= 2, TimeSpan.FromSeconds(15), "reverse cross-window transfer");
+            if (CountTabs(targetWindow) < 1) throw new InvalidOperationException("target window lost its remaining tab");
+            return $"cross-window forward {firstMove}; reverse target={CountTabs(targetWindow)} source={CountTabs(sourceWindow)}";
         }
         finally
         {
