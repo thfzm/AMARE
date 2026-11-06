@@ -18,20 +18,25 @@ internal sealed class CertificateTestServer : IAsyncDisposable
         Url = url;
     }
 
-    public static async Task<CertificateTestServer> StartAsync()
+    public static Task<CertificateTestServer> StartAsync() => StartAsync("self-signed");
+
+    public static async Task<CertificateTestServer> StartAsync(string kind)
     {
         using var key = RSA.Create(2048);
-        var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var dnsName = kind == "hostname-mismatch" ? "wrong.example" : "localhost";
+        var request = new CertificateRequest($"CN={dnsName}", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
             new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
         var san = new SubjectAlternativeNameBuilder();
-        san.AddDnsName("localhost");
-        san.AddIpAddress(IPAddress.Loopback);
+        san.AddDnsName(dnsName);
+        if (kind != "hostname-mismatch") san.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(san.Build());
+        var expired = kind == "expired";
         using var ephemeral = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+            expired ? DateTimeOffset.UtcNow.AddDays(-30) : DateTimeOffset.UtcNow.AddDays(-1),
+            expired ? DateTimeOffset.UtcNow.AddDays(-2) : DateTimeOffset.UtcNow.AddDays(30));
         var pfx = ephemeral.Export(X509ContentType.Pfx);
         var certificate = new X509Certificate2(
             pfx, (string?)null,

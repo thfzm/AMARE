@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Amare.Windows.Core;
@@ -770,8 +771,9 @@ public sealed partial class MainWindow : Window
             // Never allow a certificate error automatically. Cancel the navigation
             // and show the user an explicit, non-bypass error notice.
             args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
-            StatusText.Text = DescribeWebError(args.ErrorStatus);
-            _ = ShowCertificateErrorAsync(args.RequestUri, args.ErrorStatus);
+            var message = DescribeCertificateError(args.RequestUri, args.ErrorStatus, args.ServerCertificate);
+            StatusText.Text = message;
+            _ = ShowCertificateErrorAsync(args.RequestUri, message);
         };
         core.NavigationCompleted += (webview, args) =>
         {
@@ -1163,7 +1165,7 @@ public sealed partial class MainWindow : Window
     private BrowserTab? ActiveHost =>
         _tabs.ActiveTab is { } active && _hosts.TryGetValue(active.Id, out var host) ? host : null;
 
-    private async Task ShowCertificateErrorAsync(string uri, CoreWebView2WebErrorStatus status)
+    private async Task ShowCertificateErrorAsync(string uri, string message)
     {
         try
         {
@@ -1172,27 +1174,69 @@ public sealed partial class MainWindow : Window
                 Title = "보안 인증서 오류",
                 Content = new TextBlock
                 {
-                    Text = $"{DescribeWebError(status)}\n\n요청 주소: {uri}\n\n" +
+                    Text = $"{message}\n\n요청 주소: {uri}\n\n" +
                            "이 페이지로 자동 진행하지 않았습니다. 사이트 관리자에게 문의하거나, " +
                            "인증서가 올바른지 확인한 뒤 다시 시도하세요.",
                     TextWrapping = TextWrapping.Wrap
                 },
-                PrimaryButtonText = "뒤로",
+                PrimaryButtonText = "다시 시도",
+                SecondaryButtonText = "뒤로",
                 CloseButtonText = "닫기",
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = RootGrid.XamlRoot
             };
             var result = await dialog.ShowAsync();
+            var active = ActiveHost?.View.CoreWebView2;
+            if (active is null) return;
             if (result == ContentDialogResult.Primary)
             {
-                var active = ActiveHost?.View.CoreWebView2;
-                if (active?.CanGoBack == true) active.GoBack();
+                active.Navigate(uri);
+            }
+            else if (result == ContentDialogResult.Secondary && active.CanGoBack)
+            {
+                active.GoBack();
             }
         }
         catch
         {
             // The window may be closing; the navigation remains cancelled.
         }
+    }
+
+    private static string DescribeCertificateError(
+        string uri, CoreWebView2WebErrorStatus status, CoreWebView2Certificate? serverCertificate)
+    {
+        try
+        {
+            var certificate = serverCertificate?.ToX509Certificate2();
+            if (certificate is not null)
+            {
+                if (certificate.NotAfter.ToUniversalTime() < DateTime.UtcNow)
+                {
+                    return "인증서 유효기간이 만료되었습니다. 이 사이트의 인증서를 신뢰하지 마세요.";
+                }
+                var host = new Uri(uri).Host;
+                var san = certificate.Extensions
+                    .OfType<X509SubjectAlternativeNameExtension>()
+                    .FirstOrDefault();
+                var names = san is null
+                    ? new List<string>()
+                    : san.EnumerateDnsNames().Concat(san.EnumerateIPAddresses()).ToList();
+                if (names.Count == 0)
+                {
+                    var commonName = certificate.GetNameInfo(X509NameType.SimpleName, false);
+                    if (!string.IsNullOrWhiteSpace(commonName)) names.Add(commonName);
+                }
+                if (names.Count > 0 && !names.Any(name => string.Equals(name, host, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return "인증서의 호스트 이름이 요청 주소와 일치하지 않습니다. 이 사이트의 인증서를 신뢰하지 마세요.";
+                }
+            }
+        }
+        catch
+        {
+        }
+        return DescribeWebError(status);
     }
 
     private static string DescribeWebError(CoreWebView2WebErrorStatus status) => status switch
@@ -1815,7 +1859,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.28.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.29.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");

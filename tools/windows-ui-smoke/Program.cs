@@ -106,7 +106,12 @@ internal static class Program
             Check("tab_drag_middle_to_other_middle", () => DragTabWithCount(1, 2, 4, true));
             Check("tab_drag_same_position", () => DragTabWithCount(0, 0, 3, false));
             Check("tab_drag_cancel", DragTabCancel);
-            Check("certificate_error_ui", CertificateErrorUi);
+            Check("tab_drag_after_close", DragTabAfterClose);
+            Check("certificate_error_self_signed_ui", () => CertificateErrorUi("self-signed", "보안 인증서 오류"));
+            Check("certificate_error_expired_ui", () => CertificateErrorUi("expired", "유효기간이 만료"));
+            Check("certificate_error_hostname_mismatch_ui", () => CertificateErrorUi("hostname-mismatch", "호스트 이름이 요청 주소와 일치하지"));
+            Check("certificate_error_retry", () => CertificateErrorUi("self-signed", "보안 인증서 오류", retry: true));
+            Check("certificate_error_back", CertificateErrorBack);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -122,6 +127,7 @@ internal static class Program
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("cross_window_tab_move", CrossWindowTabMove);
+            Check("tab_churn", TabChurn);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
@@ -509,48 +515,112 @@ internal static class Program
         return "native drag cancelled outside tab strip without reorder";
     }
 
-    private static string CertificateErrorUi()
+    private static string DragTabAfterClose()
     {
-        var server = CertificateTestServer.StartAsync().GetAwaiter().GetResult();
+        for (var i = CountTabs(); i < 4; i++)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(200);
+        }
+        WaitFor(() => CountTabs() >= 4, TimeSpan.FromSeconds(8), "drag-after-close tabs");
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        SendKeys.SendWait("^w");
+        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag-after-close count");
+        return DragTabWithCount(0, 2, 3, true);
+    }
+
+    private static string TabChurn()
+    {
+        var baseline = CountTabs();
+        for (var i = 0; i < 6; i++)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            WaitFor(() => CountTabs() > baseline, TimeSpan.FromSeconds(5), "churn create");
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            WaitFor(() => CountTabs() == baseline, TimeSpan.FromSeconds(5), "churn close");
+        }
+        NavigateToExample();
+        return $"tab churn preserved tab count={CountTabs()}";
+    }
+
+    private static string CertificateErrorUi(string kind, string expectedText, bool retry = false)
+    {
+        var server = CertificateTestServer.StartAsync(kind).GetAwaiter().GetResult();
         try
         {
             var before = CountTabs();
             Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
             WaitFor(() => CountTabs() > before, TimeSpan.FromSeconds(5), "certificate tab");
             var edit = FindAddressEdit();
-            SetValue(edit, server.Url + "/");
+            var path = "?source=amare-ui-smoke&padding=" + new string('x', 220);
+            SetValue(edit, server.Url + "/" + path);
             Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
-            AutomationElement dialog;
-            try
-            {
-                dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
-            }
-            catch
-            {
-                DumpTree();
-                throw;
-            }
+            var dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
             var requestText = dialog.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
                 .Cast<AutomationElement>()
                 .Select(element => element.Current.Name)
                 .FirstOrDefault(name => name.Contains("요청 주소:", StringComparison.Ordinal))
                 ?? throw new InvalidOperationException("certificate dialog did not show request URL");
+            if (!requestText.Contains(server.Url, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("certificate dialog request URL mismatch");
+            if (!requestText.Contains(expectedText, StringComparison.Ordinal))
+                throw new InvalidOperationException($"certificate dialog did not contain expected text: {expectedText}");
+            if (!requestText.Contains("자동 진행하지 않았습니다", StringComparison.Ordinal))
+                throw new InvalidOperationException("certificate dialog omitted cancel explanation");
             var close = dialog.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.NameProperty, "닫기"))
                 ?? throw new InvalidOperationException("certificate dialog close button missing");
-            if (!requestText.Contains(server.Url, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("certificate dialog request URL mismatch");
+            var retryButton = dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "다시 시도"));
+            if (retryButton is null) throw new InvalidOperationException("certificate retry button missing");
+            if (retry)
+            {
+                Invoke(retryButton);
+                WaitFor(() => FindByName("보안 인증서 오류") is null, TimeSpan.FromSeconds(5), "certificate retry close");
+                dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
+                close = dialog.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, "닫기"))
+                    ?? throw new InvalidOperationException("certificate retry dialog close button missing");
+            }
             Invoke(close);
             WaitFor(() => FindByName("보안 인증서 오류") is null, TimeSpan.FromSeconds(8), "certificate dialog close");
             SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
             SendKeys.SendWait("^w");
             WaitFor(() => CountTabs() <= before, TimeSpan.FromSeconds(8), "certificate tab close");
-            return "actual certificate error dialog shown with request URL and close action";
+            return $"actual {kind} certificate dialog shown with URL, message, cancel, and {(retry ? "retry" : "close")}";
         }
         finally
         {
             server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static string CertificateErrorBack()
+    {
+        var server = CertificateTestServer.StartAsync("self-signed").GetAwaiter().GetResult();
+        try
+        {
+            NavigateToExample();
+            var before = CountTabs();
+            var edit = FindAddressEdit();
+            SetValue(edit, server.Url + "/back-test");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            var dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
+            var back = dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "뒤로"))
+                ?? throw new InvalidOperationException("certificate back button missing");
+            Invoke(back);
+            WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(15), "certificate back navigation");
+            if (CountTabs() != before) throw new InvalidOperationException("certificate back changed tab count");
+            return "certificate error back returned to previous page";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            NavigateToExample();
         }
     }
 
