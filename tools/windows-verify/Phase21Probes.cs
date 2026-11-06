@@ -319,6 +319,168 @@ internal static class Phase21Probes
         }
     }
 
+    public static async Task<ProbeResult> LocalTrustedCaAsync(Control host, string root)
+    {
+        using var caKey = RSA.Create(2048);
+        var caRequest = new CertificateRequest(
+            "CN=AMARE Local Test CA", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        caRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(caRequest.PublicKey, false));
+        using var ca = caRequest.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+
+        using var serverKey = RSA.Create(2048);
+        var serverRequest = new CertificateRequest(
+            "CN=localhost", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        serverRequest.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("localhost");
+        san.AddIpAddress(IPAddress.Loopback);
+        serverRequest.CertificateExtensions.Add(san.Build());
+        serverRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(serverRequest.PublicKey, false));
+        var serial = RandomNumberGenerator.GetBytes(16);
+        serial[0] &= 0x7F;
+        using var issued = serverRequest.Create(
+            ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30), serial);
+        using var serverWithKey = issued.CopyWithPrivateKey(serverKey);
+        var pfx = serverWithKey.Export(X509ContentType.Pfx);
+        using var certificate = new X509Certificate2(
+            pfx, (string?)null,
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.UserKeySet);
+
+        var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+        var trustInstalled = false;
+        var trustRemoved = false;
+        try
+        {
+            store.Open(OpenFlags.ReadWrite);
+            using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
+            store.Add(publicCa);
+            trustInstalled = true;
+
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+            var chainOk = chain.Build(certificate);
+
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                ApplicationName = typeof(Phase21Probes).Assembly.GetName().Name,
+                EnvironmentName = Environments.Production
+            });
+            builder.WebHost.ConfigureKestrel(options =>
+                options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
+            await using var app = builder.Build();
+            app.MapGet("/", () => Results.Content(
+                "<!doctype html><title>Local trusted CA</title><h1>ok</h1>", "text/html"));
+            await app.StartAsync();
+            var url = app.Urls.First();
+
+            string tlsProtocol;
+            try
+            {
+                using var tcp = new TcpClient();
+                await tcp.ConnectAsync(IPAddress.Loopback, new Uri(url).Port);
+                using var ssl = new SslStream(tcp.GetStream(), false);
+                await ssl.AuthenticateAsClientAsync("localhost").WaitAsync(TimeSpan.FromSeconds(10));
+                if (!ssl.IsAuthenticated) throw new AuthenticationException("TLS client did not authenticate");
+                tlsProtocol = ssl.SslProtocol.ToString();
+            }
+            catch (Exception exception)
+            {
+                return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
+                    $"Local trusted CA TLS handshake failed: {exception.GetType().Name}",
+                    new { tls_handshake_ok = false, trust_installed = true });
+            }
+
+            var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-local-trusted-ca"));
+            try
+            {
+                var completed = new TaskCompletionSource<(bool Success, CoreWebView2WebErrorStatus Status)>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                void Handler(object? sender, CoreWebView2NavigationCompletedEventArgs args) =>
+                    completed.TrySetResult((args.IsSuccess, args.WebErrorStatus));
+                view.CoreWebView2.NavigationCompleted += Handler;
+                try
+                {
+                    view.CoreWebView2.Navigate(url);
+                    var (success, error) = await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+                    try
+                    {
+                        using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
+                        store.Remove(publicCa);
+                        trustInstalled = false;
+                        using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                        check.Open(OpenFlags.ReadOnly);
+                        trustRemoved = check.Certificates
+                            .Find(X509FindType.FindByThumbprint, publicCa.Thumbprint, false).Count == 0;
+                    }
+                    catch
+                    {
+                        trustRemoved = false;
+                    }
+
+                    var passed = success && trustRemoved;
+                    return Result("webview2_local_trusted_ca",
+                        passed ? ProbeStatus.Pass : ProbeStatus.Unverified,
+                        true,
+                        passed
+                            ? $"Local trusted CA TLS {tlsProtocol} + WebView2 normal HTTPS navigation PASS; trust removed"
+                            : success
+                                ? "Local trusted CA navigation passed but test trust cleanup was not confirmed"
+                                : $"Local trusted CA WebView2 navigation failed: {error}",
+                        new
+                        {
+                            certificate_kind = "local-trusted-ca",
+                            server_url = url,
+                            tls_handshake_ok = true,
+                            tls_protocol = tlsProtocol,
+                            chain_build_ok = chainOk,
+                            navigation_success = success,
+                            web_error_status = success ? null : error.ToString(),
+                            trust_installed = true,
+                            trust_removed = trustRemoved,
+                        });
+                }
+                finally
+                {
+                    view.CoreWebView2.NavigationCompleted -= Handler;
+                }
+            }
+            finally
+            {
+                WebViewHelpers.DisposeView(host, view);
+                await app.StopAsync();
+            }
+        }
+        finally
+        {
+            if (trustInstalled)
+            {
+                try
+                {
+                    using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
+                    store.Remove(publicCa);
+                    using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                    check.Open(OpenFlags.ReadOnly);
+                    trustRemoved = check.Certificates
+                        .Find(X509FindType.FindByThumbprint, publicCa.Thumbprint, false).Count == 0;
+                }
+                catch
+                {
+                    trustRemoved = false;
+                }
+            }
+            try { store.Close(); } catch { }
+        }
+    }
+
     public static Task<ProbeResult> KestrelCertificateErrorAsync(Control host, string root) =>
         KestrelCertificateProbeAsync(host, root, "webview2_certificate_error", "self-signed",
             expired: false, dnsName: "localhost", includeLoopbackSan: true);

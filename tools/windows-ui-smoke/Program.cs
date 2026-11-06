@@ -112,6 +112,7 @@ internal static class Program
             Check("certificate_error_hostname_mismatch_ui", () => CertificateErrorUi("hostname-mismatch", "호스트 이름이 요청 주소와 일치하지"));
             Check("certificate_error_retry", () => CertificateErrorUi("self-signed", "보안 인증서 오류", retry: true));
             Check("certificate_error_back", CertificateErrorBack);
+            Check("certificate_error_other_tab", CertificateErrorOtherTab);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -542,6 +543,38 @@ internal static class Program
         }
         NavigateToExample();
         return $"tab churn preserved tab count={CountTabs()}";
+    }
+
+    private static string CertificateErrorOtherTab()
+    {
+        var server = CertificateTestServer.StartAsync("self-signed").GetAwaiter().GetResult();
+        try
+        {
+            NavigateToExample();
+            var before = CountTabs();
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            WaitFor(() => CountTabs() > before, TimeSpan.FromSeconds(5), "certificate other tab");
+            var edit = FindAddressEdit();
+            SetValue(edit, server.Url + "/other-tab");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            var dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
+            var close = dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "닫기"))
+                ?? throw new InvalidOperationException("certificate other-tab close missing");
+            Invoke(close);
+            WaitFor(() => FindByName("보안 인증서 오류") is null, TimeSpan.FromSeconds(8), "certificate other-tab dialog close");
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            WaitFor(() => CountTabs() == before, TimeSpan.FromSeconds(8), "certificate other-tab close tab");
+            WaitFor(() => _process?.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(15), "certificate other-tab independence");
+            return "certificate error tab closed while other normal tab remained usable";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            NavigateToExample();
+        }
     }
 
     private static string CertificateErrorUi(string kind, string expectedText, bool retry = false)
