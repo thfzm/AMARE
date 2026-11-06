@@ -660,7 +660,8 @@ internal static class Program
 
     private static string OpenAndCloseReader()
     {
-        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        Invoke(WaitFindById("MenuButton", TimeSpan.FromSeconds(8)));
         InvokeMenu("Reader Mode");
         try
         {
