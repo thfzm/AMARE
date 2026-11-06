@@ -445,9 +445,14 @@ internal static class Phase21Probes
             RunCertutil($"-addstore -user -f Root \"{cerPath}\"", out var certutilOutput);
             if (!TrustExists(publicCa.Thumbprint))
             {
-                RunPowerShell(
-                    $"Import-Certificate -FilePath '{cerPath}' -CertStoreLocation 'Cert:\\CurrentUser\\Root' | Out-Null",
-                    out var powerShellOutput);
+                var importCommand =
+                    "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store(" +
+                    "[System.Security.Cryptography.X509Certificates.StoreName]::Root, " +
+                    "[System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser); " +
+                    "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite); " +
+                    $"$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('{cerPath.Replace("'", "''")}'); " +
+                    "$s.Add($c); $s.Close()";
+                RunPowerShell(importCommand, out var powerShellOutput);
                 certutilOutput = $"{certutilOutput}; powershell={powerShellOutput}".Trim();
             }
             if (!TrustExists(publicCa.Thumbprint))
@@ -518,8 +523,12 @@ internal static class Phase21Probes
                     if (TrustExists(publicCa.Thumbprint))
                     {
                         RunPowerShell(
-                            $"Remove-Item -LiteralPath 'Cert:\\CurrentUser\\Root\\{publicCa.Thumbprint}' -Force -ErrorAction SilentlyContinue",
-                            out _);
+                            "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store(" +
+                            "[System.Security.Cryptography.X509Certificates.StoreName]::Root, " +
+                            "[System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser); " +
+                            "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite); " +
+                            $"$s.Certificates | Where-Object {{ $_.Thumbprint -eq '{publicCa.Thumbprint}' }} | ForEach-Object {{ $s.Remove($_) }}; " +
+                            "$s.Close()", out _);
                     }
                     trustInstalled = false;
                     trustRemoved = !TrustExists(publicCa.Thumbprint);
@@ -565,8 +574,12 @@ internal static class Phase21Probes
                 if (TrustExists(publicCa.Thumbprint))
                 {
                     RunPowerShell(
-                        $"Remove-Item -LiteralPath 'Cert:\\CurrentUser\\Root\\{publicCa.Thumbprint}' -Force -ErrorAction SilentlyContinue",
-                        out _);
+                        "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store(" +
+                        "[System.Security.Cryptography.X509Certificates.StoreName]::Root, " +
+                        "[System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser); " +
+                        "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite); " +
+                        $"$s.Certificates | Where-Object {{ $_.Thumbprint -eq '{publicCa.Thumbprint}' }} | ForEach-Object {{ $s.Remove($_) }}; " +
+                        "$s.Close()", out _);
                 }
                 trustRemoved = !TrustExists(publicCa.Thumbprint);
             }
