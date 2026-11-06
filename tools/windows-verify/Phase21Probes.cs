@@ -412,9 +412,17 @@ internal static class Phase21Probes
             if (!RunCertutil($"-addstore -user -f Root \"{cerPath}\"", out var addOutput)
                 || !TrustExists(publicCa.Thumbprint))
             {
+                RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
+                var removedAfterFailure = !TrustExists(publicCa.Thumbprint);
                 return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
                     $"Local test CA could not be installed non-interactively; trust-store check skipped ({addOutput.Trim()})",
-                    new { tls_handshake_ok = false, trust_installed = false, reason = addOutput.Trim() });
+                    new
+                    {
+                        tls_handshake_ok = false,
+                        trust_installed = false,
+                        trust_removed = removedAfterFailure,
+                        reason = addOutput.Trim()
+                    });
             }
             trustInstalled = true;
 
