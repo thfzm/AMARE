@@ -863,7 +863,8 @@ internal static class Program
         if (_process is null) throw new InvalidOperationException("process missing");
         var before = WindowsForProcess(_process.Id);
         var beforeIds = before.Select(window => string.Join(",", window.GetRuntimeId())).ToHashSet();
-        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        SetForegroundWindow(_process.MainWindowHandle);
+        Invoke(WaitFindById("MenuButton", TimeSpan.FromSeconds(8)));
         InvokeMenu("New window");
         AutomationElement? created = null;
         WaitFor(() =>
@@ -894,7 +895,8 @@ internal static class Program
         if (_process is null || _window is null) throw new InvalidOperationException("source window missing");
         var sourceWindow = _window;
         var beforeWindows = WindowsForProcess(_process.Id);
-        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        SetForegroundWindow(_process.MainWindowHandle);
+        Invoke(WaitFindById("MenuButton", TimeSpan.FromSeconds(8)));
         InvokeMenu("New window");
         AutomationElement? targetWindow = null;
         WaitFor(() =>
