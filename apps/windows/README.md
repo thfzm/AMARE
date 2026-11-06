@@ -2,12 +2,12 @@
 
 AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + WebView2 Evergreen 기반 데스크톱 브라우저입니다.
 
-## 0.28.0 구현 상태
+## 0.29.0 구현 상태
 
 | 영역 | 상태 |
 |---|---|
 | WinUI 3 XAML/C# build | **PASS** (Windows Runner, Windows Server 2025) |
-| 실제 GUI UIAutomation | **PASS 34/34** (window/address/tabs/switch/close/native drag 8 combos+cancel/certificate dialog/cross-window forward+reverse/WebSocket tab+window cleanup/Find/Reader/AI/API/settings/update/diagnostics/history/bookmarks/downloads/resize/new window/session) |
+| 실제 GUI UIAutomation | **PASS 40/40** (window/address/tabs/switch/close/native drag 9 combos+cancel+after-close/certificate self-signed/expired/mismatch dialog+retry/back/cross-window forward+reverse/tab churn/WebSocket tab+window cleanup/Find/Reader/AI/API/settings/update/diagnostics/history/bookmarks/downloads/resize/new window/session) |
 | WebView2 tabs/address/navigation | 구현, GUI automation PASS |
 | Bookmarks/History Rust persistence | **PASS** (C# native interop round-trip) |
 | Downloads detection/persistent list | 구현, GUI **UNVERIFIED** |
@@ -26,16 +26,16 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | Release preflight | version/arch/assets/checksum unique **PASS** |
 | Update package manifest | `amare-update.json` + `VERSION` + SHA-256 sidecar 검증 **PASS** |
 | Local web compatibility | SPA/cookie/session/upload/audio/video/fullscreen/PiP/WebSocket/zoom/redirect **PASS**; cert UX/WS close cleanup **UNVERIFIED** |
-| Certificate error handling | **PASS** — Kestrel TLS handshake + actual `ServerCertificateErrorDetected` self-signed/expired/hostname-mismatch + actual Korean dialog; Cancel/no bypass; trusted local CA **UNVERIFIED** |
-| 30-tab memory | **PASS** (empty 1,750 MB / content 2,074 MB / close 0 MB; breakdown recorded) |
+| Certificate error handling | **PASS** — Kestrel TLS handshake + actual self-signed/expired/hostname-mismatch dialog with type-specific Korean message, retry, and back; Cancel/no bypass; trusted local CA **UNVERIFIED** |
+| 30-tab memory | **PASS** (empty 1,754 MB / content 2,087 MB / close 0 MB; breakdown recorded) |
 | Interrupted update recovery | journal/backup/recovery/health timeout/crash-after-apply **PASS** |
 | Session recovery | graceful/forced kill restore **PASS** (6→6) |
 | New window | UIAutomation open/close **PASS**; cross-window tab move **UNVERIFIED** |
 | SQLite/WAL recovery | recovery tests **4/4 PASS**, storage 10/10, backup 10/10 |
 | WebSocket | local connect/echo/close/reconnect **PASS**; actual AMARE tab-close/browser-close cleanup **PASS** |
 | Media audio/video | audio/video play/pause/volume/seek **PASS**; fullscreen/PiP actual **PASS** |
-| Certificate error | **PASS** self-signed/expired/hostname mismatch actual event + actual dialog; no bypass implemented |
-| Native tab drag | **PASS** first→last, last→first, first→middle, middle→last, middle→first, middle→other-middle, same-position, cancel; cross-window forward+reverse **PASS**; rapid/tear-off/create-close-move **UNVERIFIED** |
+| Certificate error | **PASS** self-signed/expired/hostname-mismatch actual event/dialog + retry/back; no bypass implemented |
+| Native tab drag | **PASS** first→last, last→first, first→middle, middle→last, middle→first, middle→other-middle, same-position, cancel, after-close; cross-window forward+reverse **PASS**; rapid/tear-off/create-close-move **UNVERIFIED** |
 | API-based AI | provider 선택 + streaming/cancel UI 구현, mock success/401/stream **PASS**, 실제 key **UNVERIFIED** |
 | Diagnostics | 구현, GUI dialog **PASS**, GPU **UNVERIFIED** |
 
@@ -63,7 +63,7 @@ dotnet run --project AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
 `tools/verify-windows.ps1 -CI`가 다음 portable ZIP을 생성합니다.
 
 ```text
-artifacts/windows/AMARE-0.28.0-win-x64.zip
+artifacts/windows/AMARE-0.29.0-win-x64.zip
 ```
 
 이 ZIP은 `AMARE.Updater.exe`, `VERSION`, `amare-update.json`, `RELEASE_NOTES.md`를 포함하는 개발/테스트용 portable package이며 서명된 MSIX 설치 프로그램이 아닙니다. SHA-256 sidecar와 release manifest도 함께 생성됩니다.
