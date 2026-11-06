@@ -1208,7 +1208,8 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var certificate = serverCertificate?.ToX509Certificate2();
+            var pem = serverCertificate?.PemEncodedIssuerCertificateChain?.FirstOrDefault();
+            var certificate = string.IsNullOrWhiteSpace(pem) ? null : X509Certificate2.CreateFromPem(pem);
             if (certificate is not null)
             {
                 if (certificate.NotAfter.ToUniversalTime() < DateTime.UtcNow)
