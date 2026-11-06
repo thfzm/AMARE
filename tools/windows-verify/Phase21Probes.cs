@@ -327,19 +327,26 @@ internal static class Phase21Probes
         san.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(san.Build());
         using var certificate = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddDays(-3), DateTimeOffset.UtcNow.AddDays(-1));
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
 
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        string? serverError = null;
         var serverTask = Task.Run(async () =>
         {
             try
             {
                 using var client = await listener.AcceptTcpClientAsync();
                 using var ssl = new SslStream(client.GetStream(), false);
-                await ssl.AuthenticateAsServerAsync(certificate, false,
-                    SslProtocols.Tls12 | SslProtocols.Tls13, false);
+                await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = certificate,
+                    ClientCertificateRequired = false,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    ApplicationProtocols = [SslApplicationProtocol.Http11]
+                });
                 var body = Encoding.UTF8.GetBytes("<!doctype html><title>Certificate probe</title><h1>ok</h1>");
                 var header = Encoding.ASCII.GetBytes(
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " +
@@ -348,9 +355,9 @@ internal static class Phase21Probes
                 await ssl.WriteAsync(body);
                 await ssl.FlushAsync();
             }
-            catch
+            catch (Exception exception)
             {
-                // The client is expected to reject this self-signed/expired certificate.
+                serverError = exception.Message;
             }
         });
         var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-cert"));
@@ -378,13 +385,13 @@ internal static class Phase21Probes
                     ["user_bypass_implemented"] = false,
                 };
                 return Result("webview2_certificate_error", ProbeStatus.Pass, true,
-                    "self-signed/expired local certificate raised ServerCertificateErrorDetected and was cancelled; no bypass", data);
+                    "self-signed local certificate raised ServerCertificateErrorDetected and was cancelled; no bypass", data);
             }
             catch (TimeoutException)
             {
                 return Result("webview2_certificate_error", ProbeStatus.Unverified, true,
                     "local TLS certificate probe timed out before ServerCertificateErrorDetected; engine-level result is not claimed",
-                    new { navigation_success = (bool?)null, certificate_rejected = (bool?)null });
+                    new { navigation_success = (bool?)null, certificate_rejected = (bool?)null, server_error = serverError });
             }
             finally
             {

@@ -99,6 +99,9 @@ internal static class Program
             Check("tab_close_shortcut", CloseActiveTabShortcut);
             Check("websocket_tab_close", CloseTabReleasesWebSocket);
             Check("tab_drag_reorder", DragFirstTabToLast);
+            Check("tab_drag_last_to_first", () => DragTabCombination(2, 0));
+            Check("tab_drag_first_to_middle", () => DragTabCombination(0, 1));
+            Check("tab_drag_middle_to_last", () => DragTabCombination(1, 2));
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -376,6 +379,58 @@ internal static class Program
     {
         var input = new Input { Type = 0, Mouse = new MouseInput { Flags = flag } };
         SendInput(1, [input], Marshal.SizeOf<Input>());
+    }
+
+    private static string DragTabCombination(int sourceIndex, int targetIndex)
+    {
+        for (var i = 0; i < 2; i++)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+        }
+        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag combination tabs");
+        var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
+        var items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length >= 3, "need three tabs for drag combination");
+        var before = items.Select(item => item.GetRuntimeId()).ToArray();
+        if (items[sourceIndex].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+            ((SelectionItemPattern)selection).Select();
+        Thread.Sleep(250);
+        var sourceRect = items[sourceIndex].Current.BoundingRectangle;
+        var targetRect = items[targetIndex].Current.BoundingRectangle;
+        var startX = (int)(sourceRect.X + Math.Min(24, sourceRect.Width / 3));
+        var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
+        var endX = (int)(targetRect.X + Math.Max(12, targetRect.Width - 20));
+        var endY = (int)(targetRect.Y + targetRect.Height / 2);
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        MoveMouseAbsolute(startX, startY);
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftDown);
+        Thread.Sleep(300);
+        for (var i = 1; i <= 20; i++)
+        {
+            MoveMouseAbsolute(startX + (endX - startX) * i / 20, startY + (endY - startY) * i / 20);
+            Thread.Sleep(80);
+        }
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftUp);
+        Thread.Sleep(900);
+        items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length == 3, "drag combination changed tab count");
+        var after = items.Select(item => item.GetRuntimeId()).ToArray();
+        if (before.Zip(after, (a, b) => a.SequenceEqual(b)).All(same => same))
+            throw new InvalidOperationException($"tab drag {sourceIndex}->{targetIndex} did not change order");
+        while (CountTabs() > 1)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(350);
+        }
+        NavigateToExample();
+        return $"native drag {sourceIndex}->{targetIndex} changed order";
     }
 
     private static string CloseActiveTabShortcut()
