@@ -1222,7 +1222,7 @@ public sealed partial class MainWindow : Window
                     .FirstOrDefault();
                 var names = san is null
                     ? new List<string>()
-                    : san.EnumerateDnsNames().Concat(san.EnumerateIPAddresses()).ToList();
+                    : san.EnumerateDnsNames().Concat(san.EnumerateIPAddresses().Select(address => address.ToString())).ToList();
                 if (names.Count == 0)
                 {
                     var commonName = certificate.GetNameInfo(X509NameType.SimpleName, false);
