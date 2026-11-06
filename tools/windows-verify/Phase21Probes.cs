@@ -366,6 +366,31 @@ internal static class Phase21Probes
             "<!doctype html><title>Certificate probe</title><h1>ok</h1>", "text/html"));
         await app.StartAsync();
         var url = app.Urls.First();
+
+        // Prove the HTTPS server itself completes a normal TLS handshake before
+        // asking WebView2 to interpret the certificate as invalid. The client
+        // explicitly trusts this throwaway test certificate for transport only.
+        string tlsProtocol;
+        try
+        {
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync(IPAddress.Loopback, new Uri(url).Port);
+            using var ssl = new SslStream(tcp.GetStream(), false, (_, _, _, _) => true);
+            await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "localhost",
+                RemoteCertificateValidationCallback = (_, _, _, _) => true
+            }).WaitAsync(TimeSpan.FromSeconds(10));
+            if (!ssl.IsAuthenticated) throw new AuthenticationException("TLS client did not authenticate");
+            tlsProtocol = ssl.SslProtocol.ToString();
+        }
+        catch (Exception exception)
+        {
+            return Result(probeName, ProbeStatus.Unverified, true,
+                $"Kestrel {kind} TLS handshake did not complete before WebView2 navigation: {exception.GetType().Name}",
+                new { certificate_kind = kind, server_url = url, tls_handshake_ok = false });
+        }
+
         var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, $"phase21-kestrel-cert-{kind}"));
         try
         {
@@ -385,6 +410,10 @@ internal static class Phase21Probes
                 {
                     ["certificate_kind"] = kind,
                     ["server_url"] = url,
+                    ["tls_handshake_ok"] = true,
+                    ["tls_protocol"] = tlsProtocol,
+                    ["certificate_has_private_key"] = certificate.HasPrivateKey,
+                    ["certificate_not_after"] = certificate.NotAfter.ToUniversalTime().ToString("O"),
                     ["navigation_success"] = false,
                     ["web_error_status"] = status.ToString(),
                     ["certificate_rejected"] = true,
@@ -392,7 +421,7 @@ internal static class Phase21Probes
                     ["user_bypass_implemented"] = false,
                 };
                 return Result(probeName, ProbeStatus.Pass, true,
-                    $"Kestrel HTTPS {kind} certificate raised ServerCertificateErrorDetected ({status}) and was cancelled; no bypass", data);
+                    $"Kestrel {kind} TLS handshake OK ({tlsProtocol}), WebView2 raised ServerCertificateErrorDetected ({status}) and cancelled; no bypass", data);
             }
             catch (TimeoutException)
             {
