@@ -587,6 +587,104 @@ internal static class Phase21Probes
         }
     }
 
+    public static async Task<ProbeResult> LocalCaChainSimulationAsync()
+    {
+        using var caKey = RSA.Create(2048);
+        var caRequest = new CertificateRequest(
+            "CN=AMARE Simulated Local CA", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        caRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(caRequest.PublicKey, false));
+        using var ca = caRequest.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
+
+        using var serverKey = RSA.Create(2048);
+        var serverRequest = new CertificateRequest(
+            "CN=localhost", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        serverRequest.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("localhost");
+        san.AddIpAddress(IPAddress.Loopback);
+        serverRequest.CertificateExtensions.Add(san.Build());
+        var serial = RandomNumberGenerator.GetBytes(16);
+        serial[0] &= 0x7F;
+        using var issued = serverRequest.Create(
+            ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(29), serial);
+        using var serverWithKey = issued.CopyWithPrivateKey(serverKey);
+        var pfx = serverWithKey.Export(X509ContentType.Pfx);
+        using var certificate = new X509Certificate2(
+            pfx, (string?)null,
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.UserKeySet);
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(Phase21Probes).Assembly.GetName().Name,
+            EnvironmentName = Environments.Production
+        });
+        builder.WebHost.ConfigureKestrel(options =>
+            options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
+        await using var app = builder.Build();
+        app.MapGet("/", () => Results.Content("ok", "text/html"));
+        await app.StartAsync();
+        var url = app.Urls.First();
+
+        bool ValidateWithCa(X509Certificate? candidate)
+        {
+            if (candidate is null) return false;
+            using var candidateCertificate = new X509Certificate2(candidate);
+            using var chain = new X509Chain();
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.CustomTrustStore.Add(publicCa);
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            return chain.Build(candidateCertificate);
+        }
+
+        async Task<(bool Ok, string? Error)> HandshakeAsync(bool trustCa)
+        {
+            try
+            {
+                using var tcp = new TcpClient();
+                await tcp.ConnectAsync(IPAddress.Loopback, new Uri(url).Port);
+                using var ssl = new SslStream(
+                    tcp.GetStream(), false,
+                    (_, candidate, _, _) => trustCa && ValidateWithCa(candidate));
+                await ssl.AuthenticateAsClientAsync("localhost").WaitAsync(TimeSpan.FromSeconds(10));
+                return (ssl.IsAuthenticated, null);
+            }
+            catch (Exception exception)
+            {
+                return (false, exception.GetType().Name);
+            }
+        }
+
+        var trusted = await HandshakeAsync(trustCa: true);
+        var untrusted = await HandshakeAsync(trustCa: false);
+        await app.StopAsync();
+
+        var passed = trusted.Ok && !untrusted.Ok;
+        return Result("local_ca_chain_simulation", passed ? ProbeStatus.Pass : ProbeStatus.Unverified,
+            true,
+            passed
+                ? "CA-signed certificate chain/SAN/EKU + custom-trust TLS handshake PASS; untrusted CA rejected"
+                : $"CA chain simulation incomplete: trusted={trusted.Ok} ({trusted.Error}), untrustedAccepted={untrusted.Ok}",
+            new
+            {
+                certificate_chain = true,
+                san_localhost = true,
+                eku_server_authentication = true,
+                trusted_tls_handshake = trusted.Ok,
+                untrusted_tls_rejected = !untrusted.Ok,
+                os_trust_store_changed = false,
+                webview2_exercised = false,
+                note = "Simulated custom trust only; not a CurrentUser Trust Store or WebView2 trust installation."
+            });
+    }
+
     public static Task<ProbeResult> KestrelCertificateErrorAsync(Control host, string root) =>
         KestrelCertificateProbeAsync(host, root, "webview2_certificate_error", "self-signed",
             expired: false, dnsName: "localhost", includeLoopbackSan: true);
