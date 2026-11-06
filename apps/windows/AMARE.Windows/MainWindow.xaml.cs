@@ -1860,7 +1860,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.30.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.31.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
@@ -2096,7 +2096,10 @@ public sealed partial class MainWindow : Window
             $"WebView2 Runtime: {webView2}",
             $"Window: {size.Width} x {size.Height}",
             $"DPI: {dpi} ({(dpi == 0 ? "unknown" : $"{dpi * 100 / 96}%")})",
+            $"Displays: {GetSystemMetrics(80)}",
+            $"Log: {AppLog.LogPath ?? "-"}",
             $"Browser engine initialized: {(_environment != null ? "yes" : "no")}",
+            "Certificate handling: Cancel, no automatic bypass",
             $"Update state: {updateState?.Status ?? "none"}",
             $"Update version: {updateState?.Version ?? "-"}",
             $"Update error: {updateState?.Error ?? "-"}",
@@ -2117,14 +2120,31 @@ public sealed partial class MainWindow : Window
             Title = "Diagnostics",
             Content = new ScrollViewer { MaxHeight = 560, Content = box },
             PrimaryButtonText = "Copy",
+            SecondaryButtonText = "Open logs",
             CloseButtonText = "Close",
             XamlRoot = RootGrid.XamlRoot
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
         {
             var data = new DataPackage();
             data.SetText(text);
             Clipboard.SetContent(data);
+        }
+        else if (result == ContentDialogResult.Secondary && AppLog.LogPath is { } logPath)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{logPath}\"",
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -2971,5 +2991,8 @@ public sealed partial class MainWindow : Window
     }
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
 }

@@ -353,6 +353,39 @@ internal static class Phase21Probes
         }
     }
 
+    private static bool RunPowerShell(string command, out string output)
+    {
+        output = "";
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{command}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            if (process is null) return false;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(15000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                output = "timeout";
+                return false;
+            }
+            output = stdout.Result + stderr.Result;
+            return process.ExitCode == 0;
+        }
+        catch (Exception exception)
+        {
+            output = exception.GetType().Name;
+            return false;
+        }
+    }
+
     private static bool TrustExists(string thumbprint)
     {
         try
@@ -409,19 +442,26 @@ internal static class Phase21Probes
         var trustRemoved = false;
         try
         {
-            if (!RunCertutil($"-addstore -user -f Root \"{cerPath}\"", out var addOutput)
-                || !TrustExists(publicCa.Thumbprint))
+            RunCertutil($"-addstore -user -f Root \"{cerPath}\"", out var certutilOutput);
+            if (!TrustExists(publicCa.Thumbprint))
+            {
+                RunPowerShell(
+                    $"Import-Certificate -FilePath '{cerPath}' -CertStoreLocation 'Cert:\\CurrentUser\\Root' | Out-Null",
+                    out var powerShellOutput);
+                certutilOutput = $"{certutilOutput}; powershell={powerShellOutput}".Trim();
+            }
+            if (!TrustExists(publicCa.Thumbprint))
             {
                 RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
                 var removedAfterFailure = !TrustExists(publicCa.Thumbprint);
                 return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
-                    $"Local test CA could not be installed non-interactively; trust-store check skipped ({addOutput.Trim()})",
+                    $"Local test CA could not be installed non-interactively; trust-store check skipped ({certutilOutput.Trim()})",
                     new
                     {
                         tls_handshake_ok = false,
                         trust_installed = false,
                         trust_removed = removedAfterFailure,
-                        reason = addOutput.Trim()
+                        reason = certutilOutput.Trim()
                     });
             }
             trustInstalled = true;
@@ -475,6 +515,12 @@ internal static class Phase21Probes
                     var (success, error) = await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
                     RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
+                    if (TrustExists(publicCa.Thumbprint))
+                    {
+                        RunPowerShell(
+                            $"Remove-Item -LiteralPath 'Cert:\\CurrentUser\\Root\\{publicCa.Thumbprint}' -Force -ErrorAction SilentlyContinue",
+                            out _);
+                    }
                     trustInstalled = false;
                     trustRemoved = !TrustExists(publicCa.Thumbprint);
 
@@ -516,6 +562,12 @@ internal static class Phase21Probes
             if (trustInstalled)
             {
                 RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
+                if (TrustExists(publicCa.Thumbprint))
+                {
+                    RunPowerShell(
+                        $"Remove-Item -LiteralPath 'Cert:\\CurrentUser\\Root\\{publicCa.Thumbprint}' -Force -ErrorAction SilentlyContinue",
+                        out _);
+                }
                 trustRemoved = !TrustExists(publicCa.Thumbprint);
             }
             try { File.Delete(cerPath); } catch { }
