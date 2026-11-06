@@ -413,13 +413,13 @@ internal static class Phase21Probes
 
                     try
                     {
-                        using var publicCa = new X509Certificate2(ca.Export(X509ContentType.Cert));
-                        store.Remove(publicCa);
+                        using var publicCaForRemoval = new X509Certificate2(ca.Export(X509ContentType.Cert));
+                        store.Remove(publicCaForRemoval);
                         trustInstalled = false;
                         using var check = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
                         check.Open(OpenFlags.ReadOnly);
                         trustRemoved = check.Certificates
-                            .Find(X509FindType.FindByThumbprint, publicCa.Thumbprint, false).Count == 0;
+                            .Find(X509FindType.FindByThumbprint, publicCaForRemoval.Thumbprint, false).Count == 0;
                     }
                     catch
                     {
