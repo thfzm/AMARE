@@ -326,8 +326,12 @@ internal static class Phase21Probes
         san.AddDnsName("localhost");
         san.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(san.Build());
-        using var certificate = request.CreateSelfSigned(
+        using var ephemeralCertificate = request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        var pfx = ephemeralCertificate.Export(X509ContentType.Pfx);
+        using var certificate = new X509Certificate2(
+            pfx, (string?)null,
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.UserKeySet);
 
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

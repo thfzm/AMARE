@@ -676,12 +676,17 @@ internal static class Program
             return targetWindow is not null;
         }, TimeSpan.FromSeconds(10), "target window");
         if (targetWindow is null) throw new InvalidOperationException("target window not found");
+        var targetHandle = (IntPtr)targetWindow.Current.NativeWindowHandle;
+        var sourceHandle = (IntPtr)sourceWindow.Current.NativeWindowHandle;
         try
         {
-            ShowWindow((IntPtr)targetWindow.Current.NativeWindowHandle, 9); // SW_RESTORE
-            ShowWindow((IntPtr)sourceWindow.Current.NativeWindowHandle, 9);
-            SetWindowPos((IntPtr)sourceWindow.Current.NativeWindowHandle, IntPtr.Zero, 40, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
-            SetWindowPos((IntPtr)targetWindow.Current.NativeWindowHandle, IntPtr.Zero, 900, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            ShowWindow(targetHandle, 9); // SW_RESTORE
+            ShowWindow(sourceHandle, 9);
+            SetWindowPos(sourceHandle, IntPtr.Zero, 40, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            SetWindowPos(targetHandle, IntPtr.Zero, 900, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            Thread.Sleep(900);
+            targetWindow = AutomationElement.FromHandle(targetHandle);
+            sourceWindow = AutomationElement.FromHandle(sourceHandle);
             WaitFor(() => CountTabs(sourceWindow) >= 1 && CountTabs(targetWindow) >= 1, TimeSpan.FromSeconds(10), "cross-window tabs");
             var sourceItems = FindByIdIn(sourceWindow, "TabList")?.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
@@ -693,14 +698,24 @@ internal static class Program
             sourceItems[0].SetFocus();
             if (sourceItems[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
                 ((SelectionItemPattern)selection).Select();
-            Thread.Sleep(300);
+            Thread.Sleep(500);
+            sourceWindow = AutomationElement.FromHandle(sourceHandle);
+            targetWindow = AutomationElement.FromHandle(targetHandle);
+            sourceItems = FindByIdIn(sourceWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            targetItems = FindByIdIn(targetWindow, "TabList")?.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().ToArray() ?? [];
+            Require(sourceItems.Length >= 1 && targetItems.Length >= 1, "cross-window tab elements missing after focus");
             var sourceRect = sourceItems[0].Current.BoundingRectangle;
             var targetRect = targetItems[0].Current.BoundingRectangle;
             var startX = (int)(sourceRect.X + 24);
             var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
             var endX = (int)(targetRect.X + Math.Min(40, targetRect.Width / 2));
             var endY = (int)(targetRect.Y + targetRect.Height / 2);
-            SetForegroundWindow((IntPtr)sourceWindow.Current.NativeWindowHandle);
+            SetForegroundWindow(sourceHandle);
+            Thread.Sleep(300);
             MoveMouseAbsolute(startX, startY);
             Thread.Sleep(300);
             SendMouseButton(MouseLeftDown);
@@ -720,12 +735,13 @@ internal static class Program
         {
             try
             {
-                if (targetWindow.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+                var currentTarget = AutomationElement.FromHandle(targetHandle);
+                if (currentTarget.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
                     ((WindowPattern)pattern).Close();
             }
             catch { }
             WaitFor(() => WindowsForProcess(_process.Id).Length <= beforeWindows.Length, TimeSpan.FromSeconds(10), "target close");
-            SetForegroundWindow((IntPtr)sourceWindow.Current.NativeWindowHandle);
+            SetForegroundWindow(sourceHandle);
         }
     }
 
