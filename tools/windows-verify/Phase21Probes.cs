@@ -409,7 +409,7 @@ internal static class Phase21Probes
         var trustRemoved = false;
         try
         {
-            if (!RunCertutil($"-f -addstore -user Root \"{cerPath}\"", out var addOutput)
+            if (!RunCertutil($"-addstore -user -f Root \"{cerPath}\"", out var addOutput)
                 || !TrustExists(publicCa.Thumbprint))
             {
                 return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
@@ -466,7 +466,7 @@ internal static class Phase21Probes
                     view.CoreWebView2.Navigate(url);
                     var (success, error) = await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
-                    RunCertutil($"-f -delstore -user Root \"{publicCa.Thumbprint}\"", out _);
+                    RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
                     trustInstalled = false;
                     trustRemoved = !TrustExists(publicCa.Thumbprint);
 
@@ -507,7 +507,7 @@ internal static class Phase21Probes
         {
             if (trustInstalled)
             {
-                RunCertutil($"-f -delstore -user Root \"{publicCa.Thumbprint}\"", out _);
+                RunCertutil($"-delstore -user -f Root \"{publicCa.Thumbprint}\"", out _);
                 trustRemoved = !TrustExists(publicCa.Thumbprint);
             }
             try { File.Delete(cerPath); } catch { }
