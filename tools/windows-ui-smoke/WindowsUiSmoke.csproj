@@ -12,4 +12,8 @@
   <ItemGroup>
     <Compile Include="..\windows-verify\LocalHttpServer.cs" Link="LocalHttpServer.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>

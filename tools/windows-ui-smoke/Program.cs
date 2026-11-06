@@ -102,6 +102,10 @@ internal static class Program
             Check("tab_drag_last_to_first", () => DragTabCombination(2, 0));
             Check("tab_drag_first_to_middle", () => DragTabCombination(0, 1));
             Check("tab_drag_middle_to_last", () => DragTabCombination(1, 2));
+            Check("tab_drag_middle_to_first", () => DragTabCombination(1, 0));
+            Check("tab_drag_middle_to_other_middle", () => DragTabWithCount(1, 2, 4, true));
+            Check("tab_drag_same_position", () => DragTabWithCount(0, 0, 3, false));
+            Check("certificate_error_ui", CertificateErrorUi);
             Check("find_in_page", OpenFindAndSearch);
             CloseFind();
             Check("reader_mode", OpenAndCloseReader);
@@ -381,18 +385,22 @@ internal static class Program
         SendInput(1, [input], Marshal.SizeOf<Input>());
     }
 
-    private static string DragTabCombination(int sourceIndex, int targetIndex)
+    private static string DragTabCombination(int sourceIndex, int targetIndex) =>
+        DragTabWithCount(sourceIndex, targetIndex, 3, true);
+
+    private static string DragTabWithCount(int sourceIndex, int targetIndex, int count, bool expectChange)
     {
-        for (var i = 0; i < 2; i++)
+        for (var i = CountTabs(); i < count; i++)
         {
             Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(250);
         }
-        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "drag combination tabs");
+        WaitFor(() => CountTabs() >= count, TimeSpan.FromSeconds(8), "drag combination tabs");
         var list = FindById("TabList") ?? throw new InvalidOperationException("TabList missing");
         var items = list.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>().ToArray();
-        Require(items.Length >= 3, "need three tabs for drag combination");
+        Require(items.Length >= count, "need enough tabs for drag combination");
         var before = items.Select(item => item.GetRuntimeId()).ToArray();
         if (items[sourceIndex].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
             ((SelectionItemPattern)selection).Select();
@@ -419,10 +427,13 @@ internal static class Program
         items = list.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>().ToArray();
-        Require(items.Length == 3, "drag combination changed tab count");
+        Require(items.Length == count, "drag combination changed tab count");
         var after = items.Select(item => item.GetRuntimeId()).ToArray();
-        if (before.Zip(after, (a, b) => a.SequenceEqual(b)).All(same => same))
+        var changed = !before.Zip(after, (a, b) => a.SequenceEqual(b)).All(same => same);
+        if (expectChange && !changed)
             throw new InvalidOperationException($"tab drag {sourceIndex}->{targetIndex} did not change order");
+        if (!expectChange && changed)
+            throw new InvalidOperationException($"tab drag {sourceIndex}->{targetIndex} changed order unexpectedly");
         while (CountTabs() > 1)
         {
             SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
@@ -430,7 +441,9 @@ internal static class Program
             Thread.Sleep(350);
         }
         NavigateToExample();
-        return $"native drag {sourceIndex}->{targetIndex} changed order";
+        return expectChange
+            ? $"native drag {sourceIndex}->{targetIndex} changed order"
+            : $"native drag {sourceIndex}->{targetIndex} preserved order";
     }
 
     private static string CloseActiveTabShortcut()
@@ -440,6 +453,62 @@ internal static class Program
         SendKeys.SendWait("^w");
         WaitFor(() => CountTabs() < before, TimeSpan.FromSeconds(5), "tab close");
         return $"tab_close {before}->{CountTabs()}";
+    }
+
+    private static string CertificateErrorUi()
+    {
+        var server = CertificateTestServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            var before = CountTabs();
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            WaitFor(() => CountTabs() > before, TimeSpan.FromSeconds(5), "certificate tab");
+            var edit = FindAddressEdit();
+            SetValue(edit, server.Url + "/");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            AutomationElement dialog;
+            try
+            {
+                dialog = WaitForElement(() => FindByName("보안 인증서 오류"), TimeSpan.FromSeconds(20));
+            }
+            catch
+            {
+                DumpTree();
+                throw;
+            }
+            var requestText = dialog.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>()
+                .Select(element => element.Current.Name)
+                .FirstOrDefault(name => name.Contains("요청 주소:", StringComparison.Ordinal))
+                ?? throw new InvalidOperationException("certificate dialog did not show request URL");
+            var close = dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "닫기"))
+                ?? throw new InvalidOperationException("certificate dialog close button missing");
+            if (!requestText.Contains(server.Url, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("certificate dialog request URL mismatch");
+            Invoke(close);
+            WaitFor(() => FindByName("보안 인증서 오류") is null, TimeSpan.FromSeconds(8), "certificate dialog close");
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            WaitFor(() => CountTabs() <= before, TimeSpan.FromSeconds(8), "certificate tab close");
+            return "actual certificate error dialog shown with request URL and close action";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static AutomationElement WaitForElement(Func<AutomationElement?> find, TimeSpan timeout)
+    {
+        var started = Stopwatch.StartNew();
+        while (started.Elapsed < timeout)
+        {
+            if (find() is { } element) return element;
+            Thread.Sleep(250);
+        }
+        throw new TimeoutException("UI element not found");
     }
 
     private static string OpenFindAndSearch()

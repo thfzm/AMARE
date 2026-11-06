@@ -6,6 +6,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using System.Windows.Forms;
@@ -311,6 +316,84 @@ internal static class Phase21Probes
         finally
         {
             WebViewHelpers.DisposeView(host, view);
+        }
+    }
+
+    public static async Task<ProbeResult> KestrelCertificateErrorAsync(Control host, string root)
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("localhost");
+        san.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(san.Build());
+        using var ephemeral = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        var pfx = ephemeral.Export(X509ContentType.Pfx);
+        using var certificate = new X509Certificate2(
+            pfx, (string?)null,
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.UserKeySet);
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(Phase21Probes).Assembly.GetName().Name,
+            EnvironmentName = Environments.Production
+        });
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate));
+        });
+        await using var app = builder.Build();
+        app.MapGet("/", () => Results.Content(
+            "<!doctype html><title>Certificate probe</title><h1>ok</h1>", "text/html"));
+        await app.StartAsync();
+        var url = app.Urls.First();
+        var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-kestrel-cert"));
+        try
+        {
+            var certificateError = new TaskCompletionSource<CoreWebView2WebErrorStatus>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            void Handler(object? sender, CoreWebView2ServerCertificateErrorDetectedEventArgs args)
+            {
+                args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
+                certificateError.TrySetResult(args.ErrorStatus);
+            }
+            view.CoreWebView2.ServerCertificateErrorDetected += Handler;
+            try
+            {
+                view.CoreWebView2.Navigate(url);
+                var status = await certificateError.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                var data = new Dictionary<string, object?>
+                {
+                    ["server_url"] = url,
+                    ["navigation_success"] = false,
+                    ["web_error_status"] = status.ToString(),
+                    ["certificate_rejected"] = true,
+                    ["action"] = "cancel",
+                    ["user_bypass_implemented"] = false,
+                };
+                return Result("webview2_certificate_error", ProbeStatus.Pass, true,
+                    "Kestrel HTTPS self-signed certificate raised ServerCertificateErrorDetected and was cancelled; no bypass", data);
+            }
+            catch (TimeoutException)
+            {
+                return Result("webview2_certificate_error", ProbeStatus.Unverified, true,
+                    "Kestrel HTTPS certificate event timed out; actual WebView2 event not observed",
+                    new { server_url = url, navigation_success = (bool?)null, certificate_rejected = (bool?)null });
+            }
+            finally
+            {
+                view.CoreWebView2.ServerCertificateErrorDetected -= Handler;
+            }
+        }
+        finally
+        {
+            WebViewHelpers.DisposeView(host, view);
+            await app.StopAsync();
         }
     }
 

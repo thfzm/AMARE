@@ -18,4 +18,8 @@
   <ItemGroup>
     <Content Include="assets\sample.webm" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
