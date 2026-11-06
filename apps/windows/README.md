@@ -2,7 +2,7 @@
 
 AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + WebView2 Evergreen 기반 데스크톱 브라우저입니다.
 
-## 0.31.0 구현 상태
+## 0.32.0 구현 상태
 
 | 영역 | 상태 |
 |---|---|
@@ -26,7 +26,7 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | Release preflight | version/arch/assets/checksum unique **PASS** |
 | Update package manifest | `amare-update.json` + `VERSION` + SHA-256 sidecar 검증 **PASS** |
 | Local web compatibility | SPA/cookie/session/upload/audio/video/fullscreen/PiP/WebSocket/zoom/redirect **PASS**; cert UX/WS close cleanup **UNVERIFIED** |
-| Certificate error handling | **PASS** — Kestrel TLS handshake + actual self-signed/expired/hostname-mismatch dialog with type-specific Korean message, retry, back, other-tab independence; Cancel/no bypass; local trusted CA **UNVERIFIED** (CurrentUser trust-store prompt/timeout) |
+| Certificate error handling | **PASS** — 실제 self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; CA chain/SAN/EKU/custom-trust TLS simulation **PASS**, untrusted CA 거부 **PASS**; CurrentUser trust-store/WebView2 local CA **UNVERIFIED/BLOCKED** |
 | 30-tab memory | **PASS** (empty 1,745 MB / content 2,078 MB / close 0 MB; breakdown recorded) |
 | Interrupted update recovery | journal/backup/recovery/health timeout/crash-after-apply **PASS** |
 | Session recovery | graceful/forced kill restore **PASS** (6→6) |
@@ -34,7 +34,7 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | SQLite/WAL recovery | recovery tests **4/4 PASS**, storage 10/10, backup 10/10 |
 | WebSocket | local connect/echo/close/reconnect **PASS**; actual AMARE tab-close/browser-close cleanup **PASS** |
 | Media audio/video | audio/video play/pause/volume/seek **PASS**; fullscreen/PiP actual **PASS** |
-| Certificate error | **PASS** self-signed/expired/hostname-mismatch actual event/dialog + retry/back/other-tab; local trusted CA **UNVERIFIED**; no bypass |
+| Certificate error | **PASS** self-signed/expired/hostname-mismatch actual event/dialog + retry/back/other-tab; CA custom-trust simulation **PASS**; CurrentUser/WebView2 local CA **UNVERIFIED**; no bypass |
 | Native tab drag | **PASS** first→last, last→first, first→middle, middle→last, middle→first, middle→other-middle, same-position, cancel, after-close; cross-window forward+reverse **PASS**; rapid/tear-off/create-close-move **UNVERIFIED** |
 | API-based AI | provider 선택 + streaming/cancel UI 구현, mock success/401/stream **PASS**, 실제 key **UNVERIFIED** |
 | Diagnostics | 구현, GUI dialog **PASS**, GPU **UNVERIFIED** |
@@ -63,7 +63,7 @@ dotnet run --project AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
 `tools/verify-windows.ps1 -CI`가 다음 portable ZIP을 생성합니다.
 
 ```text
-artifacts/windows/AMARE-0.31.0-win-x64.zip
+artifacts/windows/AMARE-0.32.0-win-x64.zip
 ```
 
 이 ZIP은 `AMARE.Updater.exe`, `VERSION`, `amare-update.json`, `RELEASE_NOTES.md`를 포함하는 개발/테스트용 portable package이며 서명된 MSIX 설치 프로그램이 아닙니다. SHA-256 sidecar와 release manifest도 함께 생성됩니다.
