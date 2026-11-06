@@ -58,6 +58,9 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int command);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
+
     private sealed record Result(string Name, bool Passed, string Detail);
 
     [STAThread]
@@ -799,7 +802,8 @@ internal static class Program
 
     private static string OpenAndCloseDownloads()
     {
-        Invoke(FindById("DownloadsButton") ?? throw new InvalidOperationException("DownloadsButton missing"));
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        Invoke(WaitFindById("DownloadsButton", TimeSpan.FromSeconds(8)));
         WaitFor(() => FindByName("No downloads in this session") is not null
             || FindByName("Downloads") is not null, TimeSpan.FromSeconds(5), "Downloads menu");
         SendKeys.SendWait("{ESC}");
@@ -808,20 +812,18 @@ internal static class Program
 
     private static string ResizeMaximizeRestore()
     {
-        if (_window is null || !_window.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
-        {
-            throw new InvalidOperationException("WindowPattern unavailable");
-        }
-        var window = (WindowPattern)pattern;
-        if (!window.Current.CanMaximize) throw new InvalidOperationException("window cannot maximize");
-        window.SetWindowVisualState(WindowVisualState.Maximized);
-        Thread.Sleep(800);
-        if (window.Current.WindowVisualState != WindowVisualState.Maximized)
+        if (_process is null) throw new InvalidOperationException("process missing");
+        var handle = _process.MainWindowHandle;
+        SetForegroundWindow(handle);
+        ShowWindow(handle, 3);
+        Thread.Sleep(1500);
+        var style = (long)GetWindowLongPtr(handle, -16);
+        if ((style & 0x01000000L) == 0)
         {
             throw new InvalidOperationException("window did not maximize");
         }
-        window.SetWindowVisualState(WindowVisualState.Normal);
-        Thread.Sleep(500);
+        ShowWindow(handle, 9);
+        Thread.Sleep(800);
         return "maximized and restored";
     }
 

@@ -413,8 +413,8 @@ internal static class Phase21Probes
                 || !TrustExists(publicCa.Thumbprint))
             {
                 return Result("webview2_local_trusted_ca", ProbeStatus.Unverified, true,
-                    "Local test CA could not be installed non-interactively; trust-store check skipped",
-                    new { tls_handshake_ok = false, trust_installed = false, reason = addOutput });
+                    $"Local test CA could not be installed non-interactively; trust-store check skipped ({addOutput.Trim()})",
+                    new { tls_handshake_ok = false, trust_installed = false, reason = addOutput.Trim() });
             }
             trustInstalled = true;
 
