@@ -395,7 +395,7 @@ internal static class Phase21Probes
         var serial = RandomNumberGenerator.GetBytes(16);
         serial[0] &= 0x7F;
         using var issued = serverRequest.Create(
-            ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30), serial);
+            ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(29), serial);
         using var serverWithKey = issued.CopyWithPrivateKey(serverKey);
         var pfx = serverWithKey.Export(X509ContentType.Pfx);
         using var certificate = new X509Certificate2(
