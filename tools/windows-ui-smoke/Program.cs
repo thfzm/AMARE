@@ -409,7 +409,9 @@ internal static class Program
         var targetRect = items[targetIndex].Current.BoundingRectangle;
         var startX = (int)(sourceRect.X + Math.Min(24, sourceRect.Width / 3));
         var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
-        var endX = (int)(targetRect.X + Math.Max(12, targetRect.Width - 20));
+        var endX = targetIndex < sourceIndex
+            ? (int)(targetRect.X + Math.Min(12, targetRect.Width / 4))
+            : (int)(targetRect.X + Math.Max(12, targetRect.Width - 20));
         var endY = (int)(targetRect.Y + targetRect.Height / 2);
         SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
         MoveMouseAbsolute(startX, startY);

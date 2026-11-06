@@ -92,6 +92,8 @@ internal sealed class VerifyForm : Form
             await Add("webview2_web_compat", () => Phase21Probes.WebCompatibilityAsync(this, _root));
             await Add("webview2_https_navigation", () => Phase21Probes.HttpsNavigationAsync(this, _root));
             await Add("webview2_certificate_error", () => Phase21Probes.KestrelCertificateErrorAsync(this, _root));
+            await Add("webview2_certificate_expired", () => Phase21Probes.KestrelCertificateExpiredAsync(this, _root));
+            await Add("webview2_certificate_hostname_mismatch", () => Phase21Probes.KestrelCertificateHostnameMismatchAsync(this, _root));
             await Add("webview2_tab_lifecycle_10", () => Phase21Probes.TabLifecycleAsync(this, _root));
             await Add("profile_isolation", () => Probes.ProfileIsolationAsync(this, _root));
             await Add("cdp_dom_click_input_scroll", () => Probes.CdpInteractionAsync(this, _root));

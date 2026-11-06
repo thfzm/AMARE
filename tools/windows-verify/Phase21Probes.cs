@@ -319,20 +319,34 @@ internal static class Phase21Probes
         }
     }
 
-    public static async Task<ProbeResult> KestrelCertificateErrorAsync(Control host, string root)
+    public static Task<ProbeResult> KestrelCertificateErrorAsync(Control host, string root) =>
+        KestrelCertificateProbeAsync(host, root, "webview2_certificate_error", "self-signed",
+            expired: false, dnsName: "localhost", includeLoopbackSan: true);
+
+    public static Task<ProbeResult> KestrelCertificateExpiredAsync(Control host, string root) =>
+        KestrelCertificateProbeAsync(host, root, "webview2_certificate_expired", "expired",
+            expired: true, dnsName: "localhost", includeLoopbackSan: true);
+
+    public static Task<ProbeResult> KestrelCertificateHostnameMismatchAsync(Control host, string root) =>
+        KestrelCertificateProbeAsync(host, root, "webview2_certificate_hostname_mismatch", "hostname-mismatch",
+            expired: false, dnsName: "wrong.example", includeLoopbackSan: false);
+
+    private static async Task<ProbeResult> KestrelCertificateProbeAsync(
+        Control host, string root, string probeName, string kind, bool expired, string dnsName, bool includeLoopbackSan)
     {
         using var key = RSA.Create(2048);
-        var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var request = new CertificateRequest($"CN={dnsName}", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
             new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
         var san = new SubjectAlternativeNameBuilder();
-        san.AddDnsName("localhost");
-        san.AddIpAddress(IPAddress.Loopback);
+        san.AddDnsName(dnsName);
+        if (includeLoopbackSan) san.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(san.Build());
-        using var ephemeral = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        var notBefore = expired ? DateTimeOffset.UtcNow.AddDays(-30) : DateTimeOffset.UtcNow.AddDays(-1);
+        var notAfter = expired ? DateTimeOffset.UtcNow.AddDays(-2) : DateTimeOffset.UtcNow.AddDays(30);
+        using var ephemeral = request.CreateSelfSigned(notBefore, notAfter);
         var pfx = ephemeral.Export(X509ContentType.Pfx);
         using var certificate = new X509Certificate2(
             pfx, (string?)null,
@@ -352,7 +366,7 @@ internal static class Phase21Probes
             "<!doctype html><title>Certificate probe</title><h1>ok</h1>", "text/html"));
         await app.StartAsync();
         var url = app.Urls.First();
-        var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, "phase21-kestrel-cert"));
+        var (_, view) = await WebViewHelpers.CreateViewAsync(host, Path.Combine(root, $"phase21-kestrel-cert-{kind}"));
         try
         {
             var certificateError = new TaskCompletionSource<CoreWebView2WebErrorStatus>(
@@ -369,6 +383,7 @@ internal static class Phase21Probes
                 var status = await certificateError.Task.WaitAsync(TimeSpan.FromSeconds(15));
                 var data = new Dictionary<string, object?>
                 {
+                    ["certificate_kind"] = kind,
                     ["server_url"] = url,
                     ["navigation_success"] = false,
                     ["web_error_status"] = status.ToString(),
@@ -376,14 +391,14 @@ internal static class Phase21Probes
                     ["action"] = "cancel",
                     ["user_bypass_implemented"] = false,
                 };
-                return Result("webview2_certificate_error", ProbeStatus.Pass, true,
-                    "Kestrel HTTPS self-signed certificate raised ServerCertificateErrorDetected and was cancelled; no bypass", data);
+                return Result(probeName, ProbeStatus.Pass, true,
+                    $"Kestrel HTTPS {kind} certificate raised ServerCertificateErrorDetected ({status}) and was cancelled; no bypass", data);
             }
             catch (TimeoutException)
             {
-                return Result("webview2_certificate_error", ProbeStatus.Unverified, true,
-                    "Kestrel HTTPS certificate event timed out; actual WebView2 event not observed",
-                    new { server_url = url, navigation_success = (bool?)null, certificate_rejected = (bool?)null });
+                return Result(probeName, ProbeStatus.Unverified, true,
+                    $"Kestrel HTTPS {kind} certificate event timed out; actual WebView2 event not observed",
+                    new { certificate_kind = kind, server_url = url, navigation_success = (bool?)null, certificate_rejected = (bool?)null });
             }
             finally
             {
