@@ -55,7 +55,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Rust tests: **PASS**
 - C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **40/40 PASS** (window, address, tabs, switch/close, native drag 9 combos+cancel+after-close, self-signed/expired/hostname-mismatch certificate dialog+retry+back, cross-window forward+reverse, tab churn, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 7-tab stress)
+- UIAutomation GUI smoke: **41/41 PASS** (window, address, tabs, switch/close, native drag 9 combos+cancel+after-close, self-signed/expired/hostname-mismatch certificate dialog+retry+back+other-tab, cross-window forward+reverse, tab churn, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 7-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
@@ -67,9 +67,9 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - SQLite/WAL recovery: **4/4 PASS** (WAL checkpoint/reopen, corrupt copy, missing DB restore, future schema copy)
 - Native tab drag: **PASS** actual pointer first→last, last→first, first→middle, middle→last, middle→first, middle→other-middle, same-position, cancel; cross-window forward+reverse **PASS**; rapid/tear-off/create-close-move **UNVERIFIED**
 - WebSocket actual AMARE tab-close and browser-close cleanup: **PASS**; connect/echo/reconnect PASS
-- Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event/dialog + retry/back; no bypass; local trusted CA UNVERIFIED
+- Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; no bypass; local trusted CA **UNVERIFIED** (trust-store install timeout)
 - Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning; actual self-signed/expired/hostname-mismatch **PASS**; trusted local CA **UNVERIFIED**; no bypass
-- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.29 values in report)
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.30 values in report)
 - Native tab drag reorder: **PASS** actual pointer 9 combos+cancel; cross-window forward+reverse **PASS**
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS
