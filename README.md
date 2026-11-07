@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.32.0 Release Candidate Stabilization** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. 인증서 유형별 실제 UI, CA chain/simulation, native drag/cross-window 경계, 세션/업데이트/보안 회귀, GUI 41/41, 140 PASS/0 FAIL이 확인됐지만 CurrentUser trust-store/WebView2 local CA는 Windows CI 제한으로 **UNVERIFIED/BLOCKED**, tear-off/이동 중 창 종료/30분 장시간/Windows 11 실기기/DPI/API/signing은 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
+현재 저장소는 **AMARE 0.33.0 Final RC Validation & Deployment Readiness** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. 실제 tear-off 새 창 생성, 인증서 유형별 UI, CA chain simulation, drag/cross-window/session/update 회귀, GUI 42/42, 140 PASS/0 FAIL이 확인됐지만 CurrentUser/WebView2 local CA, 30분 stress, 이동 중 창 종료, Windows 11 실기기/DPI/IME, signed MSIX/code signing은 **UNVERIFIED/BLOCKED**입니다. 아래 문서의 미검증 항목은 구현 완료로 간주하지 않습니다.
 
 ## 핵심 원칙
 
@@ -128,6 +128,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.30.0: **인증서 3종 실제 dialog+retry/back/other-tab PASS, local trusted CA UNVERIFIED, native drag/cross-window/session 회귀 PASS, GUI 41/41, 139 PASS/0 FAIL**; tear-off/이동 중 창 종료/장시간/DPR/API/signing은 UNVERIFIED/BLOCKED
 - Windows 0.31.0: **인증서 3종 실제 dialog+retry/back/other-tab, native drag/cross-window/session/update 회귀 PASS, GUI 41/41, 139 PASS/0 FAIL; Diagnostics에 DPI/display/WebView2/log/update/cert 상태 추가**; local trusted CA/tear-off/이동 중 창 종료/30분 stress/Windows 11 실기기/DPI/API/signing은 UNVERIFIED/BLOCKED
 - Windows 0.32.0: **CA chain/SAN/EKU/custom-trust TLS simulation+untrusted 거부 PASS, 인증서 3종 실제 dialog+retry/back/other-tab PASS, drag/cross-window/session/update 회귀 PASS, GUI 41/41, 140 PASS/0 FAIL**; CurrentUser trust-store/WebView2 local CA, tear-off/이동 중 창 종료/30분 stress/Windows 11 실기기/DPI/API/signing은 UNVERIFIED/BLOCKED
+- Windows 0.33.0: **native tear-off 실제 새 창+tab snapshot PASS, GUI 42/42, 140 PASS/0 FAIL, CA chain/custom-trust simulation+untrusted 거부 PASS**; CurrentUser/WebView2 local CA/30분 stress/tear-off 재이동/이동 중 창 종료/Windows 11/DPI/API/signing은 UNVERIFIED/BLOCKED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
