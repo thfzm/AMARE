@@ -5,7 +5,7 @@
 ## Findings
 
 - Per-cycle UI Automation is not sufficient to explain the growth; keyboard-only stress still grows handles.
-- Handle type snapshots show type31/type8 as the primary increase; their actual object type names remain UNVERIFIED because safe dynamic resolution failed.
+- ObjectTypesInformation dynamically identifies type31 as **Composition** and type8 as **Process**; their creation stack and cleanup failure remain UNVERIFIED.
 - No speculative `CloseHandle`, forced GC, or WebView2 rewrite was made.
 
 ## Scope
