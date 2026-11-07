@@ -105,7 +105,7 @@ public sealed class GitHubReleaseClient
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         if (!_http.DefaultRequestHeaders.UserAgent.Any())
         {
-            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AMARE", "0.37"));
+            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AMARE", "0.38"));
         }
     }
 

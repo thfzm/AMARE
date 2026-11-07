@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
-$Version = "0.37.0"
+$Version = "0.38.0"
 $PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir
@@ -298,6 +298,16 @@ if ($SkipWinUI) {
     }
     Invoke-Step "windows_probe_build" {
         dotnet build tools/windows-verify/WindowsVerify.csproj -c Release -p:Platform=x64
+    }
+    Invoke-Step "handle_forensics_build" {
+        dotnet build tools/handle-forensics/HandleForensics.csproj -c Release -p:Platform=x64
+    }
+    Invoke-Step "handle_forensics_self_test" {
+        $forensicsOut = Join-Path $OutputDir "handle-forensics-self.json"
+        & dotnet run --project tools/handle-forensics/HandleForensics.csproj -c Release -- --duration 0 --out $forensicsOut
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $forensicsOut)) {
+            throw "HandleForensics self-test did not produce a snapshot."
+        }
     }
     Invoke-Step "winui_package" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
