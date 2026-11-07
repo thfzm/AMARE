@@ -64,6 +64,7 @@ public sealed partial class MainWindow : Window
     private bool _restoreSession = true;
     private bool _initializingSettings;
     private bool _started;
+    private TabTransferSnapshot? _initialTab;
     private long? _sessionId;
     private string? _lastSessionFingerprint;
 
@@ -287,6 +288,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    public void StartWithTab(string url, string title, bool pinned, double zoomFactor)
+    {
+        _initialTab = new TabTransferSnapshot(url, title, pinned, zoomFactor);
+    }
+
     private async void RootGrid_Loaded(object sender, RoutedEventArgs e)
     {
         if (_started)
@@ -330,7 +336,15 @@ public sealed partial class MainWindow : Window
         await RefreshBookmarkCacheAsync();
         await RefreshHistoryCacheAsync();
         await CreateEnvironmentAsync();
-        await RestoreSessionOrNewTabAsync();
+        if (_initialTab is { } initialTab)
+        {
+            _initialTab = null;
+            await AddTransferredTabAsync(initialTab);
+        }
+        else
+        {
+            await RestoreSessionOrNewTabAsync();
+        }
         _ = ResumeProfileCleanupAsync();
         AppLog.Info($"AMARE initialized profile={_profileId} engine={_engineId} restore_session={_restoreSession}");
         PortableUpdateRecovery.MarkHealthyIfRequested(
@@ -1132,14 +1146,41 @@ public sealed partial class MainWindow : Window
         await SetZoomAsync(snapshot.ZoomFactor);
     }
 
-    private void TabList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    private async void TabList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
+        if (args.DropResult == DataPackageOperation.None
+            && args.Items.FirstOrDefault() is BrowserTabModel dragged
+            && IsPointerOutsideWindow()
+            && GetTabSnapshot(dragged.Id) is { } snapshot)
+        {
+            try
+            {
+                var window = new MainWindow();
+                window.StartWithTab(snapshot.Url, snapshot.Title, snapshot.Pinned, snapshot.ZoomFactor);
+                window.Activate();
+                await CompleteTransferAsync(dragged.Id);
+                ScheduleSessionSave();
+                return;
+            }
+            catch (Exception exception)
+            {
+                StatusText.Text = $"Tab tear-off failed; source tab preserved: {exception.Message}";
+            }
+        }
         var ordered = TabList.Items.OfType<BrowserTabModel>().ToArray();
         for (var index = 0; index < ordered.Length; index++)
         {
             _tabs.Move(ordered[index].Id, index);
         }
         ScheduleSessionSave();
+    }
+
+    private bool IsPointerOutsideWindow()
+    {
+        if (!GetCursorPos(out var point)) return false;
+        var handle = WindowNative.GetWindowHandle(this);
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var rect)) return false;
+        return point.X < rect.Left || point.X >= rect.Right || point.Y < rect.Top || point.Y >= rect.Bottom;
     }
 
     private void SelectTab(BrowserTabModel model)
@@ -1860,7 +1901,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.32.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.33.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
@@ -2994,5 +3035,27 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
 
 }

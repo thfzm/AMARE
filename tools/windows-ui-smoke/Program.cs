@@ -131,6 +131,7 @@ internal static class Program
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("cross_window_tab_move", CrossWindowTabMove);
+            Check("tear_off_tab", TearOffTab);
             Check("tab_churn", TabChurn);
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
@@ -1021,6 +1022,85 @@ internal static class Program
             catch { }
             WaitFor(() => WindowsForProcess(_process.Id).Length <= beforeWindows.Length, TimeSpan.FromSeconds(10), "target close");
             SetForegroundWindow(sourceHandle);
+        }
+    }
+
+    private static string TearOffTab()
+    {
+        if (_process is null || _window is null) throw new InvalidOperationException("source window missing");
+        for (var i = CountTabs(); i < 3; i++)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(250);
+        }
+        WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "tear-off tabs");
+        NavigateToExample();
+        var sourceHandle = _process.MainWindowHandle;
+        SetWindowPos(sourceHandle, IntPtr.Zero, 40, 80, 700, 620, 0x0001 | 0x0004 | 0x0040);
+        ShowWindow(sourceHandle, 9);
+        SetForegroundWindow(sourceHandle);
+        Thread.Sleep(500);
+        var sourceWindow = AutomationElement.FromHandle(sourceHandle);
+        var list = FindByIdIn(sourceWindow, "TabList") ?? throw new InvalidOperationException("TabList missing");
+        var items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(items.Length >= 3, "need three tabs for tear-off");
+        var source = items[1];
+        if (source.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+            ((SelectionItemPattern)selection).Select();
+        Thread.Sleep(300);
+        var sourceRect = source.Current.BoundingRectangle;
+        var beforeWindows = WindowsForProcess(_process.Id);
+        var startX = (int)(sourceRect.X + Math.Min(24, sourceRect.Width / 3));
+        var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
+        var endX = Math.Min(GetSystemMetrics(0) - 40, (int)sourceRect.X + 700);
+        var endY = (int)sourceRect.Y + 220;
+        SetForegroundWindow(sourceHandle);
+        MoveMouseAbsolute(startX, startY);
+        Thread.Sleep(250);
+        SendMouseButton(MouseLeftDown);
+        Thread.Sleep(300);
+        for (var i = 1; i <= 24; i++)
+        {
+            MoveMouseAbsolute(startX + (endX - startX) * i / 24, startY + (endY - startY) * i / 24);
+            Thread.Sleep(80);
+        }
+        Thread.Sleep(300);
+        SendMouseButton(MouseLeftUp);
+        AutomationElement? created = null;
+        try
+        {
+            WaitFor(() =>
+            {
+                var current = WindowsForProcess(_process.Id);
+                created = current.FirstOrDefault(window =>
+                    !beforeWindows.Any(before => before.GetRuntimeId().SequenceEqual(window.GetRuntimeId())));
+                return created is not null;
+            }, TimeSpan.FromSeconds(15), "tear-off window");
+            if (created is null) throw new InvalidOperationException("tear-off window not found");
+            var targetTabs = CountTabs(created);
+            if (targetTabs != 1) throw new InvalidOperationException($"tear-off target tabs={targetTabs}");
+            if (CountTabs(sourceWindow) < 2) throw new InvalidOperationException("tear-off source tab lost");
+            var targetHandle = (IntPtr)created.Current.NativeWindowHandle;
+            if (created.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+                ((WindowPattern)pattern).Close();
+            WaitFor(() => WindowsForProcess(_process.Id).Length <= beforeWindows.Length,
+                TimeSpan.FromSeconds(10), "tear-off window close");
+            SetForegroundWindow(sourceHandle);
+            return $"tear-off target tabs=1 source tabs={CountTabs(sourceWindow)}";
+        }
+        finally
+        {
+            if (created is not null)
+            {
+                try
+                {
+                    if (created.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+                        ((WindowPattern)pattern).Close();
+                }
+                catch { }
+            }
         }
     }
 
