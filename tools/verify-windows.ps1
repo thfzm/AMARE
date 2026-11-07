@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $OutputDir = Join-Path (Get-Location) "artifacts\windows"
-$Version = "0.39.0"
+$Version = "0.40.0"
 $PortableName = "AMARE-$Version-win-x64"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:AMARE_VERIFY_OUTPUT = $OutputDir
@@ -301,6 +301,29 @@ if ($SkipWinUI) {
     }
     Invoke-Step "handle_forensics_build" {
         dotnet build tools/handle-forensics/HandleForensics.csproj -c Release -p:Platform=x64
+    }
+    Invoke-Step "etw_provider_probe" {
+        $etwOut = Join-Path $OutputDir "etw-provider-probe.txt"
+        $lines = New-Object System.Collections.Generic.List[string]
+        $logman = Get-Command logman.exe -ErrorAction SilentlyContinue
+        $lines.Add("logman=" + $(if ($logman) { $logman.Source } else { "missing" }))
+        if ($logman) {
+            & $logman.Source query providers 2>&1 | Out-File -FilePath $etwOut -Encoding utf8
+            $providerMatches = Select-String -Path $etwOut -Pattern 'WebView|Kernel-Object|Dwm|Composition|Win32k|COMRuntime' -SimpleMatch:$false
+            $lines.Add("matching_providers=" + ($providerMatches | Measure-Object).Count)
+            foreach ($match in ($providerMatches | Select-Object -First 20)) {
+                $lines.Add($match.Line)
+            }
+        }
+        $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
+        $lines.Add("wpr=" + $(if ($wpr) { $wpr.Source } else { "missing" }))
+        if ($wpr) {
+            $wprOut = Join-Path $OutputDir "wpr-providers.txt"
+            & $wpr.Source -providers 2>&1 | Out-File -FilePath $wprOut -Encoding utf8
+            Add-Content -Path $etwOut -Value ("wpr_providers_file=" + $wprOut)
+        }
+        Add-Content -Path $etwOut -Value $lines
+        Write-Host "ETW probe: $etwOut"
     }
     Invoke-Step "handle_forensics_self_test" {
         $forensicsOut = Join-Path $OutputDir "handle-forensics-self.json"

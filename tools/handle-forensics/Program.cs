@@ -31,6 +31,19 @@ do
     Thread.Sleep(TimeSpan.FromSeconds(interval));
 } while (started.Elapsed.TotalSeconds < duration);
 
+if (samples.Count >= 2)
+{
+    var first = samples[0];
+    var last = samples[^1];
+    Console.WriteLine("=== DIFF ===");
+    Console.WriteLine($"pid={first.Pid} handle {first.Handles} -> {last.Handles} delta={last.Handles - first.Handles}");
+    Console.WriteLine($"types first=[{first.Types}]");
+    Console.WriteLine($"types last =[{last.Types}]");
+    Console.WriteLine($"process targets first=[{first.ProcessTargets}]");
+    Console.WriteLine($"process targets last =[{last.ProcessTargets}]");
+    if (first.Pid != last.Pid) Console.WriteLine("WARNING: owner PID changed across snapshots");
+}
+
 if (!string.IsNullOrWhiteSpace(output))
 {
     var directory = Path.GetDirectoryName(output);
