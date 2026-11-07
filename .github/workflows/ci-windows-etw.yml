@@ -1,0 +1,102 @@
+name: ci-windows-etw
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-windows-etw
+  cancel-in-progress: false
+
+jobs:
+  windows-etw:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Ensure WebView2 Runtime
+        shell: pwsh
+        run: |
+          $candidates = @()
+          if (${env:ProgramFiles(x86)}) { $candidates += (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application") }
+          if ($env:ProgramFiles) { $candidates += (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application") }
+          $found = $candidates | Where-Object { Test-Path $_ } | ForEach-Object {
+            Get-ChildItem $_ -Filter msedgewebview2.exe -Recurse -ErrorAction SilentlyContinue
+          } | Select-Object -First 1
+          if (-not $found) {
+            $setup = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
+            Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $setup
+            Start-Process -FilePath $setup -ArgumentList "/silent /install" -Wait
+          }
+
+      - name: Start ETW capture
+        shell: pwsh
+        run: |
+          $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
+          if (-not $wpr) { throw "wpr.exe not found" }
+          $status = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\wpr-start.txt"
+          New-Item -ItemType Directory -Force -Path (Split-Path $status) | Out-Null
+          & $wpr.Source -logtostdout -start GeneralProfile -start CPU -filemode *>&1 | Tee-Object -FilePath $status
+          if ($LASTEXITCODE -ne 0) { throw "wpr start failed: $LASTEXITCODE" }
+
+      - name: Run lifecycle with ETW
+        shell: pwsh
+        env:
+          AMARE_VERIFY_OUTPUT: ${{ github.workspace }}\artifacts\windows
+          AMARE_UI_LIFECYCLE: "1"
+          AMARE_LIFECYCLE_RESULTS: ${{ github.workspace }}\artifacts\windows\handle-forensics\lifecycle.json
+        run: |
+          .\tools\verify-windows.ps1 -CI
+
+      - name: Stop ETW and analyze
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $etl = Join-Path $dir "amare-lifecycle.etl"
+          $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
+          if ($wpr) {
+            & $wpr.Source -stop $etl -compress *>&1 | Tee-Object -FilePath (Join-Path $dir "wpr-stop.txt")
+          }
+          if (Test-Path $etl) {
+            Get-Item $etl | Select-Object FullName,Length,LastWriteTime | ConvertTo-Json | Set-Content (Join-Path $dir "etl-info.json")
+            $tracerpt = Get-Command tracerpt.exe -ErrorAction SilentlyContinue
+            if ($tracerpt) {
+              try {
+                & $tracerpt.Source $etl -of CSV -o (Join-Path $dir "etw-events.csv") -y 2>&1 | Out-File (Join-Path $dir "tracerpt.log")
+                & $tracerpt.Source $etl -summary (Join-Path $dir "etw-summary.txt") -y 2>&1 | Out-File -Append (Join-Path $dir "tracerpt.log")
+              } catch {
+                "tracerpt failed: $($_.Exception.Message)" | Set-Content (Join-Path $dir "tracerpt-error.txt")
+              }
+            } else {
+              "tracerpt.exe missing" | Set-Content (Join-Path $dir "tracerpt-error.txt")
+            }
+          } else {
+            "ETL missing" | Set-Content (Join-Path $dir "etl-error.txt")
+          }
+
+      - name: Upload ETW artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-etw-${{ github.run_id }}
+          path: artifacts/windows
+          if-no-files-found: warn

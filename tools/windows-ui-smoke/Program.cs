@@ -313,6 +313,16 @@ internal static class Program
         try
         {
             Launch(exe);
+            if (Environment.GetEnvironmentVariable("AMARE_UI_LIFECYCLE") == "1")
+            {
+                Check("lifecycle_ab_to_j", LifecycleExperiment);
+                foreach (var result in Results)
+                {
+                    Console.WriteLine($"{(result.Passed ? "PASS" : "FAIL")} {result.Name}: {result.Detail}");
+                }
+                TryClose();
+                return Results.All(result => result.Passed) ? 0 : 1;
+            }
             Check("window_created", () =>
             {
                 Require(_window is not null, "main window not found");
@@ -1423,6 +1433,93 @@ internal static class Program
         started.Stop();
         _process!.Refresh();
         return $"tabs={CountTabs()} working_set_mb={_process.WorkingSet64 / 1024 / 1024} create5_ms={started.ElapsedMilliseconds}";
+    }
+
+    private static string LifecycleExperiment()
+    {
+        var records = new List<object>();
+        var started = DateTimeOffset.UtcNow;
+        var output = Environment.GetEnvironmentVariable("AMARE_LIFECYCLE_RESULTS");
+        void Snap(string stage, string note = "")
+        {
+            try
+            {
+                _process?.Refresh();
+                var snapshot = new
+                {
+                    stage,
+                    note,
+                    timestamp = DateTimeOffset.UtcNow,
+                    pid = _process?.Id ?? 0,
+                    handles = _process?.HasExited == false ? _process.HandleCount : 0,
+                    working_set_mb = _process?.HasExited == false ? _process.WorkingSet64 / 1024 / 1024 : 0,
+                    tabs = _process?.HasExited == false ? CountTabs() : -1,
+                    webview2_processes = System.Diagnostics.Process.GetProcessesByName("msedgewebview2").Length,
+                    types = _process?.HasExited == false && _process is not null ? HandleSnapshot(_process.Id) : "exited"
+                };
+                records.Add(snapshot);
+                Console.WriteLine($"{stage}: handles={snapshot.handles} tabs={snapshot.tabs} ws={snapshot.working_set_mb}MB types=[{snapshot.types}]");
+            }
+            catch (Exception exception)
+            {
+                records.Add(new { stage, note, timestamp = DateTimeOffset.UtcNow, error = exception.GetType().Name });
+            }
+        }
+        Snap("A_start");
+        for (var minute = 1; minute <= 10; minute++)
+        {
+            Thread.Sleep(TimeSpan.FromMinutes(1));
+            Snap($"B_idle_{minute}m");
+        }
+        Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+        WaitFor(() => CountTabs() >= 2, TimeSpan.FromSeconds(8), "lifecycle tab 1");
+        Snap("C_tab_1");
+        while (CountTabs() < 10)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(250);
+        }
+        Snap("D_tabs_10");
+        while (CountTabs() > 1)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(200);
+        }
+        Snap("E_tabs_closed_1");
+        while (CountTabs() < 30)
+        {
+            Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+            Thread.Sleep(200);
+        }
+        Snap("F_tabs_30");
+        while (CountTabs() > 1)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(180);
+        }
+        Snap("G_tabs_closed_all");
+        Thread.Sleep(TimeSpan.FromMinutes(1));
+        Snap("H_wait_1m");
+        Thread.Sleep(TimeSpan.FromMinutes(5));
+        Snap("I_wait_5m");
+        TryClose(graceful: true);
+        Thread.Sleep(1000);
+        Snap("J_shutdown", $"process_exited={_process?.HasExited}");
+        var summary = $"lifecycle {DateTimeOffset.UtcNow - started} records={records.Count}";
+        if (!string.IsNullOrWhiteSpace(output))
+        {
+            var dir = Path.GetDirectoryName(output);
+            if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(output, JsonSerializer.Serialize(new
+            {
+                started_at = started,
+                finished_at = DateTimeOffset.UtcNow,
+                records
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        return summary;
     }
 
     private static string RestartAndCheckSession()
