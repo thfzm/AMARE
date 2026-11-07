@@ -1217,39 +1217,39 @@ internal static class Program
         while (started.Elapsed < deadline)
         {
             cycle++;
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
             if (cycle % 5 == 0)
             {
-                NavigateToExample();
+                SendKeys.SendWait("^l");
+                Thread.Sleep(100);
+                SendKeys.SendWait("https://example.com/{ENTER}");
+                Thread.Sleep(1800);
             }
             else
             {
-                Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
-                Thread.Sleep(250);
-                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+                SendKeys.SendWait("^t");
+                Thread.Sleep(300);
                 SendKeys.SendWait("^w");
-                Thread.Sleep(250);
+                Thread.Sleep(300);
             }
             if (cycle % 7 == 0)
             {
-                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
                 SendKeys.SendWait("^+{TAB}");
                 Thread.Sleep(150);
-            }
-            while (CountTabs() > baselineTabs + 2)
-            {
-                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
-                SendKeys.SendWait("^w");
-                Thread.Sleep(250);
             }
             if (started.Elapsed >= nextSample)
             {
                 nextSample = started.Elapsed + TimeSpan.FromSeconds(60);
                 _process?.Refresh();
+                // Sample tab count only once per minute. Per-cycle UIAutomation
+                // queries are a separate harness cost and are intentionally
+                // excluded from this run.
+                var tabs = CountTabs();
                 var webViewProcesses = System.Diagnostics.Process.GetProcessesByName("msedgewebview2").Length;
                 samples.Add($"{started.Elapsed.TotalMinutes:F0}m ws={(_process?.WorkingSet64 ?? 0) / 1024 / 1024}MB " +
-                    $"handles={_process?.HandleCount ?? 0} threads={_process?.Threads.Count ?? 0} wv={webViewProcesses} tabs={CountTabs()}");
+                    $"handles={_process?.HandleCount ?? 0} threads={_process?.Threads.Count ?? 0} wv={webViewProcesses} tabs={tabs}");
             }
-            Thread.Sleep(1000);
+            Thread.Sleep(700);
         }
         while (CountTabs() > baselineTabs)
         {
