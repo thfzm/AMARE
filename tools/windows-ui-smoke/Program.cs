@@ -47,7 +47,7 @@ internal static class Program
         {
             var length = 1 << 20;
             IntPtr buffer = IntPtr.Zero;
-            int status;
+            var status = -1;
             for (var attempt = 0; attempt < 4; attempt++)
             {
                 buffer = Marshal.AllocHGlobal(length);
