@@ -14,6 +14,130 @@ internal static class Program
     private static string? _exePath;
     private static long _startupMs;
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SystemHandleEntry
+    {
+        public IntPtr Object;
+        public IntPtr ProcessId;
+        public IntPtr Handle;
+        public uint GrantedAccess;
+        public ushort CreatorBackTraceIndex;
+        public ushort ObjectTypeIndex;
+        public uint HandleAttributes;
+        public uint Reserved;
+    }
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQuerySystemInformation(int infoClass, IntPtr info, int length, out int returned);
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryObject(IntPtr handle, int infoClass, IntPtr info, int length, out int returned);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll")]
+    private static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr sourceHandle,
+        IntPtr targetProcess, out IntPtr targetHandle, uint access, bool inherit, uint options);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    private static string HandleSnapshot(int pid)
+    {
+        try
+        {
+            var length = 1 << 20;
+            IntPtr buffer = IntPtr.Zero;
+            int status;
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                buffer = Marshal.AllocHGlobal(length);
+                status = NtQuerySystemInformation(64, buffer, length, out var returned);
+                if (status == unchecked((int)0xC0000004) && returned > length)
+                {
+                    Marshal.FreeHGlobal(buffer);
+                    buffer = IntPtr.Zero;
+                    length = returned;
+                    continue;
+                }
+                break;
+            }
+            if (buffer == IntPtr.Zero) return "";
+            try
+            {
+                if (status != 0) return "";
+                var count = Marshal.ReadIntPtr(buffer).ToInt64();
+                var entrySize = Marshal.SizeOf<SystemHandleEntry>();
+                var entryAddress = IntPtr.Add(buffer, 16);
+                var counts = new Dictionary<ushort, int>();
+                var samples = new Dictionary<ushort, IntPtr>();
+                for (long i = 0; i < count; i++)
+                {
+                    var entry = Marshal.PtrToStructure<SystemHandleEntry>(IntPtr.Add(entryAddress, (int)(i * entrySize)));
+                    if (entry.ProcessId.ToInt64() != pid) continue;
+                    counts[entry.ObjectTypeIndex] = counts.GetValueOrDefault(entry.ObjectTypeIndex) + 1;
+                    samples.TryAdd(entry.ObjectTypeIndex, entry.Handle);
+                }
+                var target = OpenProcess(0x0040, false, pid);
+                try
+                {
+                    var names = new Dictionary<ushort, string>();
+                    foreach (var (typeIndex, sourceHandle) in samples)
+                    {
+                        if (names.Count >= 8) break;
+                        if (target == IntPtr.Zero
+                            || !DuplicateHandle(target, sourceHandle, GetCurrentProcess(), out var duplicate, 0, false, 0x00000002))
+                        {
+                            names[typeIndex] = $"type{typeIndex}";
+                            continue;
+                        }
+                        try
+                        {
+                            var typeName = QueryTypeName(duplicate);
+                            names[typeIndex] = string.IsNullOrWhiteSpace(typeName) ? $"type{typeIndex}" : typeName;
+                        }
+                        finally
+                        {
+                            CloseHandle(duplicate);
+                        }
+                    }
+                    return string.Join(",", counts
+                        .OrderByDescending(pair => pair.Value)
+                        .Take(8)
+                        .Select(pair => $"{names.GetValueOrDefault(pair.Key, $"type{pair.Key}")}={pair.Value}"));
+                }
+                finally
+                {
+                    if (target != IntPtr.Zero) CloseHandle(target);
+                }
+            }
+            finally
+            {
+                if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
+            }
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string QueryTypeName(IntPtr handle)
+    {
+        var buffer = Marshal.AllocHGlobal(1024);
+        try
+        {
+            var status = NtQueryObject(handle, 2, buffer, 1024, out _);
+            if (status != 0) return "";
+            var length = Marshal.ReadInt16(buffer);
+            var text = Marshal.ReadIntPtr(buffer, 8);
+            return text == IntPtr.Zero || length <= 0 ? "" : Marshal.PtrToStringUni(text, length / 2);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
 
@@ -1246,8 +1370,9 @@ internal static class Program
                 // excluded from this run.
                 var tabs = CountTabs();
                 var webViewProcesses = System.Diagnostics.Process.GetProcessesByName("msedgewebview2").Length;
+                var handleTypes = _process is null ? "" : HandleSnapshot(_process.Id);
                 samples.Add($"{started.Elapsed.TotalMinutes:F0}m ws={(_process?.WorkingSet64 ?? 0) / 1024 / 1024}MB " +
-                    $"handles={_process?.HandleCount ?? 0} threads={_process?.Threads.Count ?? 0} wv={webViewProcesses} tabs={tabs}");
+                    $"handles={_process?.HandleCount ?? 0} threads={_process?.Threads.Count ?? 0} wv={webViewProcesses} tabs={tabs} types=[{handleTypes}]");
             }
             Thread.Sleep(700);
         }
