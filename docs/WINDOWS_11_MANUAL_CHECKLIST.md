@@ -112,7 +112,7 @@ Next action:
 | W11-46 | AI/일반 탭 분리 | AI 로그인 후 일반 브라우저 확인 | 저장소/로그인 상태 분리 |  |  |  |  |
 | W11-47 | 테마 | System/Light/Dark 변경 | 즉시 반영, 재시작 후 유지 |  |  |  |  |
 
-## 0.34 update / API AI
+## 0.35 update / API AI
 - [ ] GitHub Release가 실제로 발행된 뒤 `Check for updates…` → 다운로드 → manifest/SHA-256 → helper 적용 → 재실행 확인
 - [ ] 동일 버전 재적용/다운그레이드가 거부되고 helper가 중복 실행되지 않는지 확인
 - [ ] 한글·공백 경로에서 ZIP 압축 해제/실행/업데이트 확인
