@@ -9,10 +9,67 @@ using WindowsVerify;
 internal static class Program
 {
     private static readonly List<Result> Results = [];
+    private static Dictionary<ushort, string>? _objectTypeNames;
     private static Process? _process;
     private static AutomationElement? _window;
     private static string? _exePath;
     private static long _startupMs;
+
+    [StructLayout(LayoutKind.Explicit, Size = 0x68)]
+    private struct ObjectTypeInformation
+    {
+        [FieldOffset(0x00)] public ushort NameLength;
+        [FieldOffset(0x02)] public ushort NameMaximumLength;
+        [FieldOffset(0x08)] public IntPtr NameBuffer;
+        [FieldOffset(0x5A)] public byte TypeIndex;
+    }
+
+    private static Dictionary<ushort, string> ObjectTypeNames()
+    {
+        var result = new Dictionary<ushort, string>();
+        var length = 1 << 16;
+        IntPtr buffer = IntPtr.Zero;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            buffer = Marshal.AllocHGlobal(length);
+            var status = NtQueryObject(IntPtr.Zero, 3, buffer, length, out var returned);
+            if (status == unchecked((int)0xC0000004) && returned > length)
+            {
+                Marshal.FreeHGlobal(buffer);
+                buffer = IntPtr.Zero;
+                length = returned;
+                continue;
+            }
+            if (status != 0)
+            {
+                Marshal.FreeHGlobal(buffer);
+                return result;
+            }
+            try
+            {
+                var number = (uint)Marshal.ReadInt32(buffer);
+                var entry = IntPtr.Add(buffer, 8);
+                for (uint i = 0; i < number; i++)
+                {
+                    var info = Marshal.PtrToStructure<ObjectTypeInformation>(entry);
+                    if (info.NameLength > 0 && info.NameBuffer != IntPtr.Zero)
+                    {
+                        var name = Marshal.PtrToStringUni(info.NameBuffer, info.NameLength / 2) ?? "";
+                        if (!string.IsNullOrWhiteSpace(name)) result[info.TypeIndex] = name;
+                    }
+                    var stride = 0x68 + info.NameMaximumLength;
+                    stride = (stride + 7) & ~7;
+                    entry = IntPtr.Add(entry, stride);
+                }
+                return result;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        return result;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SystemHandleEntry
@@ -81,9 +138,17 @@ internal static class Program
                 try
                 {
                     var names = new Dictionary<ushort, string>();
+                    var dynamicTypes = _objectTypeNames ??= ObjectTypeNames();
+                    foreach (var (typeIndex, _) in samples)
+                    {
+                        if (dynamicTypes.TryGetValue(typeIndex, out var dynamicName))
+                        {
+                            names[typeIndex] = dynamicName;
+                        }
+                    }
                     foreach (var (typeIndex, sourceHandle) in samples)
                     {
-                        if (names.Count >= 8) break;
+                        if (names.ContainsKey(typeIndex) || names.Count >= 8) continue;
                         if (target == IntPtr.Zero
                             || !DuplicateHandle(target, sourceHandle, GetCurrentProcess(), out var duplicate, 0, false, 0x00000002))
                         {
