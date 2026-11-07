@@ -55,7 +55,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - Rust tests: **PASS**
 - C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)
 - WinUI XAML compile / MakePri / Debug+Release build / portable ZIP + updater helper: **PASS** (Windows Server 2025 Runner)
-- UIAutomation GUI smoke: **42/42 PASS** (window, address, tabs, switch/close, native drag 9 combos+cancel+after-close, tear-off new window, self-signed/expired/hostname-mismatch certificate dialog+retry+back+other-tab, cross-window forward+reverse, tab churn, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 7-tab stress)
+- UIAutomation GUI smoke: **42/42 PASS** (window, address, tabs, switch/close, native drag 9 combos+cancel+after-close, tear-off new window+re-merge, self-signed/expired/hostname-mismatch certificate dialog+retry+back+other-tab, cross-window forward+reverse, tab churn, WebSocket tab/window close cleanup, Find 1/2, Reader, AI panel, settings, API AI settings/no-key, manual update check, diagnostics, history, bookmarks, downloads, maximize/restore, new window, graceful/forced session restore, 7-tab stress)
 - Update system unit tests: semver, stable/prerelease selection, checksum requirement PASS
 - Portable package manifest, traversal, hash mismatch, apply, rollback, crash recovery, launch-failure rollback PASS
 - Updater helper end-to-end smoke on isolated app/data directories PASS
@@ -69,8 +69,8 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - WebSocket actual AMARE tab-close and browser-close cleanup: **PASS**; connect/echo/reconnect PASS
 - Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; no bypass; CA chain/SAN/EKU/custom-trust TLS simulation **PASS**; CurrentUser/WebView2 local CA **UNVERIFIED** (trust-store prompt/timeout)
 - Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning; actual self-signed/expired/hostname-mismatch **PASS**; trusted local CA **UNVERIFIED**; no bypass
-- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.33 values in report)
-- Native tab drag reorder: **PASS** actual pointer 9 combos+cancel+after-close+tear-off new window; cross-window forward+reverse **PASS**
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.34 values in report); 30분 stress는 별도 workflow에서 완료
+- Native tab drag reorder: **PASS** actual pointer 9 combos+cancel+after-close+tear-off new window+re-merge; cross-window forward+reverse **PASS**
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS
 - Unsigned MSIX package: **PASS**; install: **BLOCKED** by unsigned publisher namespace
