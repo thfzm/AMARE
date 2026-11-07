@@ -136,6 +136,11 @@ internal static class Program
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
+            if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
+                && stressSeconds > 0)
+            {
+                Check("stress_long", () => StressLoop(stressSeconds));
+            }
             Check("websocket_browser_close", CloseWindowReleasesWebSockets);
         }
         catch (Exception exception)
@@ -1083,12 +1088,17 @@ internal static class Program
             if (targetTabs != 1) throw new InvalidOperationException($"tear-off target tabs={targetTabs}");
             if (CountTabs(sourceWindow) < 2) throw new InvalidOperationException("tear-off source tab lost");
             var targetHandle = (IntPtr)created.Current.NativeWindowHandle;
+            var sourceWindowForMerge = AutomationElement.FromHandle(sourceHandle);
+            var targetWindowForMerge = AutomationElement.FromHandle(targetHandle);
+            DragTabBetweenWindows(targetWindowForMerge, sourceWindowForMerge);
+            WaitFor(() => CountTabs(sourceWindowForMerge) == 3, TimeSpan.FromSeconds(15), "tear-off re-merge source");
+            WaitFor(() => CountTabs(targetWindowForMerge) <= 1, TimeSpan.FromSeconds(15), "tear-off re-merge target");
             if (created.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
                 ((WindowPattern)pattern).Close();
             WaitFor(() => WindowsForProcess(_process.Id).Length <= beforeWindows.Length,
                 TimeSpan.FromSeconds(10), "tear-off window close");
             SetForegroundWindow(sourceHandle);
-            return $"tear-off target tabs=1 source tabs={CountTabs(sourceWindow)}";
+            return $"tear-off target tabs=1 source tabs=2; re-merge source tabs={CountTabs(sourceWindowForMerge)}";
         }
         finally
         {
@@ -1102,6 +1112,56 @@ internal static class Program
                 catch { }
             }
         }
+    }
+
+    private static void DragTabBetweenWindows(AutomationElement from, AutomationElement to)
+    {
+        if (!from.TryGetCurrentPattern(WindowPattern.Pattern, out _) && from.Current.NativeWindowHandle == 0)
+            throw new InvalidOperationException("source window unavailable");
+        var fromHandle = (IntPtr)from.Current.NativeWindowHandle;
+        var toHandle = (IntPtr)to.Current.NativeWindowHandle;
+        var fromList = FindByIdIn(from, "TabList") ?? throw new InvalidOperationException("source TabList missing");
+        var toList = FindByIdIn(to, "TabList") ?? throw new InvalidOperationException("target TabList missing");
+        var sourceItems = fromList.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        var targetItems = toList.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(sourceItems.Length >= 1 && targetItems.Length >= 1, "cross-window tab elements missing");
+        sourceItems[0].SetFocus();
+        if (sourceItems[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+            ((SelectionItemPattern)selection).Select();
+        Thread.Sleep(400);
+        sourceItems = fromList.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        targetItems = toList.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().ToArray();
+        Require(sourceItems.Length >= 1 && targetItems.Length >= 1, "cross-window tab elements missing after focus");
+        var sourceRect = sourceItems[0].Current.BoundingRectangle;
+        var targetRect = targetItems[0].Current.BoundingRectangle;
+        var startX = (int)(sourceRect.X + Math.Min(24, sourceRect.Width / 3));
+        var startY = (int)(sourceRect.Y + sourceRect.Height / 2);
+        var endX = (int)(targetRect.X + Math.Min(12, targetRect.Width / 4));
+        var endY = (int)(targetRect.Y + targetRect.Height / 2);
+        SetForegroundWindow(fromHandle);
+        Thread.Sleep(300);
+        MoveMouseAbsolute(startX, startY);
+        Thread.Sleep(300);
+        SendMouseButton(MouseLeftDown);
+        Thread.Sleep(300);
+        for (var i = 1; i <= 25; i++)
+        {
+            MoveMouseAbsolute(startX + (endX - startX) * i / 25, startY + (endY - startY) * i / 25);
+            Thread.Sleep(90);
+        }
+        Thread.Sleep(300);
+        SendMouseButton(MouseLeftUp);
+        Thread.Sleep(1200);
+        _ = fromHandle;
+        _ = toHandle;
     }
 
     private static AutomationElement? FindByIdIn(AutomationElement window, string id) =>
@@ -1144,6 +1204,64 @@ internal static class Program
         WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "restored tabs");
         started.Stop();
         return $"tabs_before={tabsBefore} tabs_after={CountTabs()} close_ms={closeMs} restore_ms={started.ElapsedMilliseconds}";
+    }
+
+    private static string StressLoop(int seconds)
+    {
+        var baselineTabs = Math.Max(1, CountTabs());
+        var started = Stopwatch.StartNew();
+        var deadline = TimeSpan.FromSeconds(seconds);
+        var samples = new List<string>();
+        var nextSample = TimeSpan.Zero;
+        var cycle = 0;
+        while (started.Elapsed < deadline)
+        {
+            cycle++;
+            if (cycle % 5 == 0)
+            {
+                NavigateToExample();
+            }
+            else
+            {
+                Invoke(FindById("NewTabButton") ?? throw new InvalidOperationException("NewTabButton missing"));
+                Thread.Sleep(250);
+                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+                SendKeys.SendWait("^w");
+                Thread.Sleep(250);
+            }
+            if (cycle % 7 == 0)
+            {
+                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+                SendKeys.SendWait("^+{TAB}");
+                Thread.Sleep(150);
+            }
+            if (cycle % 11 == 0)
+            {
+                OpenAndCloseNewWindow();
+            }
+            while (CountTabs() > baselineTabs + 2)
+            {
+                SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+                SendKeys.SendWait("^w");
+                Thread.Sleep(250);
+            }
+            if (started.Elapsed >= nextSample)
+            {
+                nextSample = started.Elapsed + TimeSpan.FromSeconds(60);
+                _process?.Refresh();
+                var webViewProcesses = System.Diagnostics.Process.GetProcessesByName("msedgewebview2").Length;
+                samples.Add($"{started.Elapsed.TotalMinutes:F0}m ws={(_process?.WorkingSet64 ?? 0) / 1024 / 1024}MB " +
+                    $"handles={_process?.HandleCount ?? 0} threads={_process?.Threads.Count ?? 0} wv={webViewProcesses} tabs={CountTabs()}");
+            }
+            Thread.Sleep(1000);
+        }
+        while (CountTabs() > baselineTabs)
+        {
+            SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+            SendKeys.SendWait("^w");
+            Thread.Sleep(250);
+        }
+        return $"stress {seconds}s cycles={cycle} baseline_tabs={baselineTabs} samples=[{string.Join("; ", samples)}]";
     }
 
     private static string RestartAfterForcedKill()
