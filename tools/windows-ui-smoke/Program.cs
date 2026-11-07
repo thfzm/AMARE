@@ -97,6 +97,8 @@ internal static class Program
         IntPtr targetProcess, out IntPtr targetHandle, uint access, bool inherit, uint options);
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetProcessId(IntPtr process);
 
     private static string HandleSnapshot(int pid)
     {
@@ -165,10 +167,43 @@ internal static class Program
                             CloseHandle(duplicate);
                         }
                     }
-                    return string.Join(",", counts
+                    var processType = names
+                        .FirstOrDefault(pair => string.Equals(pair.Value, "Process", StringComparison.OrdinalIgnoreCase)).Key;
+                    var processTargets = new Dictionary<string, int>();
+                    if (processType != 0)
+                    {
+                        var processEntries = 0;
+                        for (long i = 0; i < count && processEntries < 24; i++)
+                        {
+                            var entry = Marshal.PtrToStructure<SystemHandleEntry>(IntPtr.Add(entryAddress, (int)(i * entrySize)));
+                            if (entry.ProcessId.ToInt64() != pid || entry.ObjectTypeIndex != processType) continue;
+                            processEntries++;
+                            if (target == IntPtr.Zero
+                                || !DuplicateHandle(target, entry.Handle, GetCurrentProcess(), out var processHandle, 0, false, 0x00000002))
+                            {
+                                continue;
+                            }
+                            try
+                            {
+                                var targetPid = (int)GetProcessId(processHandle);
+                                var key = targetPid == 0 ? "unknown" : ProcessName(targetPid);
+                                processTargets[key] = processTargets.GetValueOrDefault(key) + 1;
+                            }
+                            finally
+                            {
+                                CloseHandle(processHandle);
+                            }
+                        }
+                    }
+                    var typeSummary = string.Join(",", counts
                         .OrderByDescending(pair => pair.Value)
                         .Take(8)
                         .Select(pair => $"{names.GetValueOrDefault(pair.Key, $"type{pair.Key}")}={pair.Value}"));
+                    var processSummary = string.Join(",", processTargets
+                        .OrderByDescending(pair => pair.Value)
+                        .Take(6)
+                        .Select(pair => $"{pair.Key}={pair.Value}"));
+                    return typeSummary + (processSummary.Length == 0 ? "" : $";procs=[{processSummary}]");
                 }
                 finally
                 {
@@ -183,6 +218,19 @@ internal static class Program
         catch
         {
             return "";
+        }
+    }
+
+    private static string ProcessName(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return $"{process.ProcessName}({pid})";
+        }
+        catch
+        {
+            return $"exited({pid})";
         }
     }
 
