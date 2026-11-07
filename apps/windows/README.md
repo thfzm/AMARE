@@ -2,7 +2,7 @@
 
 AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + WebView2 Evergreen 기반 데스크톱 브라우저입니다.
 
-## 0.40.0 구현 상태
+## 0.41.0 구현 상태
 
 | 영역 | 상태 |
 |---|---|
@@ -27,7 +27,7 @@ AMARE의 주력 플랫폼은 Windows입니다. 이 디렉터리는 WinUI 3 + Web
 | Update package manifest | `amare-update.json` + `VERSION` + SHA-256 sidecar 검증 **PASS** |
 | Local web compatibility | SPA/cookie/session/upload/audio/video/fullscreen/PiP/WebSocket/zoom/redirect **PASS**; cert UX/WS close cleanup **UNVERIFIED** |
 | Certificate error handling | **PASS** — 실제 self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; CA chain/SAN/EKU/custom-trust TLS simulation **PASS**, untrusted CA 거부 **PASS**; CurrentUser trust-store/WebView2 local CA **UNVERIFIED/BLOCKED** |
-| 30-tab memory | **PASS** (empty 1,762 MB / content 2,085 MB / close 0 MB; breakdown recorded) |
+| 30-tab memory | **PASS** (empty 1,764 MB / content 2,084 MB / close 0 MB; breakdown recorded) |
 | Interrupted update recovery | journal/backup/recovery/health timeout/crash-after-apply **PASS** |
 | Session recovery | graceful/forced kill restore **PASS** (6→6) |
 | New window | UIAutomation open/close **PASS**; cross-window tab move **UNVERIFIED** |
@@ -63,7 +63,7 @@ dotnet run --project AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
 `tools/verify-windows.ps1 -CI`가 다음 portable ZIP을 생성합니다.
 
 ```text
-artifacts/windows/AMARE-0.40.0-win-x64.zip
+artifacts/windows/AMARE-0.41.0-win-x64.zip
 ```
 
 이 ZIP은 `AMARE.Updater.exe`, `VERSION`, `amare-update.json`, `RELEASE_NOTES.md`를 포함하는 개발/테스트용 portable package이며 서명된 MSIX 설치 프로그램이 아닙니다. SHA-256 sidecar와 release manifest도 함께 생성됩니다.

@@ -1,4 +1,4 @@
-# AMARE Windows 코드 서명 / MSIX 상태 (0.40.0)
+# AMARE Windows 코드 서명 / MSIX 상태 (0.41.0)
 
 ## 현재 상태
 
@@ -11,7 +11,7 @@
 
 - Identity: `Amare.Browser`
 - Publisher: `CN=AMARE`
-- Version: `0.40.0.0`
+- Version: `0.41.0.0`
 - Architecture: x64
 
 `Publisher`는 서명 인증서의 Subject와 일치해야 한다. 현재 `CN=AMARE`는 개발용 manifest 값이며, 공개 배포 시에는 실제 코드 서명 인증서의 Subject로 교체해야 한다.
