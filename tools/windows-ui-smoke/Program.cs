@@ -1235,10 +1235,6 @@ internal static class Program
                 SendKeys.SendWait("^+{TAB}");
                 Thread.Sleep(150);
             }
-            if (cycle % 11 == 0)
-            {
-                OpenAndCloseNewWindow();
-            }
             while (CountTabs() > baselineTabs + 2)
             {
                 SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
