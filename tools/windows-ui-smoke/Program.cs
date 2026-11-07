@@ -173,7 +173,7 @@ internal static class Program
                     if (processType != 0)
                     {
                         var processEntries = 0;
-                        for (long i = 0; i < count && processEntries < 24; i++)
+                        for (long i = 0; i < count; i++)
                         {
                             var entry = Marshal.PtrToStructure<SystemHandleEntry>(IntPtr.Add(entryAddress, (int)(i * entrySize)));
                             if (entry.ProcessId.ToInt64() != pid || entry.ObjectTypeIndex != processType) continue;
@@ -201,7 +201,7 @@ internal static class Program
                         .Select(pair => $"{names.GetValueOrDefault(pair.Key, $"type{pair.Key}")}={pair.Value}"));
                     var processSummary = string.Join(",", processTargets
                         .OrderByDescending(pair => pair.Value)
-                        .Take(6)
+                        .Take(10)
                         .Select(pair => $"{pair.Key}={pair.Value}"));
                     return typeSummary + (processSummary.Length == 0 ? "" : $";procs=[{processSummary}]");
                 }
