@@ -136,6 +136,7 @@ impl AmareApp {
             "selected_range": [selected.start, selected.end],
             "source": source,
             "title": title,
+            "ime_context": self.webview.as_ref().map(|webview| webview.ime_context()).unwrap_or(false),
             "pid": std::process::id()
         });
         if let Some(parent) = std::path::Path::new(&path).parent() {

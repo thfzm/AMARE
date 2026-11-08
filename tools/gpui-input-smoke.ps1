@@ -177,6 +177,7 @@ $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = $BaseUrl
 $env:AMARE_GPUI_KOREAN_IME = "1"
+$env:AMARE_GPUI_IME_LOG = Join-Path $env:RUNNER_TEMP "amare-gpui-ime.log"
 try {
     $app = Start-Process $Exe -PassThru
     $initial = Wait-State { param($s) $null -ne $s.address -and -not [string]::IsNullOrEmpty($s.source) } 60 "GPUI status"

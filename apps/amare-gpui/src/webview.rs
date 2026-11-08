@@ -376,12 +376,24 @@ impl WebViewHost {
         unsafe {
             if ImmGetContext(self.parent).0.is_null() {
                 let context = ImmCreateContext();
-                if !context.0.is_null() {
-                    let _ = ImmAssociateContext(self.parent, context);
-                }
+                let created = !context.0.is_null();
+                let previous = ImmAssociateContext(self.parent, context);
+                let after_create = ImmGetContext(self.parent).0 as usize;
                 let _ = ImmAssociateContextEx(self.parent, HIMC::default(), IACE_DEFAULT);
+                let after_default = ImmGetContext(self.parent).0 as usize;
+                if let Ok(path) = std::env::var("AMARE_GPUI_IME_LOG") {
+                    let payload = format!(
+                        "parent={:?} created={} context={:?} previous={:?} after_create={} after_default={}\n",
+                        self.parent, created, context.0, previous.0, after_create, after_default
+                    );
+                    let _ = std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut file| std::io::Write::write_all(&mut file, payload.as_bytes()));
+                }
             }
         }
+    }
+
+    pub fn ime_context(&self) -> bool {
+        unsafe { !ImmGetContext(self.parent).0.is_null() }
     }
 
     pub fn focus(&self) {
