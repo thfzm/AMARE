@@ -106,25 +106,19 @@ jobs:
           Write-Host "GPUI graceful exit code=$($p.ExitCode) webview2=$before->$afterClose"
           if ($afterClose -gt $before) { throw "WebView2 child processes remained after GPUI exit" }
 
-      - name: Install Korean IME
+      - name: Probe Korean IME
         shell: pwsh
         continue-on-error: true
+        timeout-minutes: 3
         run: |
+          Get-WinUserLanguageList | Format-List | Out-Host
+          Get-WinDefaultInputMethodOverride | Format-List | Out-Host
           try {
-            if (Get-Command Install-Language -ErrorAction SilentlyContinue) {
-              Install-Language -Language ko-KR -CopyToSettings -ErrorAction Stop
-            } else {
-              $cap = Get-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR'
-              if ($cap.State -ne 'Installed') { Add-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR' | Out-Host }
-            }
-            $languages = Get-WinUserLanguageList
-            if (-not ($languages | Where-Object LanguageTag -eq 'ko-KR')) {
-              $languages.Add((New-WinUserLanguageList ko-KR)[0])
-              Set-WinUserLanguageList -LanguageList $languages -Force
-            }
-            Get-WinUserLanguageList | Format-List | Out-Host
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ImeProbe { [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayout(string id, uint flags); }'
+            $hkl = [ImeProbe]::LoadKeyboardLayout("00000412", 0x00000101)
+            Write-Host "Korean HKL=$hkl"
           } catch {
-            Write-Warning "Korean IME setup was unavailable: $($_.Exception.Message)"
+            Write-Warning "Korean IME probe failed: $($_.Exception.Message)"
           }
 
       - name: GPUI input and Korean IME test
