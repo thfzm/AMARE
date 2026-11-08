@@ -105,6 +105,12 @@ function Click-Page([IntPtr]$hwnd, [int]$x, [int]$y) {
     $origin = Get-ClientOrigin $hwnd
     Click-At $hwnd ($origin.X + $x) ($origin.Y + $y)
 }
+function Click-WebPage([IntPtr]$hwnd, [int]$x, [int]$y) {
+    $origin = Get-ClientOrigin $hwnd
+    $scale = [double][Amare47]::GetDpiForWindow($hwnd) / 96.0
+    $top = [int][Math]::Round(88.0 * $scale)
+    Click-At $hwnd ($origin.X + $x) ($origin.Y + $top + $y)
+}
 function Shot([string]$name) {
     $r = Get-Rect $script:hwnd
     $w = [Math]::Max(1, $r.Right - $r.Left)
@@ -254,7 +260,7 @@ try {
     $pageNav = Navigate-Address $BaseUrl 25
     Start-Sleep -Seconds 1
     $origin = Get-ClientOrigin $script:hwnd
-    Click-Page $script:hwnd 900 400
+    Click-WebPage $script:hwnd 900 400
     $active = ""
     for ($i = 0; $i -lt 5; $i++) {
         Send-Keys "{TAB}"
@@ -282,7 +288,7 @@ try {
 
     $page = Get-Page
     if ($null -eq $page.textRect) { throw "Page text rectangle unavailable" }
-    Click-Page $script:hwnd 900 400
+    Click-WebPage $script:hwnd 900 400
     for ($i = 0; $i -lt 5; $i++) {
         Send-Keys "{TAB}"
         Start-Sleep -Milliseconds 150
@@ -322,10 +328,13 @@ try {
     $page = Get-Page
     $t = $page.textRect
     $origin = Get-ClientOrigin $script:hwnd
-    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.left + 4, [int]$origin.Y + [int]$t.top + 10)
+    $scale = [double][Amare47]::GetDpiForWindow($script:hwnd) / 96.0
+    $webTop = [int][Math]::Round(88.0 * $scale)
+    Send-Keys "{RIGHT}"
+    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.left + 4, [int]$origin.Y + $webTop + [int]$t.top + 10)
     [Amare47]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 100
-    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.right - 4, [int]$origin.Y + [int]$t.top + 10)
+    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.right - 4, [int]$origin.Y + $webTop + [int]$t.top + 10)
     [Amare47]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 400
     $selectedByMouse = Get-Page
@@ -338,7 +347,7 @@ try {
     $page = Get-Page
     $linkClicked = $false
     if ($null -ne $page.linkRect) {
-        Click-Page $script:hwnd ([int]$page.linkRect.left + 10) ([int]$page.linkRect.top + 5)
+        Click-WebPage $script:hwnd ([int]$page.linkRect.left + 10) ([int]$page.linkRect.top + 5)
         try {
             $clicked = Wait-Page { param($p) $p.link -eq "clicked" -or $p.link -eq "#clicked" } 4 "link click"
             Add-Result "page-link-mouse-click" "PASS" "link=$($clicked.link)"
@@ -348,7 +357,7 @@ try {
         }
     }
     if (-not $linkClicked) {
-        Click-Page $script:hwnd 900 400
+        Click-WebPage $script:hwnd 900 400
         for ($i = 0; $i -lt 6; $i++) {
             Send-Keys "{TAB}"
             Start-Sleep -Milliseconds 150
@@ -370,7 +379,7 @@ try {
 
     $page = Get-Page
     $webviewChild = Find-WebViewChild $script:hwnd
-    Click-Page $script:hwnd 900 400
+    Click-WebPage $script:hwnd 900 400
     for ($i = 0; $i -lt 5; $i++) {
         Send-Keys "{TAB}"
         Start-Sleep -Milliseconds 200
@@ -388,7 +397,7 @@ try {
         Add-Result "page-korean-ime" "UNVERIFIED" "Korean IME did not compose in WebView2; text=$($koreanPage.text) composition=$($koreanPage.composition)"
     }
 
-    Click-Page $script:hwnd 600 600
+    Click-WebPage $script:hwnd 600 600
     [Amare47]::mouse_event(0x0800, 0, 0, -120, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 700
     $scrolled = Get-Page
@@ -428,7 +437,6 @@ try {
 
     Set-EnglishLayout $script:hwnd
     Add-Result "page-context-menu" "UNVERIFIED" "right-click context menu not asserted"
-    Add-Result "page-selection-and-drag" "UNVERIFIED" "text selection/drag not asserted"
     Add-Result "dpi-125-150-200" "UNVERIFIED" "runner DPI=$([Amare47]::GetDpiForWindow($script:hwnd)); multi-DPI requires separate display"
 
     [void][Amare47]::ShowWindow($script:hwnd, 6)
