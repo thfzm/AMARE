@@ -3,11 +3,9 @@ use std::{ffi::c_void, sync::mpsc};
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
-    Microsoft::Web::WebView2::Win32::{
-        CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2Environment,
-        CreateCoreWebView2EnvironmentCompletedHandler, ICoreWebView2, ICoreWebView2Controller,
-    },
-    *,
+    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2Environment,
+    CreateCoreWebView2EnvironmentCompletedHandler,
+    Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller},
 };
 #[cfg(target_os = "windows")]
 use windows::{
