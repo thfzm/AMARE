@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.44.0)
+# AMARE GPUI Windows Shell (0.45.0)
 
 This is the first GPUI + Rust Windows entry point for AMARE. It is intentionally a transition scaffold, not a completed replacement for the WinUI 3 browser.
 
@@ -21,6 +21,9 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Main window handle is created.
 - WebView2 child processes are created (observed 0 → 6).
 - WebView2 loaded `https://example.com/`: source/title **PASS**, document text probe **PASS**, Back **PASS**.
+- Real window screenshot **PASS** (1044×788, 22,542 bytes).
+- Resized window screenshot **PASS** (960×700, 11,125 bytes).
+- Alt+F4 graceful exit code 0; WebView2 processes returned 0→0.
 
 ## Not verified / not implemented
 
