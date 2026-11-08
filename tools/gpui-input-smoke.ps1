@@ -397,7 +397,6 @@ try {
         Add-Result "page-korean-ime" "UNVERIFIED" "Korean IME did not compose in WebView2; text=$($koreanPage.text) composition=$($koreanPage.composition)"
     }
 
-    $pageNav = Navigate-Address $BaseUrl 25
     Click-WebPage $script:hwnd 600 400
     for ($i = 0; $i -lt 3; $i++) {
         [Amare47]::mouse_event(0x0800, 0, 0, -120, [UIntPtr]::Zero)
