@@ -69,7 +69,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - WebSocket actual AMARE tab-close and browser-close cleanup: **PASS**; connect/echo/reconnect PASS
 - Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; no bypass; CA chain/SAN/EKU/custom-trust TLS simulation **PASS**; CurrentUser/WebView2 local CA **UNVERIFIED** (trust-store prompt/timeout)
 - Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning; actual self-signed/expired/hostname-mismatch **PASS**; trusted local CA **UNVERIFIED**; no bypass
-- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.41 values in report); A~J lifecycle/ETL 수집 완료, ETW stack/leak root cause는 **UNVERIFIED**
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.42 values in report); A~J lifecycle/ETL 수집·ETL summary/CSV 분석 완료, Handle create/close stack은 **UNVERIFIED**
 - Native tab drag reorder: **PASS** actual pointer 9 combos+cancel+after-close+tear-off new window+re-merge; cross-window forward+reverse **PASS**
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS

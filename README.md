@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.41.0 ETW Trace Capture & Automated Handle Lifecycle** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. 실제 WPR/ETL 수집과 A~J lifecycle을 완료했고, idle에서는 handle 안정, 탭 종료 후 Process/Composition handle이 5분 뒤에도 유지되는 것을 확인했습니다. ETW stack/생성 API/cleanup 경로는 **UNVERIFIED**이며, 실제 Windows 11/local CA/signing은 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.42.0 ETL Deep Analysis & Handle Ownership Investigation** 단계입니다. Windows는 WinUI 3 + WebView2 기반 주력 플랫폼이며, Android 0.14.0은 보조 플랫폼으로 유지합니다. 0.41 ETL 606,780,794 bytes/SHA-256 815dee…를 확보해 tracerpt 25,734,983 events를 분석했고, Provider에 Handle create/close 이벤트가 없음을 확인했습니다. Process/Composition은 tab 종료 후 5분까지 유지되지만 생성 stack/cleanup 원인은 **UNVERIFIED**, 실제 Windows 11/local CA/signing은 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -137,6 +137,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.39.0: **handle-forensics 도구 build/self-test PASS, Process targets=msedgewebview2(9444) 11→233, Composition 41→490, 171-cycle 0.39 run**; 생성 stack/ETW/수정은 UNVERIFIED, GUI 42/42/142 PASS
 - Windows 0.40.0: **handle-forensics diff/PID-start attribution, ETW providers 9개+WPR 존재 확인, Process target(9356) 11→233, Composition 41→490, 0.40 171-cycle run**; 실제 ETW stack/cleanup 수정은 UNVERIFIED, GUI 42/42/143 PASS
 - Windows 0.41.0: **WPR ETL 1.44GB 생성, A~J lifecycle 16:31 PASS, idle stable(855→858), tab close 후 Process/Composition 유지(E 995/G 1217, 5분 1186)**; stack/cleanup 원인/수정은 UNVERIFIED, GUI 42/42/143 PASS
+- Windows 0.42.0: **ETL 606MB/SHA 815dee…, 25.7M events/CSV 생성, A~J lifecycle 855→858 idle·종료 후 Process/Composition 유지 확인**; Handle provider 부재로 생성 stack/cleanup 원인은 UNVERIFIED, GUI 42/42/143 PASS
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
