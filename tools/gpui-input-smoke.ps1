@@ -287,7 +287,6 @@ try {
     Start-Sleep -Milliseconds 250
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     $parent = $script:hwnd
-    Set-Korean $parent
     Type-Hangul "gks"
     Start-Sleep -Milliseconds 500
     $composing = Get-Address
