@@ -25,6 +25,27 @@ pub struct WebViewHost {
 }
 
 #[cfg(target_os = "windows")]
+fn write_status(webview: &ICoreWebView2, path: &str) {
+    let source = unsafe {
+        let mut value = windows::core::PWSTR::null();
+        if webview.Source(&mut value).is_err() { String::new() } else { take_pwstr(value) }
+    };
+    let title = unsafe {
+        let mut value = windows::core::PWSTR::null();
+        if webview.DocumentTitle(&mut value).is_err() { String::new() } else { take_pwstr(value) }
+    };
+    let payload = serde_json::json!({
+        "source": source,
+        "title": title,
+        "pid": std::process::id()
+    });
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+}
+
+#[cfg(target_os = "windows")]
 impl WebViewHost {
     pub fn create(parent: HWND) -> std::result::Result<Self, String> {
         unsafe {
@@ -87,6 +108,17 @@ impl WebViewHost {
             if self_test {
                 let _ = wait_with_pump(initial_rx);
                 let _ = webview.remove_NavigationCompleted(token);
+            }
+            if let Ok(status_path) = std::env::var("AMARE_GPUI_STATUS") {
+                let status_webview = webview.clone();
+                let status_path = status_path.clone();
+                let status_handler = NavigationCompletedEventHandler::create(Box::new(move |_, _| {
+                    write_status(&status_webview, &status_path);
+                    Ok(())
+                }));
+                let mut status_token = 0;
+                let _ = webview.add_NavigationCompleted(&status_handler, &mut status_token);
+                write_status(&webview, &status_path);
             }
             Ok(Self { controller, webview })
         }

@@ -106,6 +106,61 @@ jobs:
           Write-Host "GPUI graceful exit code=$($p.ExitCode) webview2=$before->$afterClose"
           if ($afterClose -gt $before) { throw "WebView2 child processes remained after GPUI exit" }
 
+      - name: Address bar actual input test
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class AmareWin32 { [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra); }'
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-address-status.json"
+          if (Test-Path $status) { Remove-Item $status -Force }
+          $env:AMARE_GPUI_SELF_TEST = "0"
+          $env:AMARE_GPUI_STATUS = $status
+          $before = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+          $p = Start-Process $exe -PassThru
+          $deadline = (Get-Date).AddSeconds(60)
+          while (-not (Test-Path $status) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if (-not (Test-Path $status)) { throw "GPUI status file was not produced" }
+          Start-Sleep -Seconds 2
+          $p.Refresh()
+          $hwnd = $p.MainWindowHandle
+          if ($hwnd -eq [IntPtr]::Zero) { throw "GPUI window handle missing for address test" }
+          $rect = New-Object AmareWin32+RECT
+          [void][AmareWin32]::GetWindowRect($hwnd, [ref]$rect)
+          [void][AmareWin32]::SetForegroundWindow($hwnd)
+          [void][AmareWin32]::SetCursorPos($rect.Left + 360, $rect.Top + 68)
+          [AmareWin32]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
+          [AmareWin32]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
+          Start-Sleep -Milliseconds 250
+          [System.Windows.Forms.SendKeys]::SendWait("^l")
+          [System.Windows.Forms.SendKeys]::SendWait("https://example.com/?amare=address")
+          [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+          $deadline = (Get-Date).AddSeconds(20)
+          $data = $null
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 1
+            if (Test-Path $status) {
+              $data = Get-Content $status -Raw | ConvertFrom-Json
+              if ($data.source -match "amare=address") { break }
+            }
+          }
+          if ($null -eq $data -or $data.source -notmatch "amare=address") { throw "GPUI address bar input did not navigate to requested URL: $($data.source)" }
+          $shot = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\gpui-address-input.png"
+          $bmp = New-Object System.Drawing.Bitmap(($rect.Right-$rect.Left), ($rect.Bottom-$rect.Top))
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
+          $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose(); $bmp.Dispose()
+          Write-Host "GPUI address navigation PASS source=$($data.source) title=$($data.title) screenshot=$shot"
+          [void][AmareWin32]::SetForegroundWindow($hwnd)
+          [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+          if (-not $p.WaitForExit(15000)) { throw "GPUI address test app did not exit" }
+          Start-Sleep -Seconds 2
+          $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+          if ($after -gt $before) { throw "WebView2 processes remained after address test exit" }
+
       - name: Upload GPUI artifacts
         if: always()
         uses: actions/upload-artifact@v4
