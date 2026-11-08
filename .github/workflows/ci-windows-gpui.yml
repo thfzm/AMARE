@@ -168,4 +168,7 @@ jobs:
           name: gpui-windows-${{ github.run_id }}
           path: |
             apps/amare-gpui/target/release/amare-gpui.exe
+            artifacts/windows/handle-forensics/gpui-window.png
+            artifacts/windows/handle-forensics/gpui-window-resized.png
+            artifacts/windows/handle-forensics/gpui-address-input.png
           if-no-files-found: warn
