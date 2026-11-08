@@ -31,6 +31,8 @@ impl AmareApp {
         focus_handle.focus(window);
 
         #[cfg(target_os = "windows")]
+        let self_test = std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1");
+        #[cfg(target_os = "windows")]
         let (webview, webview_error) = match window.window_handle().ok().map(|handle| handle.as_raw()) {
             Some(RawWindowHandle::Win32(handle)) => {
                 let hwnd = windows::Win32::Foundation::HWND(handle.hwnd.get() as *mut _);
@@ -41,6 +43,13 @@ impl AmareApp {
             }
             _ => (None, Some("Windows HWND unavailable".to_string())),
         };
+
+        #[cfg(target_os = "windows")]
+        if self_test {
+            if let Some(view) = &webview {
+                let _ = view.run_self_test();
+            }
+        }
 
         Self {
             tabs: vec![TabState {

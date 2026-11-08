@@ -33,18 +33,34 @@ jobs:
 
       - name: Smoke launch GPUI application
         shell: pwsh
+        timeout-minutes: 6
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           if (-not (Test-Path $exe)) { throw "amare-gpui.exe missing" }
+          $result = Join-Path $env:RUNNER_TEMP "amare-gpui-self-test.json"
+          if (Test-Path $result) { Remove-Item $result -Force }
+          $env:AMARE_GPUI_SELF_TEST = "1"
+          $env:AMARE_GPUI_RESULT = $result
           $before = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
           $p = Start-Process $exe -PassThru
-          Start-Sleep -Seconds 15
+          $deadline = (Get-Date).AddSeconds(90)
+          while (-not (Test-Path $result) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            $p.Refresh()
+            if ($p.HasExited) { throw "amare-gpui exited during self-test: $($p.ExitCode)" }
+          }
           $p.Refresh()
-          if ($p.HasExited) { throw "amare-gpui exited during startup: $($p.ExitCode)" }
+          if ($p.HasExited) { throw "amare-gpui exited during self-test: $($p.ExitCode)" }
           $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
           Write-Host "GPUI process alive pid=$($p.Id) window=$($p.MainWindowHandle) webview2=$before->$after"
           if ($after -le $before) { throw "WebView2 child processes were not created" }
-          Stop-Process -Id $p.Id -Force
+          if (-not (Test-Path $result)) { throw "GPUI self-test result was not produced" }
+          $data = Get-Content $result -Raw | ConvertFrom-Json
+          $data | ConvertTo-Json -Depth 6 | Write-Host
+          if (-not $data.success) { throw "GPUI WebView2 self-test failed" }
+          if (-not $data.has_example_domain_content) { throw "GPUI WebView2 page content was not rendered" }
+          if (-not $data.back_navigation) { throw "GPUI WebView2 back navigation failed" }
+          Stop-Process -Id $p.Id -Force | Out-Null
 
       - name: Upload GPUI artifacts
         if: always()
