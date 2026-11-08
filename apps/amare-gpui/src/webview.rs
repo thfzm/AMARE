@@ -41,7 +41,7 @@ pub fn activate_korean_layout() {
     unsafe {
         if let Ok(hkl) = LoadKeyboardLayoutW(
             windows::core::w!("00000412"),
-            KLF_ACTIVATE | KLF_SETFORPROCESS,
+            KLF_ACTIVATE,
         ) {
             let _ = ActivateKeyboardLayout(hkl, KLF_SETFORPROCESS);
         }
