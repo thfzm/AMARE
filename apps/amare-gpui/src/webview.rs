@@ -1,15 +1,16 @@
 #[cfg(target_os = "windows")]
-use std::{ffi::c_void, sync::mpsc};
+use std::sync::mpsc;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
-    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2Environment,
-    CreateCoreWebView2EnvironmentCompletedHandler,
-    Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller},
+    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    Microsoft::Web::WebView2::Win32::{
+        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2Controller,
+    },
 };
 #[cfg(target_os = "windows")]
 use windows::{
-    core::{HSTRING, Result},
+    core::HSTRING,
     Win32::{
         Foundation::{E_POINTER, HWND, RECT},
         System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
