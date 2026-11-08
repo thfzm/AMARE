@@ -166,13 +166,21 @@ function Get-Address([int]$timeout = 8) {
     return Wait-State { param($s) $null -ne $s.address } $timeout "address status"
 }
 function Navigate-Address([string]$url, [int]$timeout = 20) {
-    Send-Keys "^l"
-    Start-Sleep -Milliseconds 200
-    Send-Keys "^a"
-    Send-Keys "{BACKSPACE}"
-    Send-Keys $url
-    Send-Keys "{ENTER}"
-    return Wait-State { param($s) $s.source -eq $url } $timeout "navigation to $url"
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        [void][Amare47]::SetForegroundWindow($script:hwnd)
+        Send-Keys "^l"
+        Start-Sleep -Milliseconds 250
+        Send-Keys "^a"
+        Send-Keys "{BACKSPACE}"
+        Send-Keys $url
+        Send-Keys "{ENTER}"
+        try {
+            return Wait-State { param($s) $s.source -eq $url } $timeout "navigation to $url"
+        } catch {
+            if ($attempt -eq 2) { throw }
+            Write-Host "Retrying address navigation after timeout: $url"
+        }
+    }
 }
 
 $script:hwnd = [IntPtr]::Zero

@@ -216,4 +216,5 @@ jobs:
             artifacts/windows/handle-forensics/gpui-input-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
+            ${{ runner.temp }}/amare-gpui-ime.log
           if-no-files-found: warn
