@@ -1,0 +1,35 @@
+name: ci-ko-ime-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Probe and install Korean language
+        shell: pwsh
+        timeout-minutes: 18
+        run: |
+          Get-WindowsCapability -Online | Where-Object Name -match 'Language.*ko-KR|Korean' | Format-Table -AutoSize | Out-Host
+          $cap = Get-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR'
+          Write-Host "before=$($cap.State)"
+          Add-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR' | Out-Host
+          $after = Get-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR'
+          Write-Host "after=$($after.State)"
+          Get-WinUserLanguageList | Format-List | Out-Host
+      - name: Activate Korean profile
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $languages = Get-WinUserLanguageList
+          if (-not ($languages | Where-Object LanguageTag -eq 'ko-KR')) {
+            $languages.Add((New-WinUserLanguageList ko-KR)[0])
+            Set-WinUserLanguageList -LanguageList $languages -Force
+          }
+          Get-WinUserLanguageList | Format-List | Out-Host
+          Get-WinDefaultInputMethodOverride | Format-List | Out-Host
