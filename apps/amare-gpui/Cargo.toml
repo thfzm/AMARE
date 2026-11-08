@@ -17,7 +17,7 @@ amare-core = { path = "../../crates/amare-core" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.39.1"
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_System_Com",
   "Win32_System_LibraryLoader",

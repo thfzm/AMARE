@@ -274,7 +274,7 @@ impl Render for AmareApp {
                             .text_sm()
                             .text_color(muted)
                             .child(self.address.clone())
-                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
                                 this.focus_handle.focus(window);
                                 cx.notify();
                             })),
