@@ -1,0 +1,12 @@
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/tinystr-19dd1b2bec1919ed.d: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/macros.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ascii.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/asciibyte.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/int_ops.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/unvalidated.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ule.rs
+
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/libtinystr-19dd1b2bec1919ed.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/macros.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ascii.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/asciibyte.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/int_ops.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/unvalidated.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ule.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/macros.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ascii.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/asciibyte.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/error.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/int_ops.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/unvalidated.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.5/src/ule.rs:

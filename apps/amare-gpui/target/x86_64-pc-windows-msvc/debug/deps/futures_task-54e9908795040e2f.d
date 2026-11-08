@@ -1,0 +1,11 @@
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/futures_task-54e9908795040e2f.d: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/spawn.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/arc_wake.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker_ref.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/future_obj.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/noop_waker.rs
+
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/libfutures_task-54e9908795040e2f.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/spawn.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/arc_wake.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker_ref.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/future_obj.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/noop_waker.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/spawn.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/arc_wake.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/waker_ref.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/future_obj.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-task-0.3.34/src/noop_waker.rs:

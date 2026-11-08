@@ -1,0 +1,53 @@
+name: ci-windows-gpui
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'apps/amare-gpui/**'
+      - '.github/workflows/ci-windows-gpui.yml'
+  pull_request:
+    paths:
+      - 'apps/amare-gpui/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpui-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build GPUI application
+        shell: pwsh
+        run: |
+          cargo build --manifest-path apps/amare-gpui/Cargo.toml --release
+
+      - name: Smoke launch GPUI application
+        shell: pwsh
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          if (-not (Test-Path $exe)) { throw "amare-gpui.exe missing" }
+          $p = Start-Process $exe -PassThru
+          Start-Sleep -Seconds 12
+          $p.Refresh()
+          if ($p.HasExited) { throw "amare-gpui exited during startup: $($p.ExitCode)" }
+          Write-Host "GPUI process alive pid=$($p.Id)"
+          Stop-Process -Id $p.Id -Force
+
+      - name: Upload GPUI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpui-windows-${{ github.run_id }}
+          path: |
+            apps/amare-gpui/target/release/amare-gpui.exe
+          if-no-files-found: warn

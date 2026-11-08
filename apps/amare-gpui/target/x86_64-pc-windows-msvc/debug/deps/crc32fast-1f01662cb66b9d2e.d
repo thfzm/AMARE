@@ -1,0 +1,10 @@
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/crc32fast-1f01662cb66b9d2e.d: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/baseline.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/combine.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/mod.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/table.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/pclmulqdq.rs
+
+/home/ubuntu/AMARE/apps/amare-gpui/target/x86_64-pc-windows-msvc/debug/deps/libcrc32fast-1f01662cb66b9d2e.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/baseline.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/combine.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/mod.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/table.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/pclmulqdq.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/baseline.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/combine.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/mod.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/table.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.5.4/src/specialized/pclmulqdq.rs:
