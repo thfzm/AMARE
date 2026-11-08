@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.43.0 GPUI Native Windows Architecture Transition** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 `apps/amare-gpui`에 Rust + GPUI 0.2.2 기반 차세대 Windows 진입점과 WebView2 native HWND embedding을 추가했습니다. GPUI Windows x64 release build, process/window 생성, WebView2 child processes 0→6을 CI에서 확인했지만 focus/input/DPI/popup/full tab lifecycle은 **UNVERIFIED**이며, 실제 Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.44.0 GPUI WebView2 Usable Browser Foundation** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 `apps/amare-gpui` GPUI 0.2.2 셸의 실제 WebView2 페이지 로드(URL/title/DOM text)와 Back을 CI에서 확인했습니다. focus/IME/마우스/DPI/resize/popup/탭별 WebView2/resource cleanup은 **UNVERIFIED**이며, 실제 Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -139,6 +139,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.41.0: **WPR ETL 1.44GB 생성, A~J lifecycle 16:31 PASS, idle stable(855→858), tab close 후 Process/Composition 유지(E 995/G 1217, 5분 1186)**; stack/cleanup 원인/수정은 UNVERIFIED, GUI 42/42/143 PASS
 - Windows 0.42.0: **ETL 606MB/SHA 815dee…, 25.7M events/CSV 생성, A~J lifecycle 855→858 idle·종료 후 Process/Composition 유지 확인**; Handle provider 부재로 생성 stack/cleanup 원인은 UNVERIFIED, GUI 42/42/143 PASS
 - Windows 0.43.0: **GPUI 0.2.2 Rust shell Windows release build+smoke PASS, native window handle+WebView2 child 0→6 PASS, WinUI 3/C# preserved**; GPUI focus/input/DPI/popup/full tabs/Windows 11은 UNVERIFIED, 기존 GUI 42/42/143 PASS
+- Windows 0.44.0: **GPUI WebView2 actual example.com source/title/DOM text+Back PASS, child 0→6, release build PASS, WinUI 3 preserved**; focus/IME/mouse/DPI/resize/popup/per-tab/resource cleanup/Windows 11은 UNVERIFIED, 기존 GUI 42/42/143 PASS
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
