@@ -535,10 +535,6 @@ fn title_for(url: &str) -> String {
 }
 
 fn main() {
-    #[cfg(target_os = "windows")]
-    if std::env::var("AMARE_GPUI_KOREAN_IME").ok().as_deref() == Some("1") {
-        webview::activate_korean_layout();
-    }
     Application::new().run(|cx: &mut App| {
         cx.bind_keys([
             KeyBinding::new("ctrl-l", FocusAddress, None),

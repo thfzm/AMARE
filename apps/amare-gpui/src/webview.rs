@@ -25,9 +25,9 @@ use windows::{
                     ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
-                    ActivateKeyboardLayout, GetKeyState, KLF_ACTIVATE, KLF_SETFORPROCESS,
-                    LoadKeyboardLayoutW, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R,
-                    VK_RIGHT,
+                    ActivateKeyboardLayout, GetCurrentThreadId, GetKeyState, GetKeyboardLayout,
+                    KLF_ACTIVATE, KLF_SETFORPROCESS, LoadKeyboardLayoutW, SetFocus, VK_CONTROL,
+                    VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
                 },
             },
             WindowsAndMessaging::{
@@ -82,9 +82,6 @@ impl WebViewHost {
     pub fn create(parent: HWND) -> std::result::Result<Self, String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            if std::env::var("AMARE_GPUI_KOREAN_IME").ok().as_deref() == Some("1") {
-                activate_korean_layout();
-            }
             let ime_context = ImmCreateContext();
             if !ime_context.0.is_null() {
                 let _ = ImmAssociateContext(parent, ime_context);
@@ -375,7 +372,7 @@ impl WebViewHost {
 
     pub fn ensure_ime(&self) {
         unsafe {
-            let korean = std::env::var("AMARE_GPUI_KOREAN_IME").ok().as_deref() == Some("1");
+            let korean = (GetKeyboardLayout(GetCurrentThreadId()).0 as u32 & 0xFFFF) == 0x0412;
             if ImmGetContext(self.parent).0.is_null() {
                 let context = ImmCreateContext();
                 let created = !context.0.is_null();

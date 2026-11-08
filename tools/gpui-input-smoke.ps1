@@ -129,6 +129,12 @@ function Find-WebViewChild([IntPtr]$hwnd) {
     if ($child -ne [IntPtr]::Zero) { return $child }
     return [Amare47]::FindChildByClass($hwnd, "Chrome_RenderWidgetHostHWND")
 }
+function Set-KoreanLayout([IntPtr]$hwnd) {
+    $hkl = [Amare47]::LoadKeyboardLayout("00000412", 0x00000101)
+    Write-Host "Set-KoreanLayout hwnd=$hwnd hkl=$hkl"
+    [void][Amare47]::SendMessage($hwnd, 0x50, [IntPtr]::Zero, $hkl)
+    Start-Sleep -Milliseconds 400
+}
 function Set-Korean([IntPtr]$hwnd) {
     $hkl = [Amare47]::LoadKeyboardLayout("00000412", 0x00000101)
     Write-Host "Set-Korean hwnd=$hwnd hkl=$hkl"
@@ -287,6 +293,8 @@ try {
     Start-Sleep -Milliseconds 250
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     $parent = $script:hwnd
+    Set-KoreanLayout $parent
+    Start-Sleep -Milliseconds 700
     Type-Hangul "gks"
     Start-Sleep -Milliseconds 500
     $composing = Get-Address
