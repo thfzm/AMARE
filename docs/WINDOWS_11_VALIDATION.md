@@ -1,11 +1,11 @@
-# AMARE Windows 11 실기기 검증 절차 (0.45.0)
+# AMARE Windows 11 실기기 검증 절차 (0.46.0)
 
 목표: Windows CI(Windows Server 2025 Runner)에서 확인할 수 없는 항목을 Windows 11 실기기에서 확인한다.
 실제 기기에서 확인하지 않은 항목은 PASS로 기록하지 않는다.
 
 ## 준비
 
-1. `AMARE-0.45.0-win-x64.zip`을 한글·공백이 포함된 일반 폴더에 압축 해제한다.
+1. `AMARE-0.46.0-win-x64.zip`을 한글·공백이 포함된 일반 폴더에 압축 해제한다.
 2. `AMARE.Windows.exe`를 실행한다. 설치 없이 동작해야 한다.
 3. `메뉴 → Diagnostics…`에서 AMARE 버전, Windows 버전, WebView2 Runtime, DPI, display 수, 창 크기, update state를 복사한다.
 4. 문제 발생 시 `Diagnostics → Open logs`로 로그 파일 위치를 확인한다. 로그에는 API key, cookie, token, 비밀번호, 페이지 본문을 포함하지 않는다.
@@ -31,7 +31,7 @@
 
 - 탭 드래그: first→last, last→first, middle 이동, same-position, 취소.
 - 새 창을 열고 A→B, B→A 이동 후 양쪽 탭 수가 정확한지 확인.
-- 창 밖으로 탭을 drag했을 때의 실제 동작을 기록한다. 0.45.0은 tear-off를 **UNVERIFIED/미구현**으로 기록한다.
+- 창 밖으로 탭을 drag했을 때의 실제 동작을 기록한다. 0.46.0은 tear-off를 **UNVERIFIED/미구현**으로 기록한다.
 - 오류 dialog가 열린 상태에서 닫기/뒤로/다시 시도/다른 탭 사용을 확인한다.
 
 ## 인증서

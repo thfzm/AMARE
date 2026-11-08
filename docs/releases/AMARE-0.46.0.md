@@ -11,6 +11,6 @@
 
 ## Limits
 
-- Ctrl+L focus/clear behavior, URL-vs-search classification, page-internal input, Korean IME composition, mouse/wheel/drag, DPI, and per-tab WebView2 remain UNVERIFIED.
+- Ctrl+L focus/clear behavior is implemented but not exercised by CI; URL-vs-search classification, page-internal input, Korean IME composition, mouse/wheel/drag, DPI, and per-tab WebView2 remain UNVERIFIED.
 - No public GitHub Release.
 - Unsigned MSIX status unchanged.
