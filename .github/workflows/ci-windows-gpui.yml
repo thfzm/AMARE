@@ -106,6 +106,41 @@ jobs:
           Write-Host "GPUI graceful exit code=$($p.ExitCode) webview2=$before->$afterClose"
           if ($afterClose -gt $before) { throw "WebView2 child processes remained after GPUI exit" }
 
+      - name: Install Korean IME
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try {
+            if (Get-Command Install-Language -ErrorAction SilentlyContinue) {
+              Install-Language -Language ko-KR -CopyToSettings -ErrorAction Stop
+            } else {
+              $cap = Get-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR'
+              if ($cap.State -ne 'Installed') { Add-WindowsCapability -Online -Name 'Language.Basic~~~ko-KR' | Out-Host }
+            }
+            $languages = Get-WinUserLanguageList
+            if (-not ($languages | Where-Object LanguageTag -eq 'ko-KR')) {
+              $languages.Add((New-WinUserLanguageList ko-KR)[0])
+              Set-WinUserLanguageList -LanguageList $languages -Force
+            }
+            Get-WinUserLanguageList | Format-List | Out-Host
+          } catch {
+            Write-Warning "Korean IME setup was unavailable: $($_.Exception.Message)"
+          }
+
+      - name: GPUI input and Korean IME test
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-input-status.json"
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $page = (Resolve-Path "apps/amare-gpui/test-page/index.html").Path -replace '\\', '/'
+          $baseUrl = "file:///$page"
+          Write-Host "GPUI test page: $baseUrl"
+          & "tools/gpui-input-smoke.ps1" -Exe $exe -Status $status -BaseUrl $baseUrl -ArtifactDir $dir
+          if ($LASTEXITCODE -ne 0) { throw "GPUI input smoke failed with exit code $LASTEXITCODE" }
+
       - name: Address bar actual input test
         shell: pwsh
         timeout-minutes: 5
@@ -176,5 +211,11 @@ jobs:
             artifacts/windows/handle-forensics/gpui-window.png
             artifacts/windows/handle-forensics/gpui-window-resized.png
             artifacts/windows/handle-forensics/gpui-address-input.png
+            artifacts/windows/handle-forensics/gpui-ctrl-l-from-page.png
+            artifacts/windows/handle-forensics/gpui-korean-address.png
+            artifacts/windows/handle-forensics/gpui-final-input-state.png
+            artifacts/windows/handle-forensics/gpui-input-failure.png
+            artifacts/windows/handle-forensics/gpui-input-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
+            ${{ runner.temp }}/amare-gpui-input-status.json
           if-no-files-found: warn
