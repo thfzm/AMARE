@@ -18,8 +18,11 @@ use windows::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
         UI::{
-            Input::KeyboardAndMouse::{
-                GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
+            Input::{
+                Ime::{ImmAssociateContext, ImmCreateContext},
+                KeyboardAndMouse::{
+                    GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
+                },
             },
             WindowsAndMessaging::{
                 FindWindowExW, PostMessageW, WM_KEYDOWN, WM_KEYUP,
@@ -62,6 +65,10 @@ impl WebViewHost {
     pub fn create(parent: HWND) -> std::result::Result<Self, String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let ime_context = ImmCreateContext();
+            if !ime_context.0.is_null() {
+                let _ = ImmAssociateContext(parent, ime_context);
+            }
         }
         let environment = {
             let (tx, rx) = mpsc::channel();
