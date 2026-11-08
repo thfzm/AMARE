@@ -181,6 +181,7 @@ impl Render for AmareApp {
                 if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("t") {
                     this.new_tab();
                 } else if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("l") {
+                    this.address = "".into();
                     this.focus_handle.focus(window);
                 } else if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("w") {
                     this.close_active_tab();
