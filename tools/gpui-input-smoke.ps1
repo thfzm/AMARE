@@ -129,12 +129,14 @@ function Find-WebViewChild([IntPtr]$hwnd) {
     if ($child -ne [IntPtr]::Zero) { return $child }
     return [Amare47]::FindChildByClass($hwnd, "Chrome_RenderWidgetHostHWND")
 }
-function Set-KoreanLayout([IntPtr]$hwnd) {
-    $hkl = [Amare47]::LoadKeyboardLayout("00000412", 0x00000101)
-    Write-Host "Set-KoreanLayout hwnd=$hwnd hkl=$hkl"
+function Set-Layout([IntPtr]$hwnd, [string]$layout) {
+    $hkl = [Amare47]::LoadKeyboardLayout($layout, 0x00000101)
+    Write-Host "Set-Layout hwnd=$hwnd layout=$layout hkl=$hkl"
     [void][Amare47]::SendMessage($hwnd, 0x50, [IntPtr]::Zero, $hkl)
     Start-Sleep -Milliseconds 400
 }
+function Set-KoreanLayout([IntPtr]$hwnd) { Set-Layout $hwnd "00000412" }
+function Set-EnglishLayout([IntPtr]$hwnd) { Set-Layout $hwnd "00000409" }
 function Set-Korean([IntPtr]$hwnd) {
     $hkl = [Amare47]::LoadKeyboardLayout("00000412", 0x00000101)
     Write-Host "Set-Korean hwnd=$hwnd hkl=$hkl"
@@ -200,6 +202,9 @@ try {
     $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window handle missing" }
     [void][Amare47]::SetForegroundWindow($script:hwnd)
+    Set-EnglishLayout $script:hwnd
+    $webviewChild = Find-WebViewChild $script:hwnd
+    if ($webviewChild -ne [IntPtr]::Zero) { Set-EnglishLayout $webviewChild }
     Write-Host "GPUI start source=$($initial.source) address=$($initial.address) dpi=$([Amare47]::GetDpiForWindow($script:hwnd))"
 
     $origin = Get-ClientOrigin $script:hwnd
