@@ -397,14 +397,28 @@ try {
         Add-Result "page-korean-ime" "UNVERIFIED" "Korean IME did not compose in WebView2; text=$($koreanPage.text) composition=$($koreanPage.composition)"
     }
 
-    Click-WebPage $script:hwnd 600 600
-    [Amare47]::mouse_event(0x0800, 0, 0, -120, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 700
+    $pageNav = Navigate-Address $BaseUrl 25
+    Click-WebPage $script:hwnd 600 400
+    for ($i = 0; $i -lt 3; $i++) {
+        [Amare47]::mouse_event(0x0800, 0, 0, -120, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 150
+    }
+    Start-Sleep -Milliseconds 500
     $scrolled = Get-Page
     if ($scrolled -and [int]$scrolled.scrollY -gt 0) {
         Add-Result "page-wheel-scroll" "PASS" "scrollY=$($scrolled.scrollY)"
     } else {
         Add-Result "page-wheel-scroll" "UNVERIFIED" "scrollY=$($scrolled.scrollY)"
+    }
+    Send-Keys "{TAB}"
+    Send-Keys "Q"
+    Send-Keys "{ENTER}"
+    Send-Keys "{ESC}"
+    $keys = Get-Page
+    if ($keys -and $keys.lastKey -eq "Escape") {
+        Add-Result "page-enter-escape" "PASS" "lastKey=$($keys.lastKey)"
+    } else {
+        Add-Result "page-enter-escape" "UNVERIFIED" "lastKey=$($keys.lastKey)"
     }
 
     Send-Keys "^l"
