@@ -36,11 +36,14 @@ jobs:
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           if (-not (Test-Path $exe)) { throw "amare-gpui.exe missing" }
+          $before = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
           $p = Start-Process $exe -PassThru
-          Start-Sleep -Seconds 12
+          Start-Sleep -Seconds 15
           $p.Refresh()
           if ($p.HasExited) { throw "amare-gpui exited during startup: $($p.ExitCode)" }
-          Write-Host "GPUI process alive pid=$($p.Id)"
+          $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+          Write-Host "GPUI process alive pid=$($p.Id) window=$($p.MainWindowHandle) webview2=$before->$after"
+          if ($after -le $before) { throw "WebView2 child processes were not created" }
           Stop-Process -Id $p.Id -Force
 
       - name: Upload GPUI artifacts
