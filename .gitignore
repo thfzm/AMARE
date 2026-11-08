@@ -69,3 +69,6 @@ windows-verify-results.json
 .DS_Store
 .idea/
 .vscode/
+
+# GPUI standalone build output
+apps/amare-gpui/target/
