@@ -184,9 +184,11 @@ impl WebViewHost {
 
     fn execute_script(&self, script: &str) -> Result<String, String> {
         let (tx, rx) = mpsc::channel();
+        let webview = self.webview.clone();
+        let script = HSTRING::from(script);
         ExecuteScriptCompletedHandler::wait_for_async_operation(
-            Box::new(|handler| unsafe {
-                self.webview.ExecuteScript(&HSTRING::from(script), &handler)
+            Box::new(move |handler| unsafe {
+                webview.ExecuteScript(&script, &handler)
                     .map_err(webview2_com::Error::WindowsError)
             }),
             Box::new(move |error, result| {
