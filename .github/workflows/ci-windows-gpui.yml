@@ -5,6 +5,7 @@ on:
     branches: [main, master]
     paths:
       - 'apps/amare-gpui/**'
+      - 'tools/gpui-input-smoke.ps1'
       - '.github/workflows/ci-windows-gpui.yml'
   pull_request:
     paths:
