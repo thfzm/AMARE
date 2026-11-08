@@ -20,8 +20,9 @@ use windows::{
         UI::{
             Input::{
                 Ime::{
-                    HIMC, IACE_DEFAULT, ImmAssociateContext, ImmAssociateContextEx,
-                    ImmCreateContext, ImmGetContext, ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
+                    HIMC, IACE_DEFAULT, IME_CONVERSION_MODE, IME_SENTENCE_MODE,
+                    ImmAssociateContext, ImmAssociateContextEx, ImmCreateContext, ImmGetContext,
+                    ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
                     ActivateKeyboardLayout, GetKeyState, KLF_ACTIVATE, KLF_SETFORPROCESS,
@@ -394,7 +395,11 @@ impl WebViewHost {
                 let context = ImmGetContext(self.parent);
                 if !context.0.is_null() {
                     let _ = ImmSetOpenStatus(context, true);
-                    let _ = ImmSetConversionStatus(context, 0x00000001, 0);
+                    let _ = ImmSetConversionStatus(
+                        context,
+                        IME_CONVERSION_MODE(0x00000001),
+                        IME_SENTENCE_MODE(0),
+                    );
                     let _ = ImmReleaseContext(self.parent, context);
                 }
             }
