@@ -61,7 +61,59 @@ jobs:
           if ($data.source -notmatch "example\.com") { throw "GPUI WebView2 URL was not loaded" }
           if ($data.title -ne "Example Domain") { throw "GPUI WebView2 page title was not updated" }
           if (-not $data.back_navigation) { throw "GPUI WebView2 back navigation failed" }
-          Stop-Process -Id $p.Id -Force | Out-Null
+
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class AmareWin32 {
+            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+            [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+            [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+          }
+"@
+          Start-Sleep -Seconds 3
+          $p.Refresh()
+          $hwnd = $p.MainWindowHandle
+          if ($hwnd -eq [IntPtr]::Zero) { throw "GPUI window handle missing at screenshot time" }
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $rect = New-Object AmareWin32+RECT
+          [void][AmareWin32]::GetWindowRect($hwnd, [ref]$rect)
+          $w = [Math]::Max(1, $rect.Right - $rect.Left)
+          $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
+          $bmp = New-Object System.Drawing.Bitmap($w, $h)
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
+          $shot = Join-Path $dir "gpui-window.png"
+          $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose(); $bmp.Dispose()
+          if ((Get-Item $shot).Length -lt 1000) { throw "GPUI screenshot is empty" }
+          Write-Host "GPUI screenshot=$shot bytes=$((Get-Item $shot).Length) size=${w}x${h}"
+
+          [void][AmareWin32]::SetWindowPos($hwnd, [IntPtr]::Zero, $rect.Left, $rect.Top, 960, 700, 0x0004)
+          Start-Sleep -Seconds 2
+          $rect2 = New-Object AmareWin32+RECT
+          [void][AmareWin32]::GetWindowRect($hwnd, [ref]$rect2)
+          $w2 = [Math]::Max(1, $rect2.Right - $rect2.Left)
+          $h2 = [Math]::Max(1, $rect2.Bottom - $rect2.Top)
+          $bmp2 = New-Object System.Drawing.Bitmap($w2, $h2)
+          $g2 = [System.Drawing.Graphics]::FromImage($bmp2)
+          $g2.CopyFromScreen($rect2.Left, $rect2.Top, 0, 0, $bmp2.Size)
+          $shot2 = Join-Path $dir "gpui-window-resized.png"
+          $bmp2.Save($shot2, [System.Drawing.Imaging.ImageFormat]::Png)
+          $g2.Dispose(); $bmp2.Dispose()
+          Write-Host "GPUI resized screenshot=$shot2 bytes=$((Get-Item $shot2).Length) size=${w2}x${h2}"
+
+          [void][AmareWin32]::SetForegroundWindow($hwnd)
+          [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+          if (-not $p.WaitForExit(15000)) { throw "GPUI did not exit after Alt+F4" }
+          Start-Sleep -Seconds 2
+          $afterClose = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+          Write-Host "GPUI graceful exit code=$($p.ExitCode) webview2=$before->$afterClose"
+          if ($afterClose -gt $before) { throw "WebView2 child processes remained after GPUI exit" }
 
       - name: Upload GPUI artifacts
         if: always()
