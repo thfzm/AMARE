@@ -243,6 +243,15 @@ try {
     Add-Result "escape-cancel-and-restore" "PASS" "address=$($beforeCancel.address) -> $($afterCancel.address)"
 
     $pageNav = Navigate-Address $BaseUrl 25
+    Send-Keys "^l"
+    Send-Keys "junk"
+    Start-Sleep -Milliseconds 250
+    Send-Keys "^l"
+    Send-Keys "https://example.com/?amare=ctrl-l-selected"
+    Send-Keys "{ENTER}"
+    $selected = Wait-State { param($s) $s.source -eq "https://example.com/?amare=ctrl-l-selected" } 20 "Ctrl+L select-all navigation"
+    Add-Result "ctrl-l-when-address-focused-selects-all" "PASS" "source=$($selected.source)"
+    $pageNav = Navigate-Address $BaseUrl 25
     Start-Sleep -Seconds 1
     $origin = Get-ClientOrigin $script:hwnd
     Click-Page $script:hwnd 900 400
@@ -330,6 +339,7 @@ try {
         Add-Result "korean-search-enter" "UNVERIFIED" "search source=$($search.source)"
     }
 
+    Set-EnglishLayout $script:hwnd
     Add-Result "page-context-menu" "UNVERIFIED" "right-click context menu not asserted"
     Add-Result "page-selection-and-drag" "UNVERIFIED" "text selection/drag not asserted"
     Add-Result "dpi-125-150-200" "UNVERIFIED" "runner DPI=$([Amare47]::GetDpiForWindow($script:hwnd)); multi-DPI requires separate display"
