@@ -134,8 +134,13 @@ jobs:
           [AmareWin32]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
           [AmareWin32]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
           Start-Sleep -Milliseconds 250
+          [System.Windows.Forms.SendKeys]::SendWait("^l")
+          Start-Sleep -Milliseconds 250
           for ($i = 0; $i -lt 40; $i++) { [System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE}") }
           [System.Windows.Forms.SendKeys]::SendWait("https://example.com/?amare=address")
+          Start-Sleep -Milliseconds 500
+          $typed = if (Test-Path $status) { Get-Content $status -Raw | ConvertFrom-Json } else { $null }
+          Write-Host "GPUI address typed address=$($typed.address) source=$($typed.source)"
           [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
           $deadline = (Get-Date).AddSeconds(20)
           $data = $null
@@ -146,7 +151,7 @@ jobs:
               if ($data.source -match "^https://example\.com/\?amare=address") { break }
             }
           }
-          if ($null -eq $data -or $data.source -notmatch "^https://example\.com/\?amare=address") { throw "GPUI address bar input did not navigate to exact requested URL: $($data.source)" }
+          if ($null -eq $data -or $data.source -notmatch "^https://example\.com/\?amare=address") { throw "GPUI address bar input did not navigate to exact requested URL: source=$($data.source) address=$($data.address)" }
           $shot = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\gpui-address-input.png"
           $bmp = New-Object System.Drawing.Bitmap(($rect.Right-$rect.Left), ($rect.Bottom-$rect.Top))
           $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -171,4 +176,5 @@ jobs:
             artifacts/windows/handle-forensics/gpui-window.png
             artifacts/windows/handle-forensics/gpui-window-resized.png
             artifacts/windows/handle-forensics/gpui-address-input.png
+            ${{ runner.temp }}/amare-gpui-address-status.json
           if-no-files-found: warn
