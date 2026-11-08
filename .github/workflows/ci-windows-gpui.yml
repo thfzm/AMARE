@@ -134,7 +134,7 @@ jobs:
           [AmareWin32]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
           [AmareWin32]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
           Start-Sleep -Milliseconds 250
-          [System.Windows.Forms.SendKeys]::SendWait("^l")
+          for ($i = 0; $i -lt 40; $i++) { [System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE}") }
           [System.Windows.Forms.SendKeys]::SendWait("https://example.com/?amare=address")
           [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
           $deadline = (Get-Date).AddSeconds(20)
@@ -143,10 +143,10 @@ jobs:
             Start-Sleep -Seconds 1
             if (Test-Path $status) {
               $data = Get-Content $status -Raw | ConvertFrom-Json
-              if ($data.source -match "amare=address") { break }
+              if ($data.source -match "^https://example\.com/\?amare=address") { break }
             }
           }
-          if ($null -eq $data -or $data.source -notmatch "amare=address") { throw "GPUI address bar input did not navigate to requested URL: $($data.source)" }
+          if ($null -eq $data -or $data.source -notmatch "^https://example\.com/\?amare=address") { throw "GPUI address bar input did not navigate to exact requested URL: $($data.source)" }
           $shot = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\gpui-address-input.png"
           $bmp = New-Object System.Drawing.Bitmap(($rect.Right-$rect.Left), ($rect.Bottom-$rect.Top))
           $g = [System.Drawing.Graphics]::FromImage($bmp)
