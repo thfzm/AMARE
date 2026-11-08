@@ -58,7 +58,8 @@ jobs:
           $data = Get-Content $result -Raw | ConvertFrom-Json
           $data | ConvertTo-Json -Depth 6 | Write-Host
           if (-not $data.success) { throw "GPUI WebView2 self-test failed" }
-          if (-not $data.has_example_domain_content) { throw "GPUI WebView2 page content was not rendered" }
+          if ($data.source -notmatch "example\.com") { throw "GPUI WebView2 URL was not loaded" }
+          if ($data.title -ne "Example Domain") { throw "GPUI WebView2 page title was not updated" }
           if (-not $data.back_navigation) { throw "GPUI WebView2 back navigation failed" }
           Stop-Process -Id $p.Id -Force | Out-Null
 

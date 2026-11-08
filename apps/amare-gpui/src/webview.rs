@@ -119,6 +119,7 @@ impl WebViewHost {
         let title = self.title();
         let script = self.execute_script("document.body ? document.body.innerText : ''")?;
         let has_content = script.to_lowercase().contains("example domain");
+        let page_ok = source.contains("example.com") && title.eq_ignore_ascii_case("Example Domain");
         self.navigate_and_wait("https://example.com/?amare=gpui", 20)?;
         self.wait_for_action(|| unsafe {
             self.webview.GoBack().map_err(|error| format!("GoBack: {error:?}"))
@@ -129,9 +130,10 @@ impl WebViewHost {
             self.webview.Reload().map_err(|error| format!("Reload: {error:?}"))
         })?;
         Ok(serde_json::json!({
-            "success": has_content && back_ok,
+            "success": page_ok && back_ok,
             "source": source,
             "title": title,
+            "script_result": script,
             "back_source": back_source,
             "has_example_domain_content": has_content,
             "back_navigation": back_ok,
