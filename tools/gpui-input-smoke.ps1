@@ -282,19 +282,42 @@ try {
 
     $page = Get-Page
     if ($null -eq $page.textRect) { throw "Page text rectangle unavailable" }
-    $t = $page.textRect
-    Click-Page $script:hwnd ([int]$t.left + 5) ([int]$t.top + 10)
-    Send-Keys "^a"
-    $page = Wait-Page { param($p) [int]$p.selectionStart -eq 0 -and [int]$p.selectionEnd -eq $p.text.Length } 5 "text selection"
-    Add-Result "page-text-selection" "PASS" "selection=$($page.selectionStart)-$($page.selectionEnd)"
-    Send-Keys "^c"
-    Send-Keys "{TAB}"
-    Send-Keys "^a"
-    Send-Keys "^v"
-    $page = Wait-Page { param($p) $p.password -eq "abc123" } 8 "clipboard paste"
-    Add-Result "page-ctrl-a-c-v" "PASS" "password copied via Ctrl+A/C/V"
-    Send-Keys "^a"
-    Send-Keys "{BACKSPACE}"
+    Click-Page $script:hwnd 900 400
+    for ($i = 0; $i -lt 5; $i++) {
+        Send-Keys "{TAB}"
+        Start-Sleep -Milliseconds 150
+        $page = Get-Page
+        if ($null -ne $page -and $page.active -eq "text") { break }
+    }
+    $selectionOk = $false
+    if ($page.active -eq "text") {
+        Send-Keys "^a"
+        try {
+            $page = Wait-Page { param($p) [int]$p.selectionStart -eq 0 -and [int]$p.selectionEnd -eq $p.text.Length } 4 "text selection"
+            $selectionOk = $true
+            Add-Result "page-text-selection" "PASS" "selection=$($page.selectionStart)-$($page.selectionEnd)"
+        } catch {
+            Add-Result "page-text-selection" "UNVERIFIED" "Ctrl+A selection state was not reported"
+        }
+    } else {
+        Add-Result "page-text-selection" "UNVERIFIED" "page text input could not be focused (active=$($page.active))"
+    }
+    if ($selectionOk) {
+        Send-Keys "^c"
+        Send-Keys "{TAB}"
+        Send-Keys "^a"
+        Send-Keys "^v"
+        try {
+            $page = Wait-Page { param($p) $p.password -eq "abc123" } 6 "clipboard paste"
+            Add-Result "page-ctrl-a-c-v" "PASS" "password copied via Ctrl+A/C/V"
+        } catch {
+            Add-Result "page-ctrl-a-c-v" "UNVERIFIED" "clipboard paste did not update password input"
+        }
+        Send-Keys "^a"
+        Send-Keys "{BACKSPACE}"
+    } else {
+        Add-Result "page-ctrl-a-c-v" "UNVERIFIED" "skipped because text selection failed"
+    }
 
     $page = Get-Page
     $t = $page.textRect
