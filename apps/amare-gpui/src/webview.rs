@@ -4,7 +4,7 @@ use std::sync::mpsc;
 #[cfg(target_os = "windows")]
 use webview2_com::{
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    ExecuteScriptCompletedHandler, NavigationCompletedEventHandler, string_from_pcwstr, take_pwstr, wait_with_pump,
+    ExecuteScriptCompletedHandler, NavigationCompletedEventHandler, take_pwstr, wait_with_pump,
     Microsoft::Web::WebView2::Win32::{
         CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2Controller,
     },
@@ -191,7 +191,7 @@ impl WebViewHost {
             }),
             Box::new(move |error, result| {
                 error?;
-                let _ = tx.send(string_from_pcwstr(&result));
+                let _ = tx.send(result);
                 Ok(())
             }),
         ).map_err(|error| format!("ExecuteScript: {error:?}"))?;
