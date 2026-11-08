@@ -113,7 +113,8 @@ jobs:
         run: |
           $languages = Get-WinUserLanguageList
           if (-not ($languages | Where-Object LanguageTag -like 'ko*')) {
-            $languages.Add((New-WinUserLanguageList ko-KR)[0])
+            $korean = (New-WinUserLanguageList ko-KR)[0]
+            $languages = @($korean) + @($languages | Where-Object LanguageTag -notlike 'ko*')
             Set-WinUserLanguageList -LanguageList $languages -Force
           }
           try {

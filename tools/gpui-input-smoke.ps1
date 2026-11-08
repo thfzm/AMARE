@@ -22,6 +22,19 @@ public static class Amare47 {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumChildProc callback, IntPtr lParam);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int maxCount);
+    public delegate bool EnumChildProc(IntPtr hwnd, IntPtr lParam);
+    public static IntPtr FindChildByClass(IntPtr parent, string needle) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (hwnd, lParam) => {
+            var name = new System.Text.StringBuilder(256);
+            GetClassName(hwnd, name, name.Capacity);
+            if (name.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) { found = hwnd; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
     [DllImport("user32.dll")] public static extern IntPtr GetFocus();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
@@ -112,14 +125,13 @@ function Send-Vk([int]$vk, [int]$delay = 70) {
     Start-Sleep -Milliseconds 30
 }
 function Find-WebViewChild([IntPtr]$hwnd) {
-    foreach ($class in @("Chrome_WidgetWin_0", "Chrome_WidgetWin_1")) {
-        $child = [Amare47]::FindWindowEx($hwnd, [IntPtr]::Zero, $class, $null)
-        if ($child -ne [IntPtr]::Zero) { return $child }
-    }
-    return [IntPtr]::Zero
+    $child = [Amare47]::FindChildByClass($hwnd, "Chrome_WidgetWin")
+    if ($child -ne [IntPtr]::Zero) { return $child }
+    return [Amare47]::FindChildByClass($hwnd, "Chrome_RenderWidgetHostHWND")
 }
 function Set-Korean([IntPtr]$hwnd) {
     $hkl = [Amare47]::LoadKeyboardLayout("00000412", 0x00000101)
+    Write-Host "Set-Korean hwnd=$hwnd hkl=$hkl"
     [void][Amare47]::SendMessage($hwnd, 0x50, [IntPtr]::Zero, $hkl)
     $context = [Amare47]::ImmGetContext($hwnd)
     if ($context -ne [IntPtr]::Zero) {
@@ -130,8 +142,11 @@ function Set-Korean([IntPtr]$hwnd) {
         $after = 0; $sentence2 = 0
         [void][Amare47]::ImmGetConversionStatus($context, [ref]$after, [ref]$sentence2)
         [void][Amare47]::ImmReleaseContext($hwnd, $context)
-        Write-Host "IME hwnd=$hwnd hkl=$([Amare47]::GetKeyboardLayout([Amare47]::GetWindowThreadProcessId($hwnd, [ref]$null))) conversion=$before->$after"
+        Write-Host "IME hwnd=$hwnd conversion=$before->$after"
         if (($after -band 1) -eq 0) { Send-Vk 0x15 120 }
+    } else {
+        Write-Host "IME context unavailable for hwnd=$hwnd"
+        Send-Vk 0x15 120
     }
     Start-Sleep -Milliseconds 250
 }
