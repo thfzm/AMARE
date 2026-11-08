@@ -182,7 +182,7 @@ impl WebViewHost {
                     },
                 ));
                 let mut token = 0;
-                webview.add_AcceleratorKeyPressed(&accelerator_handler, &mut token)
+                controller.add_AcceleratorKeyPressed(&accelerator_handler, &mut token)
                     .map_err(|error| format!("accelerator handler: {error:?}"))?;
                 token
             };

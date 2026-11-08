@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, KeyBinding, Render, SharedString, Timer,
+    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString, Timer,
     Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -40,6 +40,7 @@ struct AmareApp {
     #[cfg(target_os = "windows")]
     webview_error: Option<String>,
     dark: bool,
+    status_poll_started: bool,
 }
 
 impl AmareApp {
@@ -84,14 +85,14 @@ impl AmareApp {
             #[cfg(target_os = "windows")]
             webview_error,
             dark: false,
+            status_poll_started: false,
         };
         let address_focus = app.address_input.read(cx).focus_handle(cx);
         window.focus(&address_focus);
-        app.start_status_poll(cx);
         app
     }
 
-    fn start_status_poll(&self, cx: &mut Context<Self>) {
+    fn start_status_poll(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| loop {
             Timer::after(Duration::from_millis(250)).await;
             if this.upgrade().is_none() {
@@ -318,6 +319,10 @@ impl AmareApp {
 
 impl Render for AmareApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.status_poll_started {
+            self.status_poll_started = true;
+            self.start_status_poll(cx);
+        }
         self.refresh_from_webview(window, cx);
         self.sync_webview_bounds(window);
         let dark = self.dark;
