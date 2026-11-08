@@ -117,7 +117,7 @@ jobs:
             Set-WinUserLanguageList -LanguageList $languages -Force
           }
           try {
-            Set-WinDefaultInputMethodOverride -InputMethodTip '0412:{A028AE76-01B1-46C2-99C4-ACD9858AE02F}{B5FE1F02-D5F2-4445-9C03-C568F23C99A1}'
+            Set-WinDefaultInputMethodOverride -InputTip '0412:{A028AE76-01B1-46C2-99C4-ACD9858AE02F}{B5FE1F02-D5F2-4445-9C03-C568F23C99A1}'
           } catch {
             Write-Warning "Korean default IME override failed: $($_.Exception.Message)"
           }
