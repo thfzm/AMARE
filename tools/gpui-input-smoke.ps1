@@ -286,6 +286,19 @@ try {
     $page = Wait-Page { param($p) $p.area -eq "textarea text" } 10 "textarea input"
     Add-Result "page-textarea-input" "PASS" "area=$($page.area)"
 
+    Set-Korean $webviewChild
+    Send-Keys "^a"
+    Send-Keys "{BACKSPACE}"
+    Type-Hangul "gksrmf"
+    Start-Sleep -Milliseconds 700
+    $koreanArea = Get-Page
+    if ($koreanArea -and $koreanArea.area -match "한글") {
+        Add-Result "page-textarea-korean-ime" "PASS" "area=$($koreanArea.area)"
+    } else {
+        Add-Result "page-textarea-korean-ime" "UNVERIFIED" "area=$($koreanArea.area)"
+    }
+    Set-EnglishLayout $webviewChild
+
     $page = Get-Page
     if ($null -eq $page.textRect) { throw "Page text rectangle unavailable" }
     Click-WebPage $script:hwnd 900 400
