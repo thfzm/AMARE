@@ -16,7 +16,7 @@ use windows::{
     core::HSTRING,
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
-        System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
+        System::{Com::{CoInitializeEx, COINIT_APARTMENTTHREADED}, Threading::GetCurrentThreadId},
         UI::{
             Input::{
                 Ime::{
@@ -25,7 +25,7 @@ use windows::{
                     ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
-                    ActivateKeyboardLayout, GetCurrentThreadId, GetKeyState, GetKeyboardLayout,
+                    ActivateKeyboardLayout, GetKeyState, GetKeyboardLayout,
                     KLF_ACTIVATE, KLF_SETFORPROCESS, LoadKeyboardLayoutW, SetFocus, VK_CONTROL,
                     VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
                 },
