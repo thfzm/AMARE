@@ -21,7 +21,7 @@
 <p><a id="link" href="#clicked">링크 클릭 테스트</a></p>
 <div id="scroll">scroll area</div>
 <script>
-const state = { text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '' };
+const state = { text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null };
 const loads = Number(sessionStorage.getItem('amare-loads') || '0') + 1;
 sessionStorage.setItem('amare-loads', String(loads));
 state.loads = loads;
@@ -31,6 +31,10 @@ function sync() {
   state.area = document.getElementById('area').value;
   state.active = document.activeElement ? document.activeElement.id : '';
   state.scrollY = Math.round(window.scrollY);
+  const textRect = document.getElementById('text').getBoundingClientRect();
+  const linkRect = document.getElementById('link').getBoundingClientRect();
+  state.textRect = { left: textRect.left, top: textRect.top, right: textRect.right, bottom: textRect.bottom };
+  state.linkRect = { left: linkRect.left, top: linkRect.top, right: linkRect.right, bottom: linkRect.bottom };
   document.title = 'AMARE_TEST:' + encodeURIComponent(JSON.stringify(state));
 }
 for (const id of ['text', 'password', 'area']) {
@@ -41,6 +45,8 @@ for (const id of ['text', 'password', 'area']) {
   el.addEventListener('compositionend', (e) => { state.composition = 'end:' + e.data; sync(); });
   el.addEventListener('focus', sync);
   el.addEventListener('blur', sync);
+  el.addEventListener('select', () => { state.selectionStart = el.selectionStart; state.selectionEnd = el.selectionEnd; sync(); });
+  el.addEventListener('keydown', (e) => { state.lastKey = e.key; sync(); });
 }
 document.getElementById('link').addEventListener('click', () => { state.link = 'clicked'; sync(); });
 window.addEventListener('scroll', sync, { passive: true });

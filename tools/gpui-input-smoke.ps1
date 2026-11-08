@@ -280,7 +280,47 @@ try {
     $page = Wait-Page { param($p) $p.area -eq "textarea text" } 10 "textarea input"
     Add-Result "page-textarea-input" "PASS" "area=$($page.area)"
 
-    if ($focus -eq $null) { }
+    $page = Get-Page
+    if ($null -eq $page.textRect) { throw "Page text rectangle unavailable" }
+    $t = $page.textRect
+    Click-Page $script:hwnd ([int]$t.left + 5) ([int]$t.top + 10)
+    Send-Keys "^a"
+    $page = Wait-Page { param($p) [int]$p.selectionStart -eq 0 -and [int]$p.selectionEnd -eq $p.text.Length } 5 "text selection"
+    Add-Result "page-text-selection" "PASS" "selection=$($page.selectionStart)-$($page.selectionEnd)"
+    Send-Keys "^c"
+    Send-Keys "{TAB}"
+    Send-Keys "^a"
+    Send-Keys "^v"
+    $page = Wait-Page { param($p) $p.password -eq "abc123" } 8 "clipboard paste"
+    Add-Result "page-ctrl-a-c-v" "PASS" "password copied via Ctrl+A/C/V"
+    Send-Keys "^a"
+    Send-Keys "{BACKSPACE}"
+
+    $page = Get-Page
+    $t = $page.textRect
+    $origin = Get-ClientOrigin $script:hwnd
+    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.left + 4, [int]$origin.Y + [int]$t.top + 10)
+    [Amare47]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 100
+    [void][Amare47]::SetCursorPos([int]$origin.X + [int]$t.right - 4, [int]$origin.Y + [int]$t.top + 10)
+    [Amare47]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 400
+    $selectedByMouse = Get-Page
+    if ($selectedByMouse -and [int]$selectedByMouse.selectionEnd -gt [int]$selectedByMouse.selectionStart) {
+        Add-Result "page-mouse-text-drag" "PASS" "selection=$($selectedByMouse.selectionStart)-$($selectedByMouse.selectionEnd)"
+    } else {
+        Add-Result "page-mouse-text-drag" "UNVERIFIED" "selection=$($selectedByMouse.selectionStart)-$($selectedByMouse.selectionEnd)"
+    }
+
+    $page = Get-Page
+    if ($null -ne $page.linkRect) {
+        Click-Page $script:hwnd ([int]$page.linkRect.left + 10) ([int]$page.linkRect.top + 5)
+        $clicked = Wait-Page { param($p) $p.link -eq "clicked" -or $p.link -eq "#clicked" } 8 "link click"
+        Add-Result "page-link-mouse-click" "PASS" "link=$($clicked.link)"
+    } else {
+        Add-Result "page-link-mouse-click" "UNVERIFIED" "link rectangle unavailable"
+    }
+
     $page = Get-Page
     $webviewChild = Find-WebViewChild $script:hwnd
     Click-Page $script:hwnd 900 400
