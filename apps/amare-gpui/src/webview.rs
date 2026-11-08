@@ -24,7 +24,9 @@ use windows::{
                     ImmCreateContext, ImmGetContext,
                 },
                 KeyboardAndMouse::{
-                    GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
+                    ActivateKeyboardLayout, GetKeyState, KLF_ACTIVATE, KLF_SETFORPROCESS,
+                    LoadKeyboardLayoutW, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R,
+                    VK_RIGHT,
                 },
             },
             WindowsAndMessaging::{
@@ -35,6 +37,17 @@ use windows::{
 };
 
 #[cfg(target_os = "windows")]
+pub fn activate_korean_layout() {
+    unsafe {
+        if let Ok(hkl) = LoadKeyboardLayoutW(
+            windows::core::w!("00000412"),
+            KLF_ACTIVATE | KLF_SETFORPROCESS,
+        ) {
+            let _ = ActivateKeyboardLayout(hkl, KLF_SETFORPROCESS);
+        }
+    }
+}
+
 pub struct WebViewHost {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
@@ -68,6 +81,9 @@ impl WebViewHost {
     pub fn create(parent: HWND) -> std::result::Result<Self, String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            if std::env::var("AMARE_GPUI_KOREAN_IME").ok().as_deref() == Some("1") {
+                activate_korean_layout();
+            }
             let ime_context = ImmCreateContext();
             if !ime_context.0.is_null() {
                 let _ = ImmAssociateContext(parent, ime_context);

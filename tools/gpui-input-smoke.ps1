@@ -176,6 +176,7 @@ Remove-Item $Status -Force -ErrorAction SilentlyContinue
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = $BaseUrl
+$env:AMARE_GPUI_KOREAN_IME = "1"
 try {
     $app = Start-Process $Exe -PassThru
     $initial = Wait-State { param($s) $null -ne $s.address -and -not [string]::IsNullOrEmpty($s.source) } 60 "GPUI status"
