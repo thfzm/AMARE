@@ -34,6 +34,7 @@ public static class Amare47 {
     [DllImport("imm32.dll")] public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr context);
     [DllImport("imm32.dll")] public static extern bool ImmSetOpenStatus(IntPtr context, bool open);
     [DllImport("imm32.dll")] public static extern bool ImmSetConversionStatus(IntPtr context, uint conversion, uint sentence);
+    [DllImport("imm32.dll")] public static extern bool ImmGetConversionStatus(IntPtr context, out uint conversion, out uint sentence);
 }
 '@
 
@@ -123,8 +124,14 @@ function Set-Korean([IntPtr]$hwnd) {
     $context = [Amare47]::ImmGetContext($hwnd)
     if ($context -ne [IntPtr]::Zero) {
         [void][Amare47]::ImmSetOpenStatus($context, $true)
+        $before = 0; $sentence = 0
+        [void][Amare47]::ImmGetConversionStatus($context, [ref]$before, [ref]$sentence)
         [void][Amare47]::ImmSetConversionStatus($context, 0x00000001, 0)
+        $after = 0; $sentence2 = 0
+        [void][Amare47]::ImmGetConversionStatus($context, [ref]$after, [ref]$sentence2)
         [void][Amare47]::ImmReleaseContext($hwnd, $context)
+        Write-Host "IME hwnd=$hwnd hkl=$([Amare47]::GetKeyboardLayout([Amare47]::GetWindowThreadProcessId($hwnd, [ref]$null))) conversion=$before->$after"
+        if (($after -band 1) -eq 0) { Send-Vk 0x15 120 }
     }
     Start-Sleep -Milliseconds 250
 }
@@ -231,7 +238,6 @@ try {
     if ($focus -eq $null) { }
     $page = Get-Page
     $webviewChild = Find-WebViewChild $script:hwnd
-    Set-Korean $webviewChild
     Click-Page $script:hwnd 900 400
     for ($i = 0; $i -lt 5; $i++) {
         Send-Keys "{TAB}"
@@ -240,6 +246,7 @@ try {
         if ($null -ne $page -and $page.active -eq "text") { break }
     }
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    Set-Korean $webviewChild
     Type-Hangul "gksrmf"
     Start-Sleep -Milliseconds 800
     $koreanPage = Get-Page

@@ -136,7 +136,7 @@ jobs:
           $baseUrl = "file:///$page"
           Write-Host "GPUI test page: $baseUrl"
           & "tools/gpui-input-smoke.ps1" -Exe $exe -Status $status -BaseUrl $baseUrl -ArtifactDir $dir
-          if ($LASTEXITCODE -ne 0) { throw "GPUI input smoke failed with exit code $LASTEXITCODE" }
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI input smoke failed with exit code $LASTEXITCODE" }
 
       - name: Address bar actual input test
         shell: pwsh
