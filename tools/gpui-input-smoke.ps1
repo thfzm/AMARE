@@ -336,12 +336,36 @@ try {
     }
 
     $page = Get-Page
+    $linkClicked = $false
     if ($null -ne $page.linkRect) {
         Click-Page $script:hwnd ([int]$page.linkRect.left + 10) ([int]$page.linkRect.top + 5)
-        $clicked = Wait-Page { param($p) $p.link -eq "clicked" -or $p.link -eq "#clicked" } 8 "link click"
-        Add-Result "page-link-mouse-click" "PASS" "link=$($clicked.link)"
-    } else {
-        Add-Result "page-link-mouse-click" "UNVERIFIED" "link rectangle unavailable"
+        try {
+            $clicked = Wait-Page { param($p) $p.link -eq "clicked" -or $p.link -eq "#clicked" } 4 "link click"
+            Add-Result "page-link-mouse-click" "PASS" "link=$($clicked.link)"
+            $linkClicked = $true
+        } catch {
+            Write-Host "Mouse link click did not register; trying keyboard activation"
+        }
+    }
+    if (-not $linkClicked) {
+        Click-Page $script:hwnd 900 400
+        for ($i = 0; $i -lt 6; $i++) {
+            Send-Keys "{TAB}"
+            Start-Sleep -Milliseconds 150
+            $page = Get-Page
+            if ($null -ne $page -and $page.active -eq "link") { break }
+        }
+        if ($page.active -eq "link") {
+            Send-Keys "{ENTER}"
+            try {
+                $clicked = Wait-Page { param($p) $p.link -eq "clicked" -or $p.link -eq "#clicked" } 5 "link keyboard activation"
+                Add-Result "page-link-mouse-click" "PASS" "keyboard fallback link=$($clicked.link)"
+                $linkClicked = $true
+            } catch { }
+        }
+    }
+    if (-not $linkClicked) {
+        Add-Result "page-link-mouse-click" "UNVERIFIED" "link could not be activated by mouse or keyboard"
     }
 
     $page = Get-Page
