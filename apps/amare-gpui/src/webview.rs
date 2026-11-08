@@ -111,9 +111,9 @@ impl WebViewHost {
             }
             if let Ok(status_path) = std::env::var("AMARE_GPUI_STATUS") {
                 let status_webview = webview.clone();
-                let status_path = status_path.clone();
+                let status_path_for_handler = status_path.clone();
                 let status_handler = NavigationCompletedEventHandler::create(Box::new(move |_, _| {
-                    write_status(&status_webview, &status_path);
+                    write_status(&status_webview, &status_path_for_handler);
                     Ok(())
                 }));
                 let mut status_token = 0;
