@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AMARE TEST</title>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  label { display: block; margin: 12px 0 4px; }
+  input, textarea { width: 420px; padding: 6px; }
+  #scroll { height: 900px; margin-top: 24px; background: linear-gradient(#fff, #ddd); }
+</style>
+</head>
+<body>
+<h1>AMARE GPUI Input Test</h1>
+<label for="text">일반 input</label>
+<input id="text" autocomplete="off">
+<label for="password">password input</label>
+<input id="password" type="password">
+<label for="area">textarea</label>
+<textarea id="area" rows="4"></textarea>
+<p><a id="link" href="#clicked">링크 클릭 테스트</a></p>
+<div id="scroll">scroll area</div>
+<script>
+const state = { text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '' };
+const loads = Number(sessionStorage.getItem('amare-loads') || '0') + 1;
+sessionStorage.setItem('amare-loads', String(loads));
+state.loads = loads;
+function sync() {
+  state.text = document.getElementById('text').value;
+  state.password = document.getElementById('password').value;
+  state.area = document.getElementById('area').value;
+  state.active = document.activeElement ? document.activeElement.id : '';
+  state.scrollY = Math.round(window.scrollY);
+  document.title = 'AMARE_TEST:' + encodeURIComponent(JSON.stringify(state));
+}
+for (const id of ['text', 'password', 'area']) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', sync);
+  el.addEventListener('compositionstart', () => { state.composition = 'start'; sync(); });
+  el.addEventListener('compositionupdate', (e) => { state.composition = 'update:' + e.data; sync(); });
+  el.addEventListener('compositionend', (e) => { state.composition = 'end:' + e.data; sync(); });
+  el.addEventListener('focus', sync);
+  el.addEventListener('blur', sync);
+}
+document.getElementById('link').addEventListener('click', () => { state.link = 'clicked'; sync(); });
+window.addEventListener('scroll', sync, { passive: true });
+window.addEventListener('hashchange', () => { state.link = location.hash; sync(); });
+setTimeout(sync, 50);
+</script>
+</body>
+</html>

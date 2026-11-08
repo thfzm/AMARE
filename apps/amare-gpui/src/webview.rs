@@ -3,18 +3,28 @@ use std::sync::mpsc;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
-    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    ExecuteScriptCompletedHandler, NavigationCompletedEventHandler, take_pwstr, wait_with_pump,
+    AcceleratorKeyPressedEventHandler, CreateCoreWebView2ControllerCompletedHandler,
+    CreateCoreWebView2EnvironmentCompletedHandler, ExecuteScriptCompletedHandler,
+    NavigationCompletedEventHandler, take_pwstr, wait_with_pump,
     Microsoft::Web::WebView2::Win32::{
-        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2Controller,
+        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, CreateCoreWebView2Environment, ICoreWebView2,
+        ICoreWebView2Controller,
     },
 };
 #[cfg(target_os = "windows")]
 use windows::{
     core::HSTRING,
     Win32::{
-        Foundation::{E_POINTER, HWND, RECT},
+        Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
+        UI::{
+            Input::KeyboardAndMouse::{
+                GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
+            },
+            WindowsAndMessaging::{
+                FindWindowExW, PostMessageW, WM_KEYDOWN, WM_KEYUP,
+            },
+        },
     },
 };
 
@@ -22,6 +32,8 @@ use windows::{
 pub struct WebViewHost {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
+    parent: HWND,
+    accelerator_token: i64,
 }
 
 #[cfg(target_os = "windows")]
@@ -103,7 +115,9 @@ impl WebViewHost {
                 webview.add_NavigationCompleted(&initial_handler, &mut token)
                     .map_err(|error| format!("initial navigation handler: {error:?}"))?;
             }
-            webview.Navigate(&HSTRING::from("https://example.com/"))
+            let initial_url = std::env::var("AMARE_GPUI_START_URL")
+                .unwrap_or_else(|_| "https://example.com/".to_string());
+            webview.Navigate(&HSTRING::from(initial_url))
                 .map_err(|error| format!("WebView2 navigate: {error:?}"))?;
             if self_test {
                 let _ = wait_with_pump(initial_rx);
@@ -120,7 +134,59 @@ impl WebViewHost {
                 let _ = webview.add_NavigationCompleted(&status_handler, &mut status_token);
                 write_status(&webview, &status_path);
             }
-            Ok(Self { controller, webview })
+            let accelerator_token = {
+                let accelerator_parent = parent;
+                let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
+                    move |_controller, args| {
+                        let Some(args) = args else { return Ok(()) };
+                        let mut kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                        args.KeyEventKind(&mut kind)?;
+                        if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                            let mut vk = 0u32;
+                            args.VirtualKey(&mut vk)?;
+                            let control = GetKeyState(VK_CONTROL.0 as i32) < 0;
+                            let alt = GetKeyState(VK_MENU.0 as i32) < 0;
+                            let forwarded = if control && vk == VK_L.0 as u32 {
+                                Some(VK_L.0)
+                            } else if control && vk == VK_R.0 as u32 {
+                                Some(VK_R.0)
+                            } else if alt && vk == VK_LEFT.0 as u32 {
+                                Some(VK_LEFT.0)
+                            } else if alt && vk == VK_RIGHT.0 as u32 {
+                                Some(VK_RIGHT.0)
+                            } else {
+                                None
+                            };
+                            if let Some(key) = forwarded {
+                                let mut lparam = 0i32;
+                                args.KeyEventLParam(&mut lparam)?;
+                                unsafe {
+                                    let _ = SetFocus(Some(accelerator_parent));
+                                    let _ = PostMessageW(
+                                        Some(accelerator_parent),
+                                        WM_KEYDOWN,
+                                        WPARAM(key as usize),
+                                        LPARAM(lparam as isize),
+                                    );
+                                    let _ = PostMessageW(
+                                        Some(accelerator_parent),
+                                        WM_KEYUP,
+                                        WPARAM(key as usize),
+                                        LPARAM(lparam as isize),
+                                    );
+                                }
+                                args.SetHandled(true)?;
+                            }
+                        }
+                        Ok(())
+                    },
+                ));
+                let mut token = 0;
+                webview.add_AcceleratorKeyPressed(&accelerator_handler, &mut token)
+                    .map_err(|error| format!("accelerator handler: {error:?}"))?;
+                token
+            };
+            Ok(Self { controller, webview, parent, accelerator_token })
         }
     }
 
@@ -215,7 +281,7 @@ impl WebViewHost {
         result.map_err(|_| "navigation did not complete".to_string())
     }
 
-    fn source(&self) -> String {
+    pub fn source(&self) -> String {
         unsafe {
             let mut value = windows::core::PWSTR::null();
             if self.webview.Source(&mut value).is_err() { return String::new(); }
@@ -223,7 +289,7 @@ impl WebViewHost {
         }
     }
 
-    fn title(&self) -> String {
+    pub fn title(&self) -> String {
         unsafe {
             let mut value = windows::core::PWSTR::null();
             if self.webview.DocumentTitle(&mut value).is_err() { return String::new(); }
@@ -265,6 +331,35 @@ impl WebViewHost {
     pub fn back(&self) {
         unsafe {
             let _ = self.webview.GoBack();
+        }
+    }
+
+    pub fn forward(&self) {
+        unsafe {
+            let _ = self.webview.GoForward();
+        }
+    }
+
+    pub fn reload(&self) {
+        unsafe {
+            let _ = self.webview.Reload();
+        }
+    }
+
+    pub fn focus(&self) {
+        unsafe {
+            for class in [
+                windows::core::w!("Chrome_WidgetWin_0"),
+                windows::core::w!("Chrome_WidgetWin_1"),
+            ] {
+                if let Ok(child) = FindWindowExW(Some(self.parent), None, class, None) {
+                    if !child.is_invalid() {
+                        let _ = SetFocus(Some(child));
+                        return;
+                    }
+                }
+            }
+            let _ = SetFocus(Some(self.parent));
         }
     }
 }

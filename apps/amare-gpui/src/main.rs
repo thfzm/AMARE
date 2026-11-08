@@ -1,10 +1,27 @@
+use std::time::Duration;
+
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, KeyDownEvent, Render, SharedString, Window,
-    WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, FocusHandle, KeyBinding, Render, SharedString, Timer,
+    Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+mod text_input;
 mod webview;
+
+use text_input::AddressInput;
+
+actions!(
+    amare,
+    [
+        FocusAddress,
+        ReloadPage,
+        BackPage,
+        ForwardPage,
+        SubmitAddress,
+        CancelAddress,
+    ]
+);
 
 const TOOLBAR_HEIGHT: f32 = 88.0;
 
@@ -16,7 +33,7 @@ struct TabState {
 struct AmareApp {
     tabs: Vec<TabState>,
     active: usize,
-    address: SharedString,
+    address_input: gpui::Entity<AddressInput>,
     focus_handle: FocusHandle,
     #[cfg(target_os = "windows")]
     webview: Option<webview::WebViewHost>,
@@ -51,19 +68,115 @@ impl AmareApp {
             }
         }
 
-        Self {
+        let start_url = std::env::var("AMARE_GPUI_START_URL")
+            .unwrap_or_else(|_| "https://example.com/".to_string());
+        let address_input = cx.new(|cx| AddressInput::new(start_url.clone(), cx));
+        let app = Self {
             tabs: vec![TabState {
                 title: "New Tab".into(),
-                url: "https://example.com/".into(),
+                url: start_url.into(),
             }],
             active: 0,
-            address: "https://example.com/".into(),
+            address_input,
             focus_handle,
             #[cfg(target_os = "windows")]
             webview,
             #[cfg(target_os = "windows")]
             webview_error,
             dark: false,
+        };
+        let address_focus = app.address_input.read(cx).focus_handle(cx);
+        window.focus(&address_focus);
+        app.start_status_poll(cx);
+        app
+    }
+
+    fn start_status_poll(&self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| loop {
+            Timer::after(Duration::from_millis(250)).await;
+            if this.upgrade().is_none() {
+                break;
+            }
+            this.update(cx, |app, cx| {
+                app.write_status(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn write_status(&mut self, cx: &mut Context<Self>) {
+        let Ok(path) = std::env::var("AMARE_GPUI_STATUS") else {
+            return;
+        };
+        let input = self.address_input.read(cx);
+        let length = input.content().len();
+        let address = input.content();
+        let marked = input
+            .marked_range()
+            .map(|range| serde_json::json!([range.start, range.end]));
+        let selected = input.selected_range();
+        #[cfg(target_os = "windows")]
+        let (source, title) = self
+            .webview
+            .as_ref()
+            .map(|webview| (webview.source(), webview.title()))
+            .unwrap_or_default();
+        #[cfg(not(target_os = "windows"))]
+        let (source, title) = (String::new(), String::new());
+        let payload = serde_json::json!({
+            "address": address,
+            "address_len": length,
+            "marked_range": marked,
+            "selected_range": [selected.start, selected.end],
+            "source": source,
+            "title": title,
+            "pid": std::process::id()
+        });
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+    }
+
+    fn set_address(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
+        let value = value.into();
+        self.address_input
+            .update(cx, |input, cx| input.set_content(value, cx));
+    }
+
+    fn address_value(&self, cx: &App) -> String {
+        self.address_input.read(cx).content()
+    }
+
+    fn refresh_from_webview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        let Some(webview) = &self.webview else {
+            return;
+        };
+        #[cfg(not(target_os = "windows"))]
+        return;
+        #[cfg(target_os = "windows")]
+        {
+            let source = webview.source();
+            if source.is_empty() {
+                return;
+            }
+            let title = webview.title();
+            if let Some(tab) = self.tabs.get_mut(self.active) {
+                if tab.url.as_ref() != source {
+                    tab.url = source.clone().into();
+                    tab.title = if title.is_empty() {
+                        title_for(&source).into()
+                    } else {
+                        title.into()
+                    };
+                }
+            }
+            let focused = self.address_input.read(cx).is_focused(window);
+            if !focused && self.address_value(cx) != source {
+                self.set_address(source, cx);
+            }
         }
     }
 
@@ -71,57 +184,123 @@ impl AmareApp {
         &self.tabs[self.active.min(self.tabs.len() - 1)]
     }
 
-    fn navigate(&mut self) {
-        let url = normalize_url(&self.address);
+    fn navigate(&mut self, cx: &mut Context<Self>) {
+        let url = normalize_url(&self.address_value(cx));
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.url = url.clone().into();
             tab.title = title_for(&url).into();
         }
+        self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = &self.webview {
             webview.navigate(&url);
+            webview.focus();
         }
-        self.address = url.into();
     }
 
-    fn new_tab(&mut self) {
+    fn new_tab(&mut self, cx: &mut Context<Self>) {
         self.tabs.push(TabState {
             title: "New Tab".into(),
             url: "about:blank".into(),
         });
         self.active = self.tabs.len() - 1;
-        self.address = "about:blank".into();
+        self.set_address("about:blank", cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = &self.webview {
             webview.navigate("about:blank");
         }
     }
 
-    fn close_active_tab(&mut self) {
+    fn close_active_tab(&mut self, cx: &mut Context<Self>) {
         if self.tabs.len() <= 1 {
             return;
         }
         self.tabs.remove(self.active);
         self.active = self.active.min(self.tabs.len() - 1);
         let url = self.active_tab().url.to_string();
-        self.address = url.clone().into();
+        self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = &self.webview {
             webview.navigate(&url);
         }
     }
 
-    fn select_tab(&mut self, index: usize) {
+    fn select_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.tabs.len() {
             return;
         }
         self.active = index;
         let url = self.active_tab().url.to_string();
-        self.address = url.clone().into();
+        self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = &self.webview {
             webview.navigate(&url);
         }
+    }
+
+    fn focus_address(
+        &mut self,
+        _: &FocusAddress,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.address_input
+            .update(cx, |input, cx| input.select_all_text(cx));
+        let handle = self.address_input.read(cx).focus_handle(cx);
+        window.focus(&handle);
+        cx.notify();
+    }
+
+    fn submit_address(
+        &mut self,
+        _: &SubmitAddress,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.navigate(cx);
+        cx.notify();
+    }
+
+    fn cancel_address(
+        &mut self,
+        _: &CancelAddress,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let url = self.active_tab().url.to_string();
+        self.set_address(url, cx);
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.webview {
+            webview.focus();
+        }
+        cx.notify();
+    }
+
+    fn reload_page(&mut self, _: &ReloadPage, _window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.webview {
+            webview.reload();
+            webview.focus();
+        }
+        cx.notify();
+    }
+
+    fn go_back(&mut self, _: &BackPage, _window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.webview {
+            webview.back();
+            webview.focus();
+        }
+        cx.notify();
+    }
+
+    fn go_forward(&mut self, _: &ForwardPage, _window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.webview {
+            webview.forward();
+            webview.focus();
+        }
+        cx.notify();
     }
 
     fn sync_webview_bounds(&self, window: &Window) {
@@ -139,6 +318,7 @@ impl AmareApp {
 
 impl Render for AmareApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.refresh_from_webview(window, cx);
         self.sync_webview_bounds(window);
         let dark = self.dark;
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
@@ -153,7 +333,7 @@ impl Render for AmareApp {
             .map(|(index, tab)| {
                 let active = index == self.active;
                 let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                    this.select_tab(index);
+                    this.select_tab(index, cx);
                     cx.notify();
                 });
                 div()
@@ -176,28 +356,12 @@ impl Render for AmareApp {
 
         div()
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(|this: &mut Self, event: &KeyDownEvent, window, cx| {
-                let key = event.keystroke.key.as_str();
-                if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("t") {
-                    this.new_tab();
-                } else if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("l") {
-                    this.address = "".into();
-                    this.focus_handle.focus(window);
-                } else if event.keystroke.modifiers.control && key.eq_ignore_ascii_case("w") {
-                    this.close_active_tab();
-                } else if key == "enter" {
-                    this.navigate();
-                } else if key == "backspace" {
-                    let mut address = this.address.to_string();
-                    address.pop();
-                    this.address = address.into();
-                } else if let Some(text) = &event.keystroke.key_char {
-                    if !event.keystroke.modifiers.control && !event.keystroke.modifiers.alt {
-                        this.address = format!("{}{}", this.address, text).into();
-                    }
-                }
-                cx.notify();
-            }))
+            .on_action(cx.listener(Self::focus_address))
+            .on_action(cx.listener(Self::submit_address))
+            .on_action(cx.listener(Self::cancel_address))
+            .on_action(cx.listener(Self::reload_page))
+            .on_action(cx.listener(Self::go_back))
+            .on_action(cx.listener(Self::go_forward))
             .flex()
             .flex_col()
             .size_full()
@@ -234,7 +398,7 @@ impl Render for AmareApp {
                             .text_lg()
                             .child("+")
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                this.new_tab();
+                                this.new_tab(cx);
                                 cx.notify();
                             })),
                     )
@@ -276,18 +440,13 @@ impl Render for AmareApp {
                             .items_center()
                             .flex_1()
                             .h(px(30.0))
-                            .px_3()
                             .rounded_md()
                             .bg(background)
                             .border_1()
                             .border_color(border)
                             .text_sm()
                             .text_color(muted)
-                            .child(self.address.clone())
-                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                                this.focus_handle.focus(window);
-                                cx.notify();
-                            })),
+                            .child(self.address_input.clone()),
                     )
                     .child(
                         div()
@@ -367,6 +526,26 @@ fn title_for(url: &str) -> String {
 
 fn main() {
     Application::new().run(|cx: &mut App| {
+        cx.bind_keys([
+            KeyBinding::new("ctrl-l", FocusAddress, None),
+            KeyBinding::new("ctrl-r", ReloadPage, None),
+            KeyBinding::new("alt-left", BackPage, None),
+            KeyBinding::new("alt-right", ForwardPage, None),
+            KeyBinding::new("enter", SubmitAddress, None),
+            KeyBinding::new("escape", CancelAddress, None),
+            KeyBinding::new("backspace", text_input::Backspace, Some("AddressInput")),
+            KeyBinding::new("delete", text_input::Delete, Some("AddressInput")),
+            KeyBinding::new("left", text_input::Left, Some("AddressInput")),
+            KeyBinding::new("right", text_input::Right, Some("AddressInput")),
+            KeyBinding::new("shift-left", text_input::SelectLeft, Some("AddressInput")),
+            KeyBinding::new("shift-right", text_input::SelectRight, Some("AddressInput")),
+            KeyBinding::new("ctrl-a", text_input::SelectAll, Some("AddressInput")),
+            KeyBinding::new("ctrl-c", text_input::Copy, Some("AddressInput")),
+            KeyBinding::new("ctrl-v", text_input::Paste, Some("AddressInput")),
+            KeyBinding::new("ctrl-x", text_input::Cut, Some("AddressInput")),
+            KeyBinding::new("home", text_input::Home, Some("AddressInput")),
+            KeyBinding::new("end", text_input::End, Some("AddressInput")),
+        ]);
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
