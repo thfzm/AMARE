@@ -71,8 +71,23 @@ impl WebViewHost {
         unsafe {
             controller.SetIsVisible(true).map_err(|error| format!("WebView2 visible: {error:?}"))?;
             let webview = controller.CoreWebView2().map_err(|error| format!("WebView2 core: {error:?}"))?;
+            let self_test = std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1");
+            let mut token = 0;
+            let (initial_tx, initial_rx) = mpsc::channel();
+            let initial_handler = NavigationCompletedEventHandler::create(Box::new(move |_, _| {
+                let _ = initial_tx.send(());
+                Ok(())
+            }));
+            if self_test {
+                webview.add_NavigationCompleted(&initial_handler, &mut token)
+                    .map_err(|error| format!("initial navigation handler: {error:?}"))?;
+            }
             webview.Navigate(&HSTRING::from("https://example.com/"))
                 .map_err(|error| format!("WebView2 navigate: {error:?}"))?;
+            if self_test {
+                let _ = wait_with_pump(initial_rx);
+                let _ = webview.remove_NavigationCompleted(token);
+            }
             Ok(Self { controller, webview })
         }
     }
