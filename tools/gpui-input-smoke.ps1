@@ -379,12 +379,19 @@ try {
 
     $page = Get-Page
     $webviewChild = Find-WebViewChild $script:hwnd
-    Click-WebPage $script:hwnd 900 400
-    for ($i = 0; $i -lt 5; $i++) {
-        Send-Keys "{TAB}"
-        Start-Sleep -Milliseconds 200
-        $page = Get-Page
-        if ($null -ne $page -and $page.active -eq "text") { break }
+    Send-Keys "^{HOME}"
+    Start-Sleep -Milliseconds 400
+    $page = Get-Page
+    if ($null -ne $page -and $null -ne $page.textRect) {
+        Click-WebPage $script:hwnd ([int]$page.textRect.left + 5) ([int]$page.textRect.top + 10)
+    } else {
+        Click-WebPage $script:hwnd 900 400
+        for ($i = 0; $i -lt 5; $i++) {
+            Send-Keys "{TAB}"
+            Start-Sleep -Milliseconds 200
+            $page = Get-Page
+            if ($null -ne $page -and $page.active -eq "text") { break }
+        }
     }
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     Set-Korean $webviewChild
