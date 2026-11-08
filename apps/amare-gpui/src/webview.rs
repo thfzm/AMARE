@@ -19,7 +19,10 @@ use windows::{
         System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
         UI::{
             Input::{
-                Ime::{ImmAssociateContext, ImmCreateContext},
+                Ime::{
+                    HIMC, IACE_DEFAULT, ImmAssociateContext, ImmAssociateContextEx,
+                    ImmCreateContext, ImmGetContext,
+                },
                 KeyboardAndMouse::{
                     GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
                 },
@@ -350,6 +353,18 @@ impl WebViewHost {
     pub fn reload(&self) {
         unsafe {
             let _ = self.webview.Reload();
+        }
+    }
+
+    pub fn ensure_ime(&self) {
+        unsafe {
+            if ImmGetContext(self.parent).0.is_null() {
+                let context = ImmCreateContext();
+                if !context.0.is_null() {
+                    let _ = ImmAssociateContext(self.parent, context);
+                }
+                let _ = ImmAssociateContextEx(self.parent, HIMC::default(), IACE_DEFAULT);
+            }
         }
     }
 

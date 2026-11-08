@@ -110,6 +110,10 @@ impl AmareApp {
         let Ok(path) = std::env::var("AMARE_GPUI_STATUS") else {
             return;
         };
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.webview {
+            webview.ensure_ime();
+        }
         let input = self.address_input.read(cx);
         let length = input.content().len();
         let address = input.content();
