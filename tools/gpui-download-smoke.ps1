@@ -14,7 +14,8 @@ using System.Runtime.InteropServices;
 public static class AmareDl {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, out System.Drawing.Point point);
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, out POINT point);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f,int x,int y,int d,UIntPtr e);
 }
@@ -24,7 +25,7 @@ function Add-Result([string]$name,[string]$state,[string]$detail){$script:result
 function Read-State { if(-not(Test-Path $Status)){return $null};try{return Get-Content $Status -Raw|ConvertFrom-Json}catch{return $null} }
 function Wait-State([scriptblock]$cond,[int]$sec,[string]$label){$d=(Get-Date).AddSeconds($sec);while((Get-Date)-lt$d){$s=Read-State;if($null-ne$s -and (& $cond $s)){return $s};Start-Sleep -Milliseconds 250};throw "Timed out waiting for $label"}
 function Shot([string]$name){$r=New-Object AmareDl+RECT;[void][AmareDl]::GetWindowRect($script:hwnd,[ref]$r);$w=[Math]::Max(1,$r.Right-$r.Left);$h=[Math]::Max(1,$r.Bottom-$r.Top);$b=New-Object System.Drawing.Bitmap($w,$h);$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen($r.Left,$r.Top,0,0,$b.Size);$p=Join-Path $ScreenshotDir $name;$b.Save($p,[System.Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$b.Dispose();Add-Result $name "PASS" "$p ($w x $h, $((Get-Item $p).Length) bytes)"}
-function Click-Web([int]$x,[int]$y){$pt=New-Object System.Drawing.Point;[void][AmareDl]::ClientToScreen($script:hwnd,[ref]$pt);[void][AmareDl]::SetForegroundWindow($script:hwnd);[System.Windows.Forms.Cursor]::Position=New-Object System.Drawing.Point(($pt.X+$x),($pt.Y+88+$y));[AmareDl]::mouse_event(2,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 80;[AmareDl]::mouse_event(4,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 300}
+function Click-Web([int]$x,[int]$y){$pt=New-Object AmareDl+POINT;[void][AmareDl]::ClientToScreen($script:hwnd,[ref]$pt);[void][AmareDl]::SetForegroundWindow($script:hwnd);[System.Windows.Forms.Cursor]::Position=New-Object System.Drawing.Point(($pt.X+$x),($pt.Y+88+$y));[AmareDl]::mouse_event(2,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 80;[AmareDl]::mouse_event(4,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 300}
 function PageState { $s=Read-State;if($null-eq$s-or-not$s.title.StartsWith("AMARE_TEST:")){return $null};return [Uri]::UnescapeDataString($s.title.Substring(11))|ConvertFrom-Json }
 $script:hwnd=[IntPtr]::Zero;$app=$null;$server=$null;$before=@(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
 Remove-Item $Status -Force -ErrorAction SilentlyContinue
