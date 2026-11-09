@@ -23,6 +23,21 @@ public static class AmareTab {
     [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayout(string id, uint flags);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    public static int CountWindows(int processId) {
+        int count = 0;
+        EnumWindows((hwnd, lparam) => {
+            uint pid;
+            GetWindowThreadProcessId(hwnd, out pid);
+            if (pid == processId && IsWindowVisible(hwnd)) { count++; }
+            return true;
+        }, IntPtr.Zero);
+        return count;
+    }
 }
 '@
 
@@ -69,6 +84,18 @@ function Shot([string]$name) {
     Add-Result ("screenshot-" + [IO.Path]::GetFileNameWithoutExtension($name)) "PASS" "$path ($w x $h)"
 }
 function Page([string]$tab) { return "$BaseUrl`?tab=$tab" }
+function Count-Windows { return [AmareTab]::CountWindows($script:app.Id) }
+function Drag-At([IntPtr]$hwnd, [int]$sx, [int]$sy, [int]$ex, [int]$ey) {
+    $origin = Get-Origin $hwnd
+    [void][AmareTab]::SetForegroundWindow($hwnd)
+    [void][AmareTab]::SetCursorPos($origin.X + $sx, $origin.Y + $sy)
+    [AmareTab]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [void][AmareTab]::SetCursorPos($origin.X + $ex, $origin.Y + $ey)
+    Start-Sleep -Milliseconds 250
+    [AmareTab]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 300
+}
 function Get-TabState([string]$stateName, [string]$tab) {
     $state = Read-State
     if ($null -eq $state) { return $null }
@@ -90,7 +117,7 @@ function Ensure-Tabs([int]$target) {
         }
         $rect = Get-Rect $script:hwnd
         $orig = Get-Origin $script:hwnd
-        Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
+        Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -218,10 +245,63 @@ try {
     $cId = $three.active_tab
     $navC = Navigate (Page "C") 25
     Add-Result "tab-c-navigation" "PASS" "tab=$cId source=$($navC.source)"
-    # New tab button actual click.
+
+    # Real mouse drag reorder: move first tab to the end, then cancel outside the strip.
+    $beforeOrder = @((Read-State).tabs) | ForEach-Object { $_.id }
+    Drag-At $script:hwnd 72 22 320 22
+    $reordered = Wait-State { param($s) @($s.tabs)[0].id -eq $beforeOrder[1] } 10 "tab drag reorder"
+    Add-Result "tab-drag-reorder" "PASS" "order=$((@($reordered.tabs) | ForEach-Object { $_.id }) -join ',')"
+    $orderAfterDrag = @($reordered.tabs) | ForEach-Object { $_.id }
+    Drag-At $script:hwnd 72 22 320 400
+    Start-Sleep -Milliseconds 500
+    $afterCancel = Read-State
+    $orderAfterCancel = @($afterCancel.tabs) | ForEach-Object { $_.id }
+    if (($orderAfterCancel -join ',') -ne ($orderAfterDrag -join ',')) { throw "tab drag cancel changed order" }
+    Add-Result "tab-drag-cancel" "PASS" "order unchanged"
+
+    # target=_blank and window.open both open tabs (WebView2 NewWindowRequested).
+    $pageC = Get-PageStateForTab $cId
+    if ($null -ne $pageC.popupRect) {
+        Click-Web $script:hwnd ([int]$pageC.popupRect.left + 5) ([int]$pageC.popupRect.top + 5)
+        $popup = Wait-State { param($s) @($s.tabs).Count -eq 4 -and $s.source -like "*tab=POPUP*" } 15 "target blank popup tab"
+        Add-Result "target-blank-new-tab" "PASS" "tab=$($popup.active_tab) source=$($popup.source)"
+        Send-Keys "^w"
+        [void](Wait-Tabs 3 15 "popup close")
+    } else { Add-Result "target-blank-new-tab" "UNVERIFIED" "popup rect unavailable" }
+    $pageC = Get-PageStateForTab $cId
+    if ($null -ne $pageC.jsPopupRect) {
+        Click-Web $script:hwnd ([int]$pageC.jsPopupRect.left + 5) ([int]$pageC.jsPopupRect.top + 5)
+        $jspop = Wait-State { param($s) @($s.tabs).Count -eq 4 -and $s.source -like "*tab=JS*" } 15 "window.open popup tab"
+        Add-Result "window-open-new-tab" "PASS" "tab=$($jspop.active_tab) source=$($jspop.source)"
+        Send-Keys "^w"
+        [void](Wait-Tabs 3 15 "js popup close")
+    } else { Add-Result "window-open-new-tab" "UNVERIFIED" "js popup rect unavailable" }
+
+    # New browser window (toolbar button), independent of the current tab list.
+    $windowCount = Count-Windows
     $rect = Get-Rect $script:hwnd
     $orig = Get-Origin $script:hwnd
     Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
+    $newWindowCount = 0
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        $newWindowCount = Count-Windows
+        if ($newWindowCount -gt $windowCount) { break }
+    }
+    if ($newWindowCount -le $windowCount) { throw "new browser window was not created" }
+    Add-Result "new-browser-window" "PASS" "windows $windowCount->$newWindowCount"
+    [void][AmareTab]::SetForegroundWindow([AmareTab]::GetForegroundWindow())
+    Send-Keys "%{F4}"
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        if ((Count-Windows) -le $windowCount) { break }
+    }
+    if ((Count-Windows) -gt $windowCount) { throw "new browser window did not close" }
+    Add-Result "new-browser-window-close" "PASS" "windows back to $windowCount"
+    # New tab button actual click.
+    $rect = Get-Rect $script:hwnd
+    $orig = Get-Origin $script:hwnd
+    Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
     $four = Wait-Tabs 4 20 "new-tab button"
     Add-Result "new-tab-button" "PASS" "tabs=$(@($four.tabs).Count)"
     $navD = Navigate (Page "D") 25

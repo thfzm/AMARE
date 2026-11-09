@@ -19,9 +19,11 @@
 <label for="area">textarea</label>
 <textarea id="area" rows="4"></textarea>
 <p><a id="link" href="#clicked">링크 클릭 테스트</a></p>
+<p><a id="popup-link" href="#" target="_blank">target=_blank 테스트</a></p>
+<button id="js-popup">window.open 테스트</button>
 <div id="scroll">scroll area</div>
 <script>
-const tab = new URLSearchParams(location.search).get('tab') || '?'; document.getElementById('tab-id').textContent = '(' + tab + ')'; const state = { tab: tab, text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null };
+const tab = new URLSearchParams(location.search).get('tab') || '?'; document.getElementById('tab-id').textContent = '(' + tab + ')'; const state = { tab: tab, text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null, popupRect: null, jsPopupRect: null };
 const loads = Number(sessionStorage.getItem('amare-loads') || '0') + 1;
 sessionStorage.setItem('amare-loads', String(loads));
 state.loads = loads;
@@ -33,8 +35,12 @@ function sync() {
   state.scrollY = Math.round(window.scrollY);
   const textRect = document.getElementById('text').getBoundingClientRect();
   const linkRect = document.getElementById('link').getBoundingClientRect();
+  const popupRect = document.getElementById('popup-link').getBoundingClientRect();
+  const jsPopupRect = document.getElementById('js-popup').getBoundingClientRect();
   state.textRect = { left: textRect.left, top: textRect.top, right: textRect.right, bottom: textRect.bottom };
   state.linkRect = { left: linkRect.left, top: linkRect.top, right: linkRect.right, bottom: linkRect.bottom };
+  state.popupRect = { left: popupRect.left, top: popupRect.top, right: popupRect.right, bottom: popupRect.bottom };
+  state.jsPopupRect = { left: jsPopupRect.left, top: jsPopupRect.top, right: jsPopupRect.right, bottom: jsPopupRect.bottom };
   document.title = 'AMARE_TEST:' + encodeURIComponent(JSON.stringify(state));
 }
 for (const id of ['text', 'password', 'area']) {
@@ -49,6 +55,8 @@ for (const id of ['text', 'password', 'area']) {
   el.addEventListener('keydown', (e) => { state.lastKey = e.key; sync(); });
 }
 document.getElementById('link').addEventListener('click', () => { state.link = 'clicked'; sync(); });
+document.getElementById('popup-link').href = location.pathname + '?tab=POPUP';
+document.getElementById('js-popup').addEventListener('click', () => { window.open(location.pathname + '?tab=JS', '_blank'); });
 window.addEventListener('scroll', sync, { passive: true });
 window.addEventListener('hashchange', () => { state.link = location.hash; sync(); });
 setTimeout(sync, 50);

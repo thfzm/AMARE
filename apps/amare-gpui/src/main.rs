@@ -206,6 +206,15 @@ impl AmareApp {
         let Ok(path) = std::env::var("AMARE_GPUI_STATUS") else {
             return;
         };
+        match std::env::var("AMARE_GPUI_STATUS_WINDOW") {
+            Ok(expected) => {
+                if expected.parse::<u64>().ok() != Some(self.window_id) {
+                    return;
+                }
+            }
+            Err(_) if self.window_id != 1 => return,
+            Err(_) => {}
+        }
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
             webview.ensure_ime();
