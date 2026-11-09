@@ -576,6 +576,8 @@ impl Render for AmareApp {
                     .items_center()
                     .gap_1()
                     .px_2()
+                    .w(px(150.0))
+                    .justify_between()
                     .h(px(34.0))
                     .rounded_md()
                     .bg(if active { surface } else { background })
@@ -585,7 +587,7 @@ impl Render for AmareApp {
                     .text_color(if active { accent } else { muted })
                     .child(
                         div()
-                            .max_w(px(90.0))
+                            .max_w(px(100.0))
                             .overflow_hidden()
                             .text_ellipsis()
                             .child(tab.title.clone()),

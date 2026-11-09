@@ -225,25 +225,24 @@ try {
     $aAfterClose = Wait-State { param($s) $s.active_tab -eq $aId -and $s.source -like "*tab=A2*" } 10 "tab A after close"
     Add-Result "tab-survives-other-close" "PASS" "tab A source=$($aAfterClose.source)"
 
-    # Close button actual click on a non-active tab (last tab in strip).
-    $state = Read-State
-    $target = @($state.tabs) | Where-Object { $_.id -ne $aId } | Select-Object -Last 1
-    $orig = Get-Origin $script:hwnd
-    $tabsList = @($state.tabs)
-    $idx = [array]::IndexOf($tabsList, $target)
-    Click-At $script:hwnd ($orig.X + 10 + ($idx * 96) + 75) ($orig.Y + 22)
-    $afterButton = Wait-State { param($s) @($s.tabs).Count -eq 8 } 20 "tab close button"
-    Add-Result "tab-close-button" "PASS" "tabs=$(@($afterButton.tabs).Count)"
-    [void](Select-Tab $aId)
-    Shot "gpui-tabs-after-close.png"
-
-    # Close all remaining tabs; last close should exit.
-    $remaining = @((Read-State).tabs).Count
-    for ($i = 0; $i -lt ($remaining - 1); $i++) {
+    # Reduce to two tabs, test tab click and the close button with stable geometry.
+    while (@((Read-State).tabs).Count -gt 2) {
         Send-Keys "^w"
         Start-Sleep -Milliseconds 700
     }
-    $last = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
+    $twoState = Wait-State { param($s) @($s.tabs).Count -eq 2 } 20 "two tabs remaining"
+    $firstId = @($twoState.tabs)[0].id
+    $orig = Get-Origin $script:hwnd
+    Click-At $script:hwnd ($orig.X + 55) ($orig.Y + 22)
+    $clickedTab = Wait-State { param($s) $s.active_tab -eq $firstId } 10 "tab click"
+    Add-Result "tab-click-activation" "PASS" "active=$($clickedTab.active_tab)"
+    Shot "gpui-tabs-two.png"
+    Click-At $script:hwnd ($orig.X + 144) ($orig.Y + 22)
+    $afterButton = Wait-State { param($s) @($s.tabs).Count -eq 1 } 15 "tab close button"
+    Add-Result "tab-close-button" "PASS" "tabs=$(@($afterButton.tabs).Count)"
+    Shot "gpui-tabs-after-close.png"
+
+    # Close the last tab; it should exit the browser.
     Send-Keys "^w"
     if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit on last tab close" }
     Start-Sleep -Seconds 2
