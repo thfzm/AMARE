@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.50.0",
+    [string]$Version = "0.51.0",
     [string]$Repository = "thfzm/AMARE",
     [switch]$CreateDraft
 )
