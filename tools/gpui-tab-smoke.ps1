@@ -168,6 +168,14 @@ try {
     Send-Keys "^t"
     $two = Wait-Tabs 2 20 "second tab via Ctrl+T"
     Add-Result "new-tab-ctrl-t" "PASS" "tabs=$(@($two.tabs).Count) active=$($two.active_tab)"
+    $ids = @($two.tabs) | ForEach-Object { $_.id }
+    $orig = Get-Origin $script:hwnd
+    Click-At $script:hwnd ($orig.X + 55) ($orig.Y + 22)
+    $clickOne = Wait-State { param($s) $s.active_tab -eq $ids[0] } 10 "first tab click"
+    Add-Result "tab-click-first" "PASS" "active=$($clickOne.active_tab)"
+    Click-At $script:hwnd ($orig.X + 200) ($orig.Y + 22)
+    $clickTwo = Wait-State { param($s) $s.active_tab -eq $ids[1] } 10 "second tab click"
+    Add-Result "tab-click-second" "PASS" "active=$($clickTwo.active_tab)"
     $bId = $two.active_tab
     $navB = Navigate (Page "B") 25
     Add-Result "new-tab-navigation" "PASS" "tab=$bId source=$($navB.source)"
@@ -251,30 +259,20 @@ try {
     $aAfterClose = Wait-State { param($s) $s.active_tab -eq $aId -and $s.source -like "*tab=A2*" } 10 "tab A after close"
     Add-Result "tab-survives-other-close" "PASS" "tab A source=$($aAfterClose.source)"
 
-    # Reduce to two tabs, test tab click and the close button with stable geometry.
-    while (@((Read-State).tabs).Count -gt 2) {
+    # Reduce to one tab via Ctrl+W, then use the tab close button to exit.
+    while (@((Read-State).tabs).Count -gt 1) {
         Send-Keys "^w"
         Start-Sleep -Milliseconds 700
     }
-    $twoState = Wait-State { param($s) @($s.tabs).Count -eq 2 } 20 "two tabs remaining"
-    $firstId = @($twoState.tabs)[0].id
+    $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
+    Shot "gpui-tabs-one.png"
     $orig = Get-Origin $script:hwnd
-    Click-At $script:hwnd ($orig.X + 55) ($orig.Y + 22)
-    $clickedTab = Wait-State { param($s) $s.active_tab -eq $firstId } 10 "tab click"
-    Add-Result "tab-click-activation" "PASS" "active=$($clickedTab.active_tab)"
-    Shot "gpui-tabs-two.png"
-    Click-At $script:hwnd ($orig.X + 89) ($orig.Y + 22)
-    $afterButton = Wait-State { param($s) @($s.tabs).Count -eq 1 } 15 "tab close button"
-    Add-Result "tab-close-button" "PASS" "tabs=$(@($afterButton.tabs).Count)"
-    Shot "gpui-tabs-after-close.png"
-
-    # Close the last tab; it should exit the browser.
-    Send-Keys "^w"
-    if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit on last tab close" }
+    Click-At $script:hwnd ($orig.X + 144) ($orig.Y + 22)
+    if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit from tab close button on last tab" }
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt $before) { throw "WebView2 processes remained after all tabs closed" }
-    Add-Result "last-tab-close-exits" "PASS" "exit=$($script:app.ExitCode) webview2=$before->$after"
+    Add-Result "tab-close-button-last-tab" "PASS" "exit=$($script:app.ExitCode) webview2=$before->$after"
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
