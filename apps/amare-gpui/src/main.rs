@@ -1,12 +1,14 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
+    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*,
+    px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use amare_core::{Bookmark, HistoryEntry};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -17,6 +19,7 @@ use windows::Win32::{
     },
 };
 
+mod library;
 mod text_input;
 mod webview;
 
@@ -39,12 +42,23 @@ actions!(
         NewWindow,
         NextTab,
         PreviousTab,
+        ToggleBookmark,
+        ToggleBookmarksPanel,
+        ToggleHistoryPanel,
     ]
 );
 
 const TOOLBAR_HEIGHT: f32 = 88.0;
 const TAB_START_X: f32 = 12.0;
 const TAB_SLOT: f32 = 124.0;
+const PANEL_WIDTH: f32 = 360.0;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LibraryPanel {
+    None,
+    Bookmarks,
+    History,
+}
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -117,6 +131,7 @@ struct TabState {
     can_go_forward: bool,
     favicon: Option<SharedString>,
     last_active: u64,
+    history_url: String,
     #[cfg(target_os = "windows")]
     webview: Option<webview::WebViewHost>,
 }
@@ -129,6 +144,13 @@ struct AmareApp {
     activity_counter: u64,
     new_tab_url: String,
     address_input: gpui::Entity<AddressInput>,
+    search_input: gpui::Entity<AddressInput>,
+    panel: LibraryPanel,
+    bookmarks: Vec<Bookmark>,
+    history: Vec<HistoryEntry>,
+    history_query: String,
+    confirm_clear_history: bool,
+    library_error: Option<String>,
     focus_handle: FocusHandle,
     #[cfg(target_os = "windows")]
     parent: Option<HWND>,
@@ -204,11 +226,15 @@ impl AmareApp {
             can_go_forward: false,
             favicon: None,
             last_active: 1,
+            history_url: String::new(),
             #[cfg(target_os = "windows")]
             webview: first_webview,
         }];
 
         let address_input = cx.new(|cx| AddressInput::new(start_url.clone(), cx));
+        let search_input = cx.new(|cx| AddressInput::new("", cx));
+        let bookmarks = library::bookmarks().unwrap_or_default();
+        let history = library::history("").unwrap_or_default();
         let app = Self {
             tabs,
             active: 0,
@@ -217,6 +243,13 @@ impl AmareApp {
             activity_counter: 1,
             new_tab_url,
             address_input,
+            search_input,
+            panel: LibraryPanel::None,
+            bookmarks,
+            history,
+            history_query: String::new(),
+            confirm_clear_history: false,
+            library_error: None,
             focus_handle,
             #[cfg(target_os = "windows")]
             parent,
@@ -272,7 +305,14 @@ impl AmareApp {
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
             activity_counter: 1,
             new_tab_url,
-            address_input: cx.new(|cx| AddressInput::new(address, cx)),
+            address_input: cx.new(|cx| AddressInput::new(address.clone(), cx)),
+            search_input: cx.new(|cx| AddressInput::new("", cx)),
+            panel: LibraryPanel::None,
+            bookmarks: library::bookmarks().unwrap_or_default(),
+            history: library::history("").unwrap_or_default(),
+            history_query: String::new(),
+            confirm_clear_history: false,
+            library_error: None,
             focus_handle,
             #[cfg(target_os = "windows")]
             parent,
@@ -346,6 +386,21 @@ impl AmareApp {
         #[cfg(not(target_os = "windows"))]
         let ime_context = false;
         let source_window_id = self.window_id;
+        let bookmarks = self
+            .bookmarks
+            .iter()
+            .map(|bookmark| serde_json::json!({"id": bookmark.id, "title": bookmark.title, "url": bookmark.url}))
+            .collect::<Vec<_>>();
+        let history = self
+            .history
+            .iter()
+            .map(|entry| serde_json::json!({"id": entry.id, "title": entry.title, "url": entry.url, "visited_at_ms": entry.last_visited_at_ms, "visit_count": entry.visit_count}))
+            .collect::<Vec<_>>();
+        let panel = match self.panel {
+            LibraryPanel::None => "none",
+            LibraryPanel::Bookmarks => "bookmarks",
+            LibraryPanel::History => "history",
+        };
         let tabs = self
             .tabs
             .iter()
@@ -370,6 +425,10 @@ impl AmareApp {
             "title": title,
             "window_id": self.window_id,
             "active_tab": active.map(|tab| tab.id),
+            "panel": panel,
+            "history_query": self.history_query,
+            "bookmarks": bookmarks,
+            "history": history,
             "tabs": tabs,
             "ime_context": ime_context,
             "pid": std::process::id()
@@ -413,8 +472,107 @@ impl AmareApp {
         window.focus(&handle);
     }
 
+    fn refresh_bookmarks(&mut self) {
+        match library::bookmarks() {
+            Ok(bookmarks) => {
+                self.bookmarks = bookmarks;
+                self.library_error = None;
+            }
+            Err(error) => self.library_error = Some(error),
+        }
+    }
+
+    fn refresh_history(&mut self) {
+        match library::history(&self.history_query) {
+            Ok(history) => {
+                self.history = history;
+                self.library_error = None;
+            }
+            Err(error) => self.library_error = Some(error),
+        }
+    }
+
+    fn open_library_panel(&mut self, panel: LibraryPanel, window: &mut Window, cx: &mut Context<Self>) {
+        self.panel = if self.panel == panel { LibraryPanel::None } else { panel };
+        self.confirm_clear_history = false;
+        if self.panel == LibraryPanel::Bookmarks {
+            self.refresh_bookmarks();
+        } else if self.panel == LibraryPanel::History {
+            self.search_input.update(cx, |input, cx| input.set_content("", cx));
+            self.history_query.clear();
+            self.refresh_history();
+            let handle = self.search_input.read(cx).focus_handle(cx);
+            window.focus(&handle);
+        }
+        cx.notify();
+    }
+
+    fn toggle_active_bookmark(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.active_tab() else { return };
+        let title = tab.title.to_string();
+        let url = tab.url.to_string();
+        if url.is_empty() || url.starts_with("about:") { return; }
+        match library::toggle_bookmark(&title, &url) {
+            Ok((_added, bookmarks)) => {
+                self.bookmarks = bookmarks;
+                self.library_error = None;
+            }
+            Err(error) => self.library_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn navigate_to(&mut self, url: String, cx: &mut Context<Self>) {
+        self.set_address(url, cx);
+        self.navigate(cx);
+        self.panel = LibraryPanel::None;
+        cx.notify();
+    }
+
+    fn delete_bookmark(&mut self, id: i64, cx: &mut Context<Self>) {
+        match library::delete_bookmark(id) {
+            Ok(bookmarks) => { self.bookmarks = bookmarks; self.library_error = None; }
+            Err(error) => self.library_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn delete_history(&mut self, url: String, cx: &mut Context<Self>) {
+        match library::delete_history(&url) {
+            Ok(history) => { self.history = history; self.library_error = None; }
+            Err(error) => self.library_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn clear_history(&mut self, cx: &mut Context<Self>) {
+        if !self.confirm_clear_history {
+            self.confirm_clear_history = true;
+            cx.notify();
+            return;
+        }
+        match library::clear_history() {
+            Ok(_) => { self.history.clear(); self.confirm_clear_history = false; self.library_error = None; }
+            Err(error) => self.library_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn toggle_bookmark_action(&mut self, _: &ToggleBookmark, _window: &mut Window, cx: &mut Context<Self>) {
+        self.toggle_active_bookmark(cx);
+    }
+
+    fn toggle_bookmarks_panel_action(&mut self, _: &ToggleBookmarksPanel, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_library_panel(LibraryPanel::Bookmarks, window, cx);
+    }
+
+    fn toggle_history_panel_action(&mut self, _: &ToggleHistoryPanel, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_library_panel(LibraryPanel::History, window, cx);
+    }
+
     fn refresh_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
+        let mut history_changed = false;
         for tab in &mut self.tabs {
             let Some(webview) = &tab.webview else {
                 continue;
@@ -428,12 +586,33 @@ impl AmareApp {
                 } else {
                     title.into()
                 };
+                let key = history_key(&source);
+                if !key.is_empty() && tab.history_url != key && !tab.title.is_empty() {
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+                    if library::record_history(&tab.title, &source, now).is_ok() {
+                        tab.history_url = key;
+                        history_changed = true;
+                    }
+                }
             }
             tab.can_go_back = webview.can_go_back();
             tab.can_go_forward = webview.can_go_forward();
             let (loading, error) = webview.signals();
             tab.loading = loading;
             tab.error = error.map(Into::into);
+        }
+        if history_changed {
+            self.history = library::history(&self.history_query).unwrap_or_default();
+        }
+        if self.panel == LibraryPanel::History {
+            let query = self.search_input.read(cx).content();
+            if query != self.history_query {
+                self.history_query = query;
+                match library::history(&self.history_query) {
+                    Ok(history) => { self.history = history; self.library_error = None; }
+                    Err(error) => self.library_error = Some(error),
+                }
+            }
         }
         #[cfg(not(target_os = "windows"))]
         let _ = &self.tabs;
@@ -508,6 +687,7 @@ impl AmareApp {
             can_go_forward: false,
             favicon: None,
             last_active: self.activity_counter,
+            history_url: String::new(),
             #[cfg(target_os = "windows")]
             webview,
         });
@@ -807,12 +987,223 @@ impl AmareApp {
         let _ = (window, cx);
     }
 
+    fn render_library_panel(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let dark = self.dark;
+        let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let accent = rgb(0x2f7df6);
+        let is_history = self.panel == LibraryPanel::History;
+        let title = if is_history { "방문 기록" } else { "북마크" };
+        let close = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.panel = LibraryPanel::None;
+            cx.notify();
+        });
+        let clear = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.clear_history(cx);
+        });
+        let rows = if is_history {
+            self.history
+                .iter()
+                .map(|entry| {
+                    let url = entry.url.clone();
+                    let open = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                        this.navigate_to(url.clone(), cx);
+                    });
+                    let delete_url = entry.url.clone();
+                    let delete = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                        this.delete_history(delete_url.clone(), cx);
+                    });
+                    div()
+                        .id(SharedString::from(format!("history-{}", entry.id)))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .px_3()
+                        .py_2()
+                        .hover(|style| style.bg(border))
+                        .cursor_pointer()
+                        .on_click(open)
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .overflow_hidden()
+                                .child(div().text_sm().text_color(accent).overflow_hidden().child(entry.title.clone()))
+                                .child(div().text_xs().text_color(muted).overflow_hidden().child(entry.url.clone()))
+                                .child(div().text_xs().text_color(muted).child(format!("{}회 · {}", entry.visit_count, entry.last_visited_at_ms))),
+                        )
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("history-delete-{}", entry.id)))
+                                .flex_none()
+                                .size(px(20.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_sm()
+                                .hover(|style| style.bg(surface))
+                                .child("×")
+                                .on_click(delete),
+                        )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            self.bookmarks
+                .iter()
+                .map(|bookmark| {
+                    let url = bookmark.url.clone();
+                    let open = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                        this.navigate_to(url.clone(), cx);
+                    });
+                    let id = bookmark.id;
+                    let delete = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                        this.delete_bookmark(id, cx);
+                    });
+                    div()
+                        .id(SharedString::from(format!("bookmark-{id}")))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .px_3()
+                        .py_2()
+                        .hover(|style| style.bg(border))
+                        .cursor_pointer()
+                        .on_click(open)
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .overflow_hidden()
+                                .child(div().text_sm().text_color(accent).overflow_hidden().child(bookmark.title.clone()))
+                                .child(div().text_xs().text_color(muted).overflow_hidden().child(bookmark.url.clone())),
+                        )
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("bookmark-delete-{id}")))
+                                .flex_none()
+                                .size(px(20.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_sm()
+                                .hover(|style| style.bg(surface))
+                                .child("×")
+                                .on_click(delete),
+                        )
+                })
+                .collect::<Vec<_>>()
+        };
+        let empty = if is_history {
+            "방문 기록이 없습니다."
+        } else {
+            "북마크가 없습니다."
+        };
+        let clear_label = if self.confirm_clear_history { "정말 전체 삭제" } else { "전체 기록 삭제" };
+        div()
+            .flex()
+            .flex_col()
+            .w(px(PANEL_WIDTH))
+            .h_full()
+            .bg(surface)
+            .border_l_1()
+            .border_color(border)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .h(px(44.0))
+                    .px_3()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(div().text_sm().text_color(accent).child(title))
+                    .child(
+                        div()
+                            .id("library-close")
+                            .size(px(24.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_sm()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .child("×")
+                            .on_click(close),
+                    ),
+            )
+            .when(is_history, |el| {
+                el.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .border_b_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .h(px(30.0))
+                                .rounded_md()
+                                .bg(background)
+                                .border_1()
+                                .border_color(border)
+                                .child(self.search_input.clone()),
+                        ),
+                )
+            })
+            .child(
+                div()
+                    .id("library-list")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .when(rows.is_empty(), |el| {
+                        el.child(div().p_4().text_sm().text_color(muted).child(empty))
+                    })
+                    .children(rows),
+            )
+            .when_some(self.library_error.clone(), |el, error| {
+                el.child(div().p_2().text_xs().text_color(rgb(0xd9534f)).child(error))
+            })
+            .when(is_history, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .p_3()
+                        .border_t_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .id("history-clear")
+                                .px_2()
+                                .py_1()
+                                .rounded_sm()
+                                .bg(if self.confirm_clear_history { rgb(0xd9534f) } else { background })
+                                .text_sm()
+                                .text_color(if self.confirm_clear_history { rgb(0xffffff) } else { muted })
+                                .cursor_pointer()
+                                .child(clear_label)
+                                .on_click(clear),
+                        ),
+                )
+            })
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
             let viewport = window.viewport_size();
             let scale = window.scale_factor();
-            let width = (f32::from(viewport.width) * scale).round().max(1.0) as i32;
+            let panel = if self.panel == LibraryPanel::None { 0 } else { (PANEL_WIDTH * scale).round() as i32 };
+            let width = ((f32::from(viewport.width) * scale).round().max(1.0) as i32 - panel).max(1);
             let height = (f32::from(viewport.height) * scale).round().max(1.0) as i32;
             let toolbar = (TOOLBAR_HEIGHT * scale).round() as i32;
             webview.set_bounds(0, toolbar, width, (height - toolbar).max(1));
@@ -841,7 +1232,25 @@ impl Render for AmareApp {
             .active_tab()
             .map(|tab| tab.can_go_forward)
             .unwrap_or(false);
+        let bookmarked = self.active_tab().map(|tab| {
+            self.bookmarks.iter().any(|bookmark| bookmark.url == tab.url.as_ref())
+        }).unwrap_or(false);
         let source_window_id = self.window_id;
+        let bookmarks = self
+            .bookmarks
+            .iter()
+            .map(|bookmark| serde_json::json!({"id": bookmark.id, "title": bookmark.title, "url": bookmark.url}))
+            .collect::<Vec<_>>();
+        let history = self
+            .history
+            .iter()
+            .map(|entry| serde_json::json!({"id": entry.id, "title": entry.title, "url": entry.url, "visited_at_ms": entry.last_visited_at_ms, "visit_count": entry.visit_count}))
+            .collect::<Vec<_>>();
+        let panel = match self.panel {
+            LibraryPanel::None => "none",
+            LibraryPanel::Bookmarks => "bookmarks",
+            LibraryPanel::History => "history",
+        };
         let tabs = self
             .tabs
             .iter()
@@ -914,6 +1323,9 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::new_tab_action))
             .on_action(cx.listener(Self::close_tab_action))
             .on_action(cx.listener(Self::new_window_action))
+            .on_action(cx.listener(Self::toggle_bookmark_action))
+            .on_action(cx.listener(Self::toggle_bookmarks_panel_action))
+            .on_action(cx.listener(Self::toggle_history_panel_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
@@ -1043,6 +1455,57 @@ impl Render for AmareApp {
                     )
                     .child(
                         div()
+                            .id("bookmark-page")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_lg()
+                            .child(if bookmarked { "★" } else { "☆" })
+                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                                this.toggle_active_bookmark(cx);
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("bookmarks-panel")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("★")
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.open_library_panel(LibraryPanel::Bookmarks, window, cx);
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("history-panel")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("◷")
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.open_library_panel(LibraryPanel::History, window, cx);
+                            })),
+                    )
+                    .child(
+                        div()
                             .id("theme")
                             .flex_none()
                             .size(px(30.0))
@@ -1062,20 +1525,29 @@ impl Render for AmareApp {
             .child(
                 div()
                     .flex()
-                    .flex_col()
+                    .flex_row()
                     .size_full()
                     .bg(surface)
-                    .when(cfg!(target_os = "windows"), |el| {
-                        el.child(
-                            div()
-                                .p_4()
-                                .text_sm()
-                                .text_color(muted)
-                                .child(self.webview_error.clone().unwrap_or_else(|| {
-                                    "WebView2 content is hosted in native child windows below the toolbar."
-                                        .into()
-                                })),
-                        )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .when(cfg!(target_os = "windows"), |el| {
+                                el.child(
+                                    div()
+                                        .p_4()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child(self.webview_error.clone().unwrap_or_else(|| {
+                                            "WebView2 content is hosted in native child windows below the toolbar."
+                                                .into()
+                                        })),
+                                )
+                            }),
+                    )
+                    .when(self.panel != LibraryPanel::None, |el| {
+                        el.child(self.render_library_panel(cx))
                     }),
             )
     }
@@ -1108,6 +1580,15 @@ fn url_encode(value: &str) -> String {
         .collect()
 }
 
+fn history_key(url: &str) -> String {
+    let key = url.split('#').next().unwrap_or(url).trim();
+    if key.is_empty() || key.starts_with("about:") {
+        String::new()
+    } else {
+        key.to_string()
+    }
+}
+
 fn title_for(url: &str) -> String {
     url.trim_start_matches("https://")
         .trim_start_matches("http://")
@@ -1126,6 +1607,9 @@ fn main() {
             KeyBinding::new("ctrl-t", NewTab, None),
             KeyBinding::new("ctrl-w", CloseTab, None),
             KeyBinding::new("ctrl-n", NewWindow, None),
+            KeyBinding::new("ctrl-d", ToggleBookmark, None),
+            KeyBinding::new("ctrl-shift-b", ToggleBookmarksPanel, None),
+            KeyBinding::new("ctrl-shift-h", ToggleHistoryPanel, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),

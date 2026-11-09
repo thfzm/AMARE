@@ -34,7 +34,7 @@ use windows::{
                 },
                 KeyboardAndMouse::{
                     GetKeyboardLayout, GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU,
-                    VK_N, VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
+                    VK_B, VK_D, VK_H, VK_N, VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
             WindowsAndMessaging::{PostMessageW, WM_KEYDOWN, WM_KEYUP},
@@ -244,6 +244,12 @@ impl WebViewHost {
                                 Some(VK_T.0)
                             } else if control && vk == VK_N.0 as u32 {
                                 Some(VK_N.0)
+                            } else if control && vk == VK_D.0 as u32 {
+                                Some(VK_D.0)
+                            } else if control && shift && vk == VK_B.0 as u32 {
+                                Some(VK_B.0)
+                            } else if control && shift && vk == VK_H.0 as u32 {
+                                Some(VK_H.0)
                             } else if control && vk == VK_W.0 as u32 {
                                 Some(VK_W.0)
                             } else if alt && vk == VK_LEFT.0 as u32 {
