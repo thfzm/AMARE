@@ -190,8 +190,18 @@ try {
     Process-Metrics "5-tabs"
     # Ten tabs.
     for ($i = 6; $i -le 10; $i++) {
-        Send-Keys "^t"
-        [void](Wait-Tabs $i 20 "tab $i")
+        $created = $false
+        for ($attempt = 0; $attempt -lt 3; $attempt++) {
+            Send-Keys "^t"
+            try {
+                [void](Wait-Tabs $i 8 "tab $i")
+                $created = $true
+                break
+            } catch {
+                Write-Host "Retrying tab $i creation"
+            }
+        }
+        if (-not $created) { throw "Could not create tab $i" }
         [void](Navigate (Page ([string]$i)) 25)
     }
     $ten = Wait-Tabs 10 25 "ten tabs"
