@@ -11,7 +11,7 @@
 </style>
 </head>
 <body>
-<h1>AMARE GPUI Input Test</h1>
+<h1>AMARE GPUI Input Test <span id="tab-id"></span></h1>
 <label for="text">일반 input</label>
 <input id="text" autocomplete="off">
 <label for="password">password input</label>
@@ -21,7 +21,7 @@
 <p><a id="link" href="#clicked">링크 클릭 테스트</a></p>
 <div id="scroll">scroll area</div>
 <script>
-const state = { text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null };
+const tab = new URLSearchParams(location.search).get('tab') || '?'; document.getElementById('tab-id').textContent = '(' + tab + ')'; const state = { tab: tab, text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null };
 const loads = Number(sessionStorage.getItem('amare-loads') || '0') + 1;
 sessionStorage.setItem('amare-loads', String(loads));
 state.loads = loads;

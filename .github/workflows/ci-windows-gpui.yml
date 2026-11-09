@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/amare-gpui/**'
       - 'tools/gpui-input-smoke.ps1'
+      - 'tools/gpui-tab-smoke.ps1'
       - '.github/workflows/ci-windows-gpui.yml'
   pull_request:
     paths:
@@ -140,6 +141,19 @@ jobs:
           & "tools/gpui-input-smoke.ps1" -Exe $exe -Status $status -BaseUrl $baseUrl -ArtifactDir $dir
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI input smoke failed with exit code $LASTEXITCODE" }
 
+      - name: GPUI multi-tab lifecycle test
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-tab-status.json"
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $page = (Resolve-Path "apps/amare-gpui/test-page/index.html").Path -replace '\\', '/'
+          $baseUrl = "file:///$page"
+          & "tools/gpui-tab-smoke.ps1" -Exe $exe -Status $status -BaseUrl $baseUrl -ArtifactDir $dir
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI tab smoke failed with exit code $LASTEXITCODE" }
+
       - name: Address bar actual input test
         shell: pwsh
         timeout-minutes: 5
@@ -215,6 +229,11 @@ jobs:
             artifacts/windows/handle-forensics/gpui-final-input-state.png
             artifacts/windows/handle-forensics/gpui-input-failure.png
             artifacts/windows/handle-forensics/gpui-input-results.json
+            artifacts/windows/handle-forensics/gpui-tabs-10.png
+            artifacts/windows/handle-forensics/gpui-tabs-after-close.png
+            artifacts/windows/handle-forensics/gpui-tabs-failure.png
+            artifacts/windows/handle-forensics/gpui-tab-results.json
+            ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
             ${{ runner.temp }}/amare-gpui-ime.log
