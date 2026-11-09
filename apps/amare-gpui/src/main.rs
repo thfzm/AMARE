@@ -106,7 +106,7 @@ impl AmareApp {
         #[cfg(target_os = "windows")]
         let (webview_env, mut webview_error) = match parent {
             Some(_) => match webview::shared_environment() {
-                Ok(env) => (Some(std::sync::Arc::new(env)), None),
+                Ok(env) => (Some(env), None),
                 Err(error) => (None, Some(error)),
             },
             None => (None, Some("Windows HWND unavailable".to_string())),
@@ -152,6 +152,8 @@ impl AmareApp {
             tabs,
             active: 0,
             next_tab_id,
+            window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
+            tab_drag: None,
             activity_counter: 1,
             new_tab_url,
             address_input,
@@ -232,7 +234,8 @@ impl AmareApp {
         let tabs = self
             .tabs
             .iter()
-            .map(|tab| {
+            .enumerate()
+            .map(|(index, tab)| {
                 serde_json::json!({
                     "id": tab.id,
                     "title": tab.title,
@@ -702,7 +705,8 @@ impl Render for AmareApp {
         let tabs = self
             .tabs
             .iter()
-            .map(|tab| {
+            .enumerate()
+            .map(|(index, tab)| {
                 let active = tab.id == self.active_tab().map(|active| active.id).unwrap_or(0);
                 let id = tab.id;
                 let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
