@@ -272,11 +272,11 @@ try {
 
     # Real mouse drag reorder: move first tab to the end, then cancel outside the strip.
     $beforeOrder = @((Read-State).tabs) | ForEach-Object { $_.id }
-    Drag-At $script:hwnd 72 22 320 22
+    Drag-At $script:hwnd 72 22 200 22
     $reordered = Wait-State { param($s) @($s.tabs)[0].id -eq $beforeOrder[1] } 10 "tab drag reorder"
     Add-Result "tab-drag-reorder" "PASS" "order=$((@($reordered.tabs) | ForEach-Object { $_.id }) -join ',')"
     $orderAfterDrag = @($reordered.tabs) | ForEach-Object { $_.id }
-    Drag-At $script:hwnd 72 22 320 400
+    Drag-At $script:hwnd 72 22 200 400
     Start-Sleep -Milliseconds 500
     $afterCancel = Read-State
     $orderAfterCancel = @($afterCancel.tabs) | ForEach-Object { $_.id }
