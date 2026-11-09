@@ -43,6 +43,7 @@ impl<'a> DownloadRepository<'a> {
         Ok(out)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert(
         &self,
         id: i64,
