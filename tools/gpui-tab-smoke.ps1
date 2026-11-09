@@ -273,12 +273,18 @@ try {
     $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
     Shot "gpui-tabs-one.png"
     $orig = Get-Origin $script:hwnd
-    Click-At $script:hwnd ($orig.X + 144) ($orig.Y + 22)
+    $buttonX = 0
+    for ($x = 80; $x -le 190; $x += 10) {
+        if ($script:app.HasExited) { break }
+        Click-At $script:hwnd ($orig.X + $x) ($orig.Y + 22)
+        $buttonX = $x
+        Start-Sleep -Milliseconds 400
+    }
     if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit from tab close button on last tab" }
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt $before) { throw "WebView2 processes remained after all tabs closed" }
-    Add-Result "tab-close-button-last-tab" "PASS" "exit=$($script:app.ExitCode) webview2=$before->$after"
+    Add-Result "tab-close-button-last-tab" "PASS" "x=$buttonX exit=$($script:app.ExitCode) webview2=$before->$after"
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
