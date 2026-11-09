@@ -275,18 +275,18 @@ try {
     $pageC = Get-PageStateForTab $cId
     if ($null -ne $pageC.popupRect) {
         Click-Web $script:hwnd ([int]$pageC.popupRect.left + 5) ([int]$pageC.popupRect.top + 5)
-        $popup = Wait-State { param($s) @($s.tabs).Count -eq 4 -and $s.source -like "*tab=POPUP*" } 15 "target blank popup tab"
+        $popup = Wait-State { param($s) @($s.tabs).Count -eq 3 -and $s.source -like "*tab=POPUP*" } 15 "target blank popup tab"
         Add-Result "target-blank-new-tab" "PASS" "tab=$($popup.active_tab) source=$($popup.source)"
         Send-Keys "^w"
-        [void](Wait-Tabs 3 15 "popup close")
+        [void](Wait-Tabs 2 15 "popup close")
     } else { Add-Result "target-blank-new-tab" "UNVERIFIED" "popup rect unavailable" }
     $pageC = Get-PageStateForTab $cId
     if ($null -ne $pageC.jsPopupRect) {
         Click-Web $script:hwnd ([int]$pageC.jsPopupRect.left + 5) ([int]$pageC.jsPopupRect.top + 5)
-        $jspop = Wait-State { param($s) @($s.tabs).Count -eq 4 -and $s.source -like "*tab=JS*" } 15 "window.open popup tab"
+        $jspop = Wait-State { param($s) @($s.tabs).Count -eq 3 -and $s.source -like "*tab=JS*" } 15 "window.open popup tab"
         Add-Result "window-open-new-tab" "PASS" "tab=$($jspop.active_tab) source=$($jspop.source)"
         Send-Keys "^w"
-        [void](Wait-Tabs 3 15 "js popup close")
+        [void](Wait-Tabs 2 15 "js popup close")
     } else { Add-Result "window-open-new-tab" "UNVERIFIED" "js popup rect unavailable" }
 
     Add-Result "new-browser-window-regression" "UNVERIFIED" "new-window API is present but not retested in this 0.51 tab run"
