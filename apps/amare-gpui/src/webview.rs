@@ -32,7 +32,7 @@ use windows::{
                 },
                 KeyboardAndMouse::{
                     GetKeyboardLayout, GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU,
-                    VK_R, VK_RIGHT, VK_T, VK_W,
+                    VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
             WindowsAndMessaging::{
@@ -191,7 +191,12 @@ impl WebViewHost {
                             args.VirtualKey(&mut vk)?;
                             let control = GetKeyState(VK_CONTROL.0 as i32) < 0;
                             let alt = GetKeyState(VK_MENU.0 as i32) < 0;
-                            let forwarded = if control && vk == VK_L.0 as u32 {
+                            let shift = GetKeyState(VK_SHIFT.0 as i32) < 0;
+                            let forwarded = if control && !shift && vk == VK_TAB.0 as u32 {
+                                Some(VK_TAB.0)
+                            } else if control && shift && vk == VK_TAB.0 as u32 {
+                                Some(VK_TAB.0)
+                            } else if control && vk == VK_L.0 as u32 {
                                 Some(VK_L.0)
                             } else if control && vk == VK_R.0 as u32 {
                                 Some(VK_R.0)

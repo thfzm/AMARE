@@ -25,6 +25,8 @@ actions!(
         CancelAddress,
         NewTab,
         CloseTab,
+        NextTab,
+        PreviousTab,
     ]
 );
 
@@ -510,6 +512,20 @@ impl AmareApp {
         self.close_active_tab(cx);
     }
 
+    fn next_tab_action(&mut self, _: &NextTab, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tabs.len() > 1 {
+            let next = (self.active + 1) % self.tabs.len();
+            self.select_tab(next, window, cx);
+        }
+    }
+
+    fn previous_tab_action(&mut self, _: &PreviousTab, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tabs.len() > 1 {
+            let previous = if self.active == 0 { self.tabs.len() - 1 } else { self.active - 1 };
+            self.select_tab(previous, window, cx);
+        }
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
@@ -602,6 +618,8 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::go_forward))
             .on_action(cx.listener(Self::new_tab_action))
             .on_action(cx.listener(Self::close_tab_action))
+            .on_action(cx.listener(Self::next_tab_action))
+            .on_action(cx.listener(Self::previous_tab_action))
             .flex()
             .flex_col()
             .size_full()
@@ -794,6 +812,8 @@ fn main() {
             KeyBinding::new("ctrl-r", ReloadPage, None),
             KeyBinding::new("ctrl-t", NewTab, None),
             KeyBinding::new("ctrl-w", CloseTab, None),
+            KeyBinding::new("ctrl-tab", NextTab, None),
+            KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
             KeyBinding::new("alt-right", ForwardPage, None),
             KeyBinding::new("enter", SubmitAddress, None),
