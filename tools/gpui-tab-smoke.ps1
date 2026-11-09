@@ -91,6 +91,13 @@ function Get-PageStateForTab([string]$tab) {
     return [Uri]::UnescapeDataString($tabState.title.Substring(11)) | ConvertFrom-Json
 }
 function Focus-TextInput([string]$tab) {
+    $page = Get-PageStateForTab $tab
+    if ($null -ne $page -and $null -ne $page.textRect) {
+        Click-Web $script:hwnd ([int]$page.textRect.left + 5) ([int]$page.textRect.top + 10)
+        Start-Sleep -Milliseconds 300
+        $focused = Get-PageStateForTab $tab
+        if ($null -ne $focused -and $focused.active -eq "text") { return $focused }
+    }
     Click-Web $script:hwnd 900 400
     for ($i = 0; $i -lt 5; $i++) {
         Send-Keys "{TAB}"
@@ -237,7 +244,7 @@ try {
     $clickedTab = Wait-State { param($s) $s.active_tab -eq $firstId } 10 "tab click"
     Add-Result "tab-click-activation" "PASS" "active=$($clickedTab.active_tab)"
     Shot "gpui-tabs-two.png"
-    Click-At $script:hwnd ($orig.X + 144) ($orig.Y + 22)
+    Click-At $script:hwnd ($orig.X + 89) ($orig.Y + 22)
     $afterButton = Wait-State { param($s) @($s.tabs).Count -eq 1 } 15 "tab close button"
     Add-Result "tab-close-button" "PASS" "tabs=$(@($afterButton.tabs).Count)"
     Shot "gpui-tabs-after-close.png"
