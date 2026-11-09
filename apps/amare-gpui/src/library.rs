@@ -1,4 +1,4 @@
-use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit};
+use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit, SettingValue};
 use amare_services::{ProfileContext, ProfileService};
 use amare_store::{DownloadRecord, FolderScope};
 use std::{cell::RefCell, path::PathBuf, sync::Arc};
@@ -94,6 +94,30 @@ pub fn delete_bookmark(id: i64) -> Result<Vec<Bookmark>, String> {
             .list(FolderScope::All, 500, 0)
             .map_err(|e| e.to_string())?;
         Ok(page.items)
+    })
+}
+
+pub fn save_session(json: &str) -> Result<(), String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile
+            .settings()
+            .set("gpui.session", "browser", SettingValue::Json(json.to_string()))
+            .map_err(|e| e.to_string())
+    })
+}
+
+pub fn load_session() -> Result<Option<String>, String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        let value = profile.settings().get("gpui.session").map_err(|e| e.to_string())?;
+        Ok(match value {
+            Some(entry) => match entry.value {
+                SettingValue::Json(json) => Some(json),
+                _ => None,
+            },
+            None => None,
+        })
     })
 }
 

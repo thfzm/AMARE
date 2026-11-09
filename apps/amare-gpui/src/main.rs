@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use amare_core::{Bookmark, HistoryEntry};
+use serde::{Deserialize, Serialize};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
     StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions,
@@ -63,6 +64,28 @@ enum LibraryPanel {
 }
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Serialize, Deserialize)]
+struct SessionTabSnapshot {
+    url: String,
+    title: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct SessionWindowSnapshot {
+    window_id: u64,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    maximized: bool,
+    active: usize,
+    tabs: Vec<SessionTabSnapshot>,
+}
+
+thread_local! {
+    static SESSION_WINDOWS: RefCell<BTreeMap<u64, SessionWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
+}
 
 #[derive(Clone)]
 struct TabDragInfo {
@@ -165,6 +188,7 @@ struct AmareApp {
     webview_error: Option<String>,
     dark: bool,
     status_poll_started: bool,
+    last_session_save: Instant,
 }
 
 impl AmareApp {
@@ -269,6 +293,7 @@ impl AmareApp {
             webview_error,
             dark: false,
             status_poll_started: false,
+            last_session_save: Instant::now(),
         };
 
         #[cfg(target_os = "windows")]
@@ -331,6 +356,7 @@ impl AmareApp {
             webview_error: None,
             dark: false,
             status_poll_started: false,
+            last_session_save: Instant::now(),
         };
         #[cfg(target_os = "windows")]
         if let (Some(parent), Some(webview)) = (app.parent, app.active_webview_mut()) {
@@ -339,6 +365,92 @@ impl AmareApp {
                 webview.focus();
             }
         }
+        app
+    }
+
+    fn new_restored(
+        window: &mut Window,
+        cx: &mut App,
+        snapshot: SessionWindowSnapshot,
+    ) -> Self {
+        let focus_handle = cx.focus_handle();
+        focus_handle.focus(window);
+        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
+            .unwrap_or_else(|_| "about:blank".to_string());
+        #[cfg(target_os = "windows")]
+        let parent = window
+            .window_handle()
+            .ok()
+            .map(|handle| handle.as_raw())
+            .and_then(|handle| match handle {
+                RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
+                _ => None,
+            });
+        #[cfg(target_os = "windows")]
+        let webview_env = webview::shared_environment().ok();
+        let mut tabs = Vec::new();
+        for (index, restored) in snapshot.tabs.iter().enumerate() {
+            #[cfg(target_os = "windows")]
+            let webview = match (webview_env.as_ref(), parent) {
+                (Some(env), Some(parent)) => webview::WebViewHost::create(env, parent).ok(),
+                _ => None,
+            };
+            #[cfg(not(target_os = "windows"))]
+            let webview = ();
+            let tab = TabState {
+                id: index as u64 + 1,
+                title: restored.title.clone().into(),
+                url: restored.url.clone().into(),
+                loading: true,
+                error: None,
+                can_go_back: false,
+                can_go_forward: false,
+                favicon: None,
+                last_active: index as u64 + 1,
+                history_url: String::new(),
+                #[cfg(target_os = "windows")]
+                webview,
+            };
+            #[cfg(target_os = "windows")]
+            if let Some(view) = &tab.webview {
+                view.navigate(&restored.url);
+                view.set_active(false);
+            }
+            tabs.push(tab);
+        }
+        if tabs.is_empty() {
+            tabs.push(TabState {
+                id: 1, title: "New Tab".into(), url: "about:blank".into(), loading: false,
+                error: None, can_go_back: false, can_go_forward: false, favicon: None,
+                last_active: 1, history_url: String::new(),
+                #[cfg(target_os = "windows")] webview: None,
+            });
+        }
+        let active = snapshot.active.min(tabs.len() - 1);
+        let address = tabs[active].url.to_string();
+        let address_input = cx.new(|cx| AddressInput::new(address.clone(), cx));
+        let search_input = cx.new(|cx| AddressInput::new("", cx));
+        let bookmarks = library::bookmarks().unwrap_or_default();
+        let history = library::history("").unwrap_or_default();
+        let downloads = library::downloads().unwrap_or_default();
+        let mut app = Self {
+            tabs, active, next_tab_id: snapshot.tabs.len() as u64 + 1,
+            window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
+            activity_counter: snapshot.active as u64 + 1, new_tab_url,
+            address_input, search_input, panel: LibraryPanel::None,
+            bookmarks, history, downloads, history_query: String::new(),
+            confirm_clear_history: false, library_error: None, focus_handle,
+            #[cfg(target_os = "windows")] parent,
+            #[cfg(target_os = "windows")] webview_env,
+            #[cfg(target_os = "windows")] webview_error: None,
+            dark: false, status_poll_started: false, last_session_save: Instant::now(),
+        };
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = app.active_webview() {
+            webview.set_active(true);
+        }
+        let address_focus = app.address_input.read(cx).focus_handle(cx);
+        window.focus(&address_focus);
         app
     }
 
@@ -1540,6 +1652,28 @@ impl AmareApp {
         let _ = command.spawn();
     }
 
+    fn update_session(&mut self, window: &Window) {
+        let bounds = window.bounds();
+        let snapshot = SessionWindowSnapshot {
+            window_id: self.window_id,
+            x: f32::from(bounds.origin.x),
+            y: f32::from(bounds.origin.y),
+            width: f32::from(bounds.size.width),
+            height: f32::from(bounds.size.height),
+            maximized: window.is_maximized(),
+            active: self.active,
+            tabs: self.tabs.iter().map(|tab| SessionTabSnapshot {
+                url: tab.url.to_string(),
+                title: tab.title.to_string(),
+            }).collect(),
+        };
+        SESSION_WINDOWS.with(|cell| { cell.borrow_mut().insert(self.window_id, snapshot); });
+        if self.last_session_save.elapsed() >= Duration::from_secs(2) {
+            persist_session();
+            self.last_session_save = Instant::now();
+        }
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
@@ -1569,6 +1703,7 @@ impl Render for AmareApp {
         self.poll_downloads(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
+        self.update_session(window);
         self.sync_webview_bounds(window);
         let dark = self.dark;
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
@@ -1984,6 +2119,34 @@ impl Render for AmareApp {
     }
 }
 
+impl Drop for AmareApp {
+    fn drop(&mut self) {
+        SESSION_WINDOWS.with(|cell| { cell.borrow_mut().remove(&self.window_id); });
+        persist_session();
+    }
+}
+
+fn persist_session() {
+    let payload = SESSION_WINDOWS.with(|cell| {
+        serde_json::to_string(&cell.borrow().values().cloned().collect::<Vec<_>>()).ok()
+    });
+    if let Some(payload) = payload {
+        let _ = library::save_session(&payload);
+    }
+}
+
+fn load_session_windows() -> Vec<SessionWindowSnapshot> {
+    if std::env::var("AMARE_GPUI_RESTORE").ok().as_deref() == Some("0")
+        || std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
+    {
+        return Vec::new();
+    }
+    match library::load_session() {
+        Ok(Some(json)) => serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json).unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 fn normalize_url(input: &str) -> String {
     let value = input.trim();
     if value.is_empty() {
@@ -2067,20 +2230,47 @@ fn main() {
             }
         })
         .detach();
-        let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("AMARE".into()),
-                    appears_transparent: true,
+        let restored = load_session_windows();
+        if restored.is_empty() {
+            let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some("AMARE".into()),
+                        appears_transparent: true,
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            },
-            |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
-        )
-        .expect("failed to open AMARE window");
+                },
+                |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
+            )
+            .expect("failed to open AMARE window");
+        } else {
+            for snapshot in restored {
+                let bounds = Bounds::new(
+                    point(px(snapshot.x.max(0.0)), px(snapshot.y.max(0.0))),
+                    size(px(snapshot.width.max(640.0)), px(snapshot.height.max(480.0))),
+                );
+                let window_bounds = if snapshot.maximized {
+                    WindowBounds::Maximized(bounds)
+                } else {
+                    WindowBounds::Windowed(bounds)
+                };
+                let _ = cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(window_bounds),
+                        titlebar: Some(gpui::TitlebarOptions {
+                            title: Some("AMARE".into()),
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    move |window, cx| cx.new(|cx| AmareApp::new_restored(window, cx, snapshot)),
+                );
+            }
+        }
         cx.activate(true);
     });
 }

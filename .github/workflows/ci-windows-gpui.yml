@@ -133,6 +133,8 @@ jobs:
       - name: GPUI input and Korean IME test
         shell: pwsh
         timeout-minutes: 15
+        env:
+          AMARE_GPUI_RESTORE: "0"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-input-status.json"
@@ -147,6 +149,8 @@ jobs:
       - name: GPUI multi-tab lifecycle test
         shell: pwsh
         timeout-minutes: 20
+        env:
+          AMARE_GPUI_RESTORE: "0"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-tab-status.json"
@@ -182,6 +186,8 @@ jobs:
       - name: GPUI download manager test
         shell: pwsh
         timeout-minutes: 10
+        env:
+          AMARE_GPUI_RESTORE: "0"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-download-status.json"
