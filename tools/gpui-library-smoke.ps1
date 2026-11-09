@@ -75,6 +75,21 @@ function Get-PageState {
 function Wait-Count([int]$count, [int]$seconds, [string]$label) {
     return Wait-State { param($s) @($s.tabs).Count -eq $count } $seconds $label
 }
+function Ensure-LibraryTabs([int]$target) {
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        $state = Read-State
+        if (@($state.tabs).Count -ge $target) { return $state }
+        [void][AmareLib]::SetForegroundWindow($script:hwnd)
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(8)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { return $state }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    throw "Could not create $target tabs"
+}
 
 $script:hwnd = [IntPtr]::Zero
 $app = $null
@@ -99,9 +114,9 @@ try {
     Start-Sleep -Seconds 1
     Shot "02-example-page.png"
 
-    Send-Keys "^t"; [void](Wait-Count 2 20 "second tab")
+    [void](Ensure-LibraryTabs 2)
     [void](Navigate "$BaseUrl`?tab=A" 25)
-    Send-Keys "^t"; [void](Wait-Count 3 20 "third tab")
+    [void](Ensure-LibraryTabs 3)
     [void](Navigate "$BaseUrl`?tab=B" 25)
     Shot "03-multiple-tabs.png"
 
