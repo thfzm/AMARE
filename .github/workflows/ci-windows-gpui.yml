@@ -9,6 +9,7 @@ on:
       - 'tools/gpui-tab-smoke.ps1'
       - 'tools/gpui-library-smoke.ps1'
       - 'tools/slow_http_server.py'
+      - 'tools/gpui-download-smoke.ps1'
       - '.github/workflows/ci-windows-gpui.yml'
   pull_request:
     paths:
@@ -178,6 +179,18 @@ jobs:
             Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
           }
 
+      - name: GPUI download manager test
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-download-status.json"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-download-data"
+          $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-download-files"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.52.0"
+          & "tools/gpui-download-smoke.ps1" -Exe $exe -Status $status -DataDir $data -DownloadDir $downloads -ScreenshotDir $shots
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI download smoke failed with exit code $LASTEXITCODE" }
+
       - name: Address bar actual input test
         shell: pwsh
         timeout-minutes: 5
@@ -259,6 +272,8 @@ jobs:
             artifacts/windows/handle-forensics/gpui-tab-results.json
             ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-library-status.json
+            ${{ runner.temp }}/amare-gpui-download-status.json
+            artifacts/windows/screenshots/0.52.0/gpui-download-results.json
             artifacts/windows/screenshots/0.52.0/*.png
             artifacts/windows/screenshots/0.52.0/gpui-library-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json

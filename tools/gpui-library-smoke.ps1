@@ -145,36 +145,6 @@ try {
     Start-Sleep -Milliseconds 500
     Shot "07-history-search.png"
 
-    # Actual WebView2 download via local slow HTTP server.
-    Send-Keys "^+h"
-    Start-Sleep -Milliseconds 300
-    [void](Navigate "$BaseUrl`?tab=DL" 25)
-    $page = Wait-State { param($s) $s.source -like "*tab=DL*" } 10 "download page"
-    $dlPage = Get-PageState
-    if ($null -ne $dlPage.downloadRect) {
-        Click-Web $script:hwnd ([int]$dlPage.downloadRect.left + 5) ([int]$dlPage.downloadRect.top + 5)
-        $started = Wait-State { param($s) @($s.downloads).Count -ge 1 } 15 "download start"
-        Send-Keys "^+d"
-        [void](Wait-State { param($s) $s.panel -eq "downloads" } 8 "downloads panel")
-        Shot "09-download-progress.png"
-        $completed = Wait-State { param($s) @($s.downloads | Where-Object { $_.state -eq "completed" }).Count -ge 1 } 90 "download complete"
-        Add-Result "small-download-complete" "PASS" "downloads=$(@($completed.downloads).Count)"
-        Shot "10-download-complete.png"
-        Send-Keys "^+d"
-        Start-Sleep -Milliseconds 300
-        $dlPage = Get-PageState
-        if ($null -ne $dlPage.downloadFailRect) {
-            Click-Web $script:hwnd ([int]$dlPage.downloadFailRect.left + 5) ([int]$dlPage.downloadFailRect.top + 5)
-            Start-Sleep -Seconds 1
-            Send-Keys "^+d"
-            Start-Sleep -Milliseconds 500
-            Shot "11-download-failed-or-cancel.png"
-        }
-    } else {
-        Add-Result "small-download-complete" "UNVERIFIED" "download link rectangle unavailable"
-        Add-Result "download-failed-cancel" "UNVERIFIED" "download test link unavailable"
-    }
-
     # Actual custom-titlebar maximize/restore controls.
     $rect = New-Object AmareLib+RECT
     [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect)
