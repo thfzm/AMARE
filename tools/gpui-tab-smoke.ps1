@@ -191,7 +191,10 @@ try {
     Add-Result "new-tab-button" "PASS" "tabs=$(@($four.tabs).Count)"
     $navD = Navigate (Page "D") 25
     # Five tabs + metrics.
-    Send-Keys "^t"; $five = Wait-Tabs 5 20 "fifth tab"
+    $rect = Get-Rect $script:hwnd
+    $orig = Get-Origin $script:hwnd
+    Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
+    $five = Wait-Tabs 5 20 "fifth tab"
     $eId = $five.active_tab
     $navE = Navigate (Page "E") 25
     Add-Result "five-tabs" "PASS" "tabs=5 active=$eId"
