@@ -258,8 +258,9 @@ try {
     $bId = $two.active_tab
     $navB = Navigate (Page "B") 25
     Add-Result "new-tab-navigation" "PASS" "tab=$bId source=$($navB.source)"
-    Send-Keys "^t"; $three = Wait-Tabs 3 20 "third tab"
+    $three = Ensure-Tabs 3
     $cId = $three.active_tab
+    Add-Result "new-tab-third" "PASS" "tabs=3 active=$cId"
     $navC = Navigate (Page "C") 25
     Add-Result "tab-c-navigation" "PASS" "tab=$cId source=$($navC.source)"
 
