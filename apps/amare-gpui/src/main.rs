@@ -749,6 +749,12 @@ impl Render for AmareApp {
                     )
                     .child(if tab.loading { "◌" } else { "" })
                     .on_mouse_down(gpui::MouseButton::Left, start_drag)
+                    .on_mouse_move(cx.listener(|this: &mut Self, event: &gpui::MouseMoveEvent, _, cx| {
+                        this.update_tab_drag(event, cx);
+                    }))
+                    .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseUpEvent, window, cx| {
+                        this.finish_tab_drag(event, window, cx);
+                    }))
                     .child(
                         div()
                             .id(SharedString::from(format!("tab-close-{id}")))
