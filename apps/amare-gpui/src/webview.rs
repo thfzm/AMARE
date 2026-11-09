@@ -1,5 +1,5 @@
 #[cfg(target_os = "windows")]
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, sync::{Arc, Mutex}};
 
 #[cfg(target_os = "windows")]
 use std::sync::mpsc;
@@ -8,7 +8,8 @@ use std::sync::mpsc;
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, CreateCoreWebView2ControllerCompletedHandler,
     CreateCoreWebView2EnvironmentCompletedHandler, ExecuteScriptCompletedHandler,
-    NavigationCompletedEventHandler, NavigationStartingEventHandler, take_pwstr, wait_with_pump,
+    NavigationCompletedEventHandler, NavigationStartingEventHandler, NewWindowRequestedEventHandler,
+    take_pwstr, wait_with_pump,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
         CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2Controller,
@@ -54,6 +55,21 @@ pub struct WebViewEnvironment {
 }
 
 #[cfg(target_os = "windows")]
+thread_local! {
+    static SHARED_ENVIRONMENT: RefCell<Option<Arc<WebViewEnvironment>>> = const { RefCell::new(None) };
+}
+
+pub fn shared_environment() -> std::result::Result<Arc<WebViewEnvironment>, String> {
+    SHARED_ENVIRONMENT.with(|cell| {
+        if let Some(environment) = cell.borrow().as_ref() {
+            return Ok(environment.clone());
+        }
+        let environment = Arc::new(WebViewEnvironment::create()?);
+        *cell.borrow_mut() = Some(environment.clone());
+        Ok(environment)
+    })
+}
+
 impl WebViewEnvironment {
     pub fn create() -> std::result::Result<Self, String> {
         unsafe {
@@ -90,6 +106,8 @@ pub struct WebViewHost {
     accelerator_token: i64,
     navigation_starting_token: i64,
     navigation_completed_token: i64,
+    new_window_token: i64,
+    popup_requests: Arc<Mutex<Vec<String>>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -178,6 +196,28 @@ impl WebViewHost {
                 .add_NavigationCompleted(&navigation_completed, &mut navigation_completed_token)
                 .map_err(|error| format!("navigation completed handler: {error:?}"))?;
 
+            let popup_requests = Arc::new(Mutex::new(Vec::new()));
+            let popup_handler = {
+                let popup_requests = popup_requests.clone();
+                NewWindowRequestedEventHandler::create(Box::new(move |_webview, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut uri = windows::core::PWSTR::null();
+                    args.Uri(&mut uri)?;
+                    let url = take_pwstr(uri);
+                    if !url.is_empty() {
+                        if let Ok(mut requests) = popup_requests.lock() {
+                            requests.push(url);
+                        }
+                    }
+                    args.SetHandled(true)?;
+                    Ok(())
+                }))
+            };
+            let mut new_window_token = 0;
+            webview
+                .add_NewWindowRequested(&popup_handler, &mut new_window_token)
+                .map_err(|error| format!("new window handler: {error:?}"))?;
+
             let accelerator_token = {
                 let accelerator_parent = parent;
                 let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
@@ -249,6 +289,8 @@ impl WebViewHost {
                 accelerator_token,
                 navigation_starting_token,
                 navigation_completed_token,
+                new_window_token,
+                popup_requests,
             })
         }
     }
@@ -389,6 +431,13 @@ impl WebViewHost {
         }
     }
 
+    pub fn drain_popup_requests(&self) -> Vec<String> {
+        self.popup_requests
+            .lock()
+            .map(|mut requests| requests.drain(..).collect())
+            .unwrap_or_default()
+    }
+
     pub fn signals(&self) -> (bool, Option<String>) {
         self.signals
             .lock()
@@ -512,6 +561,7 @@ impl Drop for WebViewHost {
         unsafe {
             let _ = self.webview.remove_NavigationStarting(self.navigation_starting_token);
             let _ = self.webview.remove_NavigationCompleted(self.navigation_completed_token);
+            let _ = self.webview.remove_NewWindowRequested(self.new_window_token);
             let _ = self
                 .controller
                 .remove_AcceleratorKeyPressed(self.accelerator_token);

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use gpui::{
@@ -25,12 +26,24 @@ actions!(
         CancelAddress,
         NewTab,
         CloseTab,
+        NewWindow,
         NextTab,
         PreviousTab,
     ]
 );
 
 const TOOLBAR_HEIGHT: f32 = 88.0;
+const TAB_START_X: f32 = 12.0;
+const TAB_SLOT: f32 = 124.0;
+
+static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
+
+struct TabDrag {
+    id: u64,
+    start_x: f32,
+    current_x: f32,
+    moved: bool,
+}
 
 struct TabState {
     id: u64,
@@ -50,6 +63,8 @@ struct AmareApp {
     tabs: Vec<TabState>,
     active: usize,
     next_tab_id: u64,
+    window_id: u64,
+    tab_drag: Option<TabDrag>,
     activity_counter: u64,
     new_tab_url: String,
     address_input: gpui::Entity<AddressInput>,
@@ -66,11 +81,14 @@ struct AmareApp {
 
 impl AmareApp {
     fn new(window: &mut Window, cx: &mut App) -> Self {
-        let focus_handle = cx.focus_handle();
-        focus_handle.focus(window);
-
         let start_url = std::env::var("AMARE_GPUI_START_URL")
             .unwrap_or_else(|_| "https://example.com/".to_string());
+        Self::new_with_url(window, cx, start_url, true)
+    }
+
+    fn new_with_url(window: &mut Window, cx: &mut App, start_url: String, run_self_test: bool) -> Self {
+        let focus_handle = cx.focus_handle();
+        focus_handle.focus(window);
         let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
             .unwrap_or_else(|_| "about:blank".to_string());
 
@@ -87,7 +105,7 @@ impl AmareApp {
             });
         #[cfg(target_os = "windows")]
         let (webview_env, mut webview_error) = match parent {
-            Some(_) => match webview::WebViewEnvironment::create() {
+            Some(_) => match webview::shared_environment() {
                 Ok(env) => (Some(std::sync::Arc::new(env)), None),
                 Err(error) => (None, Some(error)),
             },
@@ -149,7 +167,9 @@ impl AmareApp {
         };
 
         #[cfg(target_os = "windows")]
-        if std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1") {
+        if run_self_test
+            && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
+        {
             if let Some(view) = app.active_webview() {
                 let _ = view.run_self_test();
             }
@@ -231,6 +251,7 @@ impl AmareApp {
             "selected_range": [selected.start, selected.end],
             "source": source,
             "title": title,
+            "window_id": self.window_id,
             "active_tab": active.map(|tab| tab.id),
             "tabs": tabs,
             "ime_context": ime_context,
@@ -339,6 +360,17 @@ impl AmareApp {
     }
 
     fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let url = self.new_tab_url.clone();
+        self.new_tab_with_url(url, window, cx, true);
+    }
+
+    fn new_tab_with_url(
+        &mut self,
+        url: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        focus_address: bool,
+    ) {
         let (webview, error) = self.create_webview();
         let id = self.next_tab_id;
         self.next_tab_id += 1;
@@ -347,8 +379,8 @@ impl AmareApp {
         self.tabs.push(TabState {
             id,
             title: "New Tab".into(),
-            url: self.new_tab_url.clone().into(),
-            loading: false,
+            url: url.clone().into(),
+            loading: true,
             error,
             can_go_back: false,
             can_go_forward: false,
@@ -358,14 +390,54 @@ impl AmareApp {
             webview,
         });
         self.active = self.tabs.len() - 1;
-        self.set_address(self.new_tab_url.clone(), cx);
+        self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = &self.tabs[self.active].webview {
-            webview.navigate(&self.new_tab_url);
+            webview.navigate(&url);
             webview.set_active(true);
+            if !focus_address {
+                webview.focus();
+            }
         }
-        self.focus_address_input(window, cx);
+        if focus_address {
+            self.focus_address_input(window, cx);
+        }
         cx.notify();
+    }
+
+    fn process_popup_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        {
+            let mut urls = Vec::new();
+            for tab in &self.tabs {
+                if let Some(webview) = &tab.webview {
+                    urls.extend(webview.drain_popup_requests());
+                }
+            }
+            for url in urls {
+                self.new_tab_with_url(url, window, cx, false);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = (window, cx);
+    }
+
+    fn open_new_window(&mut self, cx: &mut Context<Self>) {
+        let url = std::env::var("AMARE_GPUI_NEW_WINDOW_URL")
+            .unwrap_or_else(|_| "https://example.com/".to_string());
+        let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("AMARE".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            move |window, cx| cx.new(|cx| AmareApp::new_with_url(window, cx, url, false)),
+        );
+        cx.activate(true);
     }
 
     fn select_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -512,6 +584,10 @@ impl AmareApp {
         self.close_active_tab(cx);
     }
 
+    fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
+        self.open_new_window(cx);
+    }
+
     fn next_tab_action(&mut self, _: &NextTab, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() > 1 {
             let next = (self.active + 1) % self.tabs.len();
@@ -524,6 +600,70 @@ impl AmareApp {
             let previous = if self.active == 0 { self.tabs.len() - 1 } else { self.active - 1 };
             self.select_tab(previous, window, cx);
         }
+    }
+
+    fn start_tab_drag(&mut self, id: u64, event: &gpui::MouseDownEvent, cx: &mut Context<Self>) {
+        self.tab_drag = Some(TabDrag {
+            id,
+            start_x: f32::from(event.position.x),
+            current_x: f32::from(event.position.x),
+            moved: false,
+        });
+        cx.notify();
+    }
+
+    fn update_tab_drag(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if let Some(drag) = self.tab_drag.as_mut() {
+            drag.current_x = f32::from(event.position.x);
+            if (drag.current_x - drag.start_x).abs() > 4.0 {
+                drag.moved = true;
+            }
+            cx.notify();
+        }
+    }
+
+    fn drag_target(&self) -> Option<usize> {
+        let drag = self.tab_drag.as_ref()?;
+        if !drag.moved || self.tabs.is_empty() {
+            return None;
+        }
+        let target = ((drag.current_x - TAB_START_X) / TAB_SLOT).round() as i32;
+        Some(target.clamp(0, self.tabs.len() as i32 - 1) as usize)
+    }
+
+    fn finish_tab_drag(
+        &mut self,
+        event: &gpui::MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(drag) = self.tab_drag.take() else {
+            return;
+        };
+        if !drag.moved {
+            self.select_tab_by_id(drag.id, window, cx);
+            return;
+        }
+        let y = f32::from(event.position.y);
+        let width = f32::from(window.viewport_size().width);
+        if !(0.0..=44.0).contains(&y) || drag.current_x < 0.0 || drag.current_x > width {
+            cx.notify();
+            return;
+        }
+        let Some(from) = self.tabs.iter().position(|tab| tab.id == drag.id) else {
+            return;
+        };
+        let active_id = self.active_tab().map(|tab| tab.id);
+        let target = self.drag_target().unwrap_or(from);
+        let tab = self.tabs.remove(from);
+        let insert = target.min(self.tabs.len());
+        self.tabs.insert(insert, tab);
+        if let Some(active_id) = active_id {
+            if let Some(index) = self.tabs.iter().position(|tab| tab.id == active_id) {
+                self.active = index;
+            }
+        }
+        cx.notify();
     }
 
     fn sync_webview_bounds(&self, window: &Window) {
@@ -545,6 +685,7 @@ impl Render for AmareApp {
             self.status_poll_started = true;
             self.start_status_poll(cx);
         }
+        self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.sync_webview_bounds(window);
         let dark = self.dark;
@@ -564,33 +705,37 @@ impl Render for AmareApp {
             .map(|tab| {
                 let active = tab.id == self.active_tab().map(|active| active.id).unwrap_or(0);
                 let id = tab.id;
-                let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
-                    this.select_tab_by_id(id, window, cx);
-                });
                 let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
                     this.close_tab(id, cx);
                 });
+                let start_drag = cx.listener(move |this: &mut Self, event: &gpui::MouseDownEvent, _, cx| {
+                    this.start_tab_drag(id, event, cx);
+                });
+                let insertion = self.drag_target() == Some(index);
                 div()
                     .id(SharedString::from(format!("tab-{id}")))
                     .flex()
                     .items_center()
                     .gap_1()
                     .px_2()
+                    .w(px(120.0))
                     .h(px(34.0))
                     .rounded_md()
                     .bg(if active { surface } else { background })
                     .border_1()
                     .border_color(if active { border } else { background })
+                    .when(insertion, |el| el.border_l_2().border_color(accent))
                     .text_sm()
                     .text_color(if active { accent } else { muted })
                     .child(
                         div()
-                            .max_w(px(150.0))
+                            .max_w(px(70.0))
                             .overflow_hidden()
                             .text_ellipsis()
                             .child(tab.title.clone()),
                     )
                     .child(if tab.loading { "◌" } else { "" })
+                    .on_mouse_down(gpui::MouseButton::Left, start_drag)
                     .child(
                         div()
                             .id(SharedString::from(format!("tab-close-{id}")))
@@ -604,7 +749,6 @@ impl Render for AmareApp {
                             .child("×")
                             .on_click(close),
                     )
-                    .on_click(click)
             })
             .collect::<Vec<_>>();
 
@@ -618,8 +762,15 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::go_forward))
             .on_action(cx.listener(Self::new_tab_action))
             .on_action(cx.listener(Self::close_tab_action))
+            .on_action(cx.listener(Self::new_window_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
+            .on_mouse_move(cx.listener(|this: &mut Self, event: &gpui::MouseMoveEvent, _, cx| {
+                this.update_tab_drag(event, cx);
+            }))
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseUpEvent, window, cx| {
+                this.finish_tab_drag(event, window, cx);
+            }))
             .flex()
             .flex_col()
             .size_full()
@@ -660,6 +811,23 @@ impl Render for AmareApp {
                             .on_click(cx.listener(|this: &mut Self, _, window, cx| {
                                 this.new_tab(window, cx);
                                 cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("new-window")
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(30.0))
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("▣")
+                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                                this.open_new_window(cx);
                             })),
                     ),
             )
@@ -812,6 +980,7 @@ fn main() {
             KeyBinding::new("ctrl-r", ReloadPage, None),
             KeyBinding::new("ctrl-t", NewTab, None),
             KeyBinding::new("ctrl-w", CloseTab, None),
+            KeyBinding::new("ctrl-n", NewWindow, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
