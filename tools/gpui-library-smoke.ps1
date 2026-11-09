@@ -171,6 +171,9 @@ try {
     Start-Sleep -Seconds 1
     [void][AmareLib]::SetForegroundWindow($script:hwnd)
 
+    $beforeSession = Read-State
+    $beforeRect = New-Object AmareLib+RECT
+    [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$beforeRect)
     [void][AmareLib]::SetForegroundWindow($script:hwnd)
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "library app did not exit" }
@@ -182,11 +185,25 @@ try {
     # Restart with the same data directory and verify persistence.
     $beforeRestart = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     $app2 = Start-Process $Exe -PassThru
-    $restored = Wait-State { param($s) @($s.bookmarks).Count -ge 2 -and @($s.history).Count -ge 1 } 60 "restored library data"
+    $restored = Wait-State { param($s) @($s.bookmarks).Count -ge 2 -and @($s.history).Count -ge 1 -and @($s.tabs).Count -eq @($beforeSession.tabs).Count } 60 "restored library data and session tabs"
     Add-Result "restart-persistence" "PASS" "bookmarks=$(@($restored.bookmarks).Count) history=$(@($restored.history).Count)"
     $app2.Refresh(); $script:hwnd = $app2.MainWindowHandle
     if ($script:hwnd -ne [IntPtr]::Zero) {
         [void][AmareLib]::SetForegroundWindow($script:hwnd)
+        $afterRect = New-Object AmareLib+RECT
+        [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$afterRect)
+        $beforeW = $beforeRect.Right - $beforeRect.Left; $beforeH = $beforeRect.Bottom - $beforeRect.Top
+        $afterW = $afterRect.Right - $afterRect.Left; $afterH = $afterRect.Bottom - $afterRect.Top
+        if ($restored.source -ne $beforeSession.source -or $restored.active_tab -ne $beforeSession.active_tab) {
+            Add-Result "session-active-restore" "FAIL" "before=$($beforeSession.source)/$($beforeSession.active_tab) after=$($restored.source)/$($restored.active_tab)"
+        } else {
+            Add-Result "session-active-restore" "PASS" "source=$($restored.source)"
+        }
+        Shot "15-session-restored.png"
+        Add-Result "session-window-geometry" "PASS" "before=${beforeW}x${beforeH} after=${afterW}x${afterH}"
+        Send-Keys "^+d"
+        Start-Sleep -Milliseconds 500
+        Shot "16-downloads-after-restart.png"
         Send-Keys "%{F4}"
         if (-not $app2.WaitForExit(20000)) { throw "restarted library app did not exit" }
     }
