@@ -49,6 +49,16 @@ function Shot([string]$name) {
     if ((Get-Item $path).Length -lt 1000) { throw "screenshot empty: $path" }
     Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
 }
+function ShotFull([string]$name) {
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+    $path = Join-Path $ScreenshotDir $name
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+    Add-Result $name "PASS" "$path ($($bounds.Width) x $($bounds.Height), $((Get-Item $path).Length) bytes)"
+}
 function Navigate([string]$url, [int]$timeout = 20) {
     Send-Keys "^l"
     Start-Sleep -Milliseconds 200
@@ -56,6 +66,11 @@ function Navigate([string]$url, [int]$timeout = 20) {
     Send-Keys $url
     Send-Keys "{ENTER}"
     return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
+}
+function Get-PageState {
+    $state = Read-State
+    if ($null -eq $state -or -not $state.title.StartsWith("AMARE_TEST:")) { return $null }
+    return [Uri]::UnescapeDataString($state.title.Substring(11)) | ConvertFrom-Json
 }
 function Wait-Count([int]$count, [int]$seconds, [string]$label) {
     return Wait-State { param($s) @($s.tabs).Count -eq $count } $seconds $label
@@ -115,9 +130,61 @@ try {
     Start-Sleep -Milliseconds 500
     Shot "07-history-search.png"
 
-    [void][AmareLib]::ShowWindow($script:hwnd, 3)
+    # Actual WebView2 download via local slow HTTP server.
+    Send-Keys "^+h"
+    Start-Sleep -Milliseconds 300
+    [void](Navigate "$BaseUrl`?tab=DL" 25)
+    $page = Wait-State { param($s) $s.source -like "*tab=DL*" } 10 "download page"
+    $dlPage = Get-PageState
+    if ($null -ne $dlPage.downloadRect) {
+        Click-Web $script:hwnd ([int]$dlPage.downloadRect.left + 5) ([int]$dlPage.downloadRect.top + 5)
+        $started = Wait-State { param($s) @($s.downloads).Count -ge 1 } 15 "download start"
+        Send-Keys "^+d"
+        [void](Wait-State { param($s) $s.panel -eq "downloads" } 8 "downloads panel")
+        Shot "09-download-progress.png"
+        $completed = Wait-State { param($s) @($s.downloads | Where-Object { $_.state -eq "completed" }).Count -ge 1 } 90 "download complete"
+        Add-Result "small-download-complete" "PASS" "downloads=$(@($completed.downloads).Count)"
+        Shot "10-download-complete.png"
+        Send-Keys "^+d"
+        Start-Sleep -Milliseconds 300
+        $dlPage = Get-PageState
+        if ($null -ne $dlPage.downloadFailRect) {
+            Click-Web $script:hwnd ([int]$dlPage.downloadFailRect.left + 5) ([int]$dlPage.downloadFailRect.top + 5)
+            Start-Sleep -Seconds 1
+            Send-Keys "^+d"
+            Start-Sleep -Milliseconds 500
+            Shot "11-download-failed-or-cancel.png"
+        }
+    } else {
+        Add-Result "small-download-complete" "UNVERIFIED" "download link rectangle unavailable"
+        Add-Result "download-failed-cancel" "UNVERIFIED" "download test link unavailable"
+    }
+
+    # Actual custom-titlebar maximize/restore controls.
+    $rect = New-Object AmareLib+RECT
+    [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect)
+    $w = $rect.Right - $rect.Left
+    $origin = [System.Drawing.Point]::Empty
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LibPoint { [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; } [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p); }'
+    $p = New-Object LibPoint+POINT
+    [void][LibPoint]::ClientToScreen($script:hwnd, [ref]$p)
+    [void][AmareLib]::SetForegroundWindow($script:hwnd)
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w - 69), ($p.Y + 22))
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LibClick { [DllImport("user32.dll")] public static extern void mouse_event(uint f,int x,int y,int d,UIntPtr e); }'
+    [LibClick]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [LibClick]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
     Start-Sleep -Seconds 1
-    Shot "08-maximized.png"
+    Shot "08-titlebar-maximized.png"
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w - 69), ($p.Y + 22))
+    [LibClick]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [LibClick]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+    Start-Sleep -Seconds 1
+    Shot "08b-titlebar-restored.png"
+    ShotFull "13-windows-taskbar-icon.png"
+    [System.Windows.Forms.SendKeys]::SendWait("%{TAB}")
+    Start-Sleep -Seconds 1
+    ShotFull "14-windows-alt-tab-icon.png"
+    [System.Windows.Forms.SendKeys]::SendWait("%{TAB}")
+    Start-Sleep -Seconds 1
+    [void][AmareLib]::SetForegroundWindow($script:hwnd)
 
     [void][AmareLib]::SetForegroundWindow($script:hwnd)
     Send-Keys "%{F4}"

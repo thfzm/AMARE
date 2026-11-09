@@ -21,9 +21,11 @@
 <p><a id="link" href="#clicked">링크 클릭 테스트</a></p>
 <p><a id="popup-link" href="#" target="_blank">target=_blank 테스트</a></p>
 <button id="js-popup">window.open 테스트</button>
+<p><a id="download-link" href="/download-test.bin" download>다운로드 테스트</a></p>
+<p><a id="download-fail" href="/missing-download.bin" download>다운로드 실패 테스트</a></p>
 <div id="scroll">scroll area</div>
 <script>
-const tab = new URLSearchParams(location.search).get('tab') || '?'; document.getElementById('tab-id').textContent = '(' + tab + ')'; const state = { tab: tab, text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null, popupRect: null, jsPopupRect: null };
+const tab = new URLSearchParams(location.search).get('tab') || '?'; document.getElementById('tab-id').textContent = '(' + tab + ')'; const state = { tab: tab, text: '', password: '', area: '', active: '', scrollY: 0, link: '', loads: 0, composition: '', selectionStart: 0, selectionEnd: 0, lastKey: '', textRect: null, linkRect: null, popupRect: null, jsPopupRect: null, downloadRect: null, downloadFailRect: null };
 const loads = Number(sessionStorage.getItem('amare-loads') || '0') + 1;
 sessionStorage.setItem('amare-loads', String(loads));
 state.loads = loads;
@@ -37,10 +39,14 @@ function sync() {
   const linkRect = document.getElementById('link').getBoundingClientRect();
   const popupRect = document.getElementById('popup-link').getBoundingClientRect();
   const jsPopupRect = document.getElementById('js-popup').getBoundingClientRect();
+  const downloadRect = document.getElementById('download-link').getBoundingClientRect();
+  const downloadFailRect = document.getElementById('download-fail').getBoundingClientRect();
   state.textRect = { left: textRect.left, top: textRect.top, right: textRect.right, bottom: textRect.bottom };
   state.linkRect = { left: linkRect.left, top: linkRect.top, right: linkRect.right, bottom: linkRect.bottom };
   state.popupRect = { left: popupRect.left, top: popupRect.top, right: popupRect.right, bottom: popupRect.bottom };
   state.jsPopupRect = { left: jsPopupRect.left, top: jsPopupRect.top, right: jsPopupRect.right, bottom: jsPopupRect.bottom };
+  state.downloadRect = { left: downloadRect.left, top: downloadRect.top, right: downloadRect.right, bottom: downloadRect.bottom };
+  state.downloadFailRect = { left: downloadFailRect.left, top: downloadFailRect.top, right: downloadFailRect.right, bottom: downloadFailRect.bottom };
   document.title = 'AMARE_TEST:' + encodeURIComponent(JSON.stringify(state));
 }
 for (const id of ['text', 'password', 'area']) {

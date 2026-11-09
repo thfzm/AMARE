@@ -8,6 +8,7 @@ on:
       - 'tools/gpui-input-smoke.ps1'
       - 'tools/gpui-tab-smoke.ps1'
       - 'tools/gpui-library-smoke.ps1'
+      - 'tools/slow_http_server.py'
       - '.github/workflows/ci-windows-gpui.yml'
   pull_request:
     paths:
@@ -162,11 +163,20 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-library-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.51.0"
-          $page = (Resolve-Path "apps/amare-gpui/test-page/index.html").Path -replace '\\', '/'
-          $baseUrl = "file:///$page"
-          & "tools/gpui-library-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -BaseUrl $baseUrl
-          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI library smoke failed with exit code $LASTEXITCODE" }
+          $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-downloads"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.52.0"
+          New-Item -ItemType Directory -Force -Path $shots, $downloads | Out-Null
+          $downloadFile = Join-Path (Resolve-Path "apps/amare-gpui/test-page").Path "download-test.bin"
+          [IO.File]::WriteAllBytes($downloadFile, (New-Object byte[] (5 * 1024 * 1024)))
+          $server = Start-Process python -ArgumentList @("tools/slow_http_server.py", "apps/amare-gpui/test-page", "8765") -PassThru
+          try {
+            Start-Sleep -Seconds 2
+            $env:AMARE_GPUI_DOWNLOAD_DIR = $downloads
+            & "tools/gpui-library-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -BaseUrl "http://127.0.0.1:8765/index.html"
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI library smoke failed with exit code $LASTEXITCODE" }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Address bar actual input test
         shell: pwsh
@@ -249,8 +259,8 @@ jobs:
             artifacts/windows/handle-forensics/gpui-tab-results.json
             ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-library-status.json
-            artifacts/windows/screenshots/0.51.0/*.png
-            artifacts/windows/screenshots/0.51.0/gpui-library-results.json
+            artifacts/windows/screenshots/0.52.0/*.png
+            artifacts/windows/screenshots/0.52.0/gpui-library-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
             ${{ runner.temp }}/amare-gpui-ime.log

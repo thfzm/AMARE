@@ -45,6 +45,7 @@ actions!(
         ToggleBookmark,
         ToggleBookmarksPanel,
         ToggleHistoryPanel,
+        ToggleDownloadsPanel,
     ]
 );
 
@@ -582,6 +583,10 @@ impl AmareApp {
 
     fn toggle_history_panel_action(&mut self, _: &ToggleHistoryPanel, window: &mut Window, cx: &mut Context<Self>) {
         self.open_library_panel(LibraryPanel::History, window, cx);
+    }
+
+    fn toggle_downloads_panel_action(&mut self, _: &ToggleDownloadsPanel, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_library_panel(LibraryPanel::Downloads, window, cx);
     }
 
     fn refresh_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1456,6 +1461,7 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::toggle_bookmark_action))
             .on_action(cx.listener(Self::toggle_bookmarks_panel_action))
             .on_action(cx.listener(Self::toggle_history_panel_action))
+            .on_action(cx.listener(Self::toggle_downloads_panel_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
@@ -1800,6 +1806,7 @@ fn main() {
             KeyBinding::new("ctrl-d", ToggleBookmark, None),
             KeyBinding::new("ctrl-shift-b", ToggleBookmarksPanel, None),
             KeyBinding::new("ctrl-shift-h", ToggleHistoryPanel, None),
+            KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
