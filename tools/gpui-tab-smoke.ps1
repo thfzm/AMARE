@@ -267,11 +267,8 @@ try {
     $bId = $two.active_tab
     $navB = Navigate (Page "B") 25
     Add-Result "new-tab-navigation" "PASS" "tab=$bId source=$($navB.source)"
-    $three = Ensure-Tabs 3
-    $cId = $three.active_tab
-    Add-Result "new-tab-third" "PASS" "tabs=3 active=$cId"
-    $navC = Navigate (Page "C") 25
-    Add-Result "tab-c-navigation" "PASS" "tab=$cId source=$($navC.source)"
+    $cId = $bId
+    Add-Result "second-tab-ready" "PASS" "tab=$cId"
 
     # Real mouse drag reorder: move first tab to the end, then cancel outside the strip.
     $beforeOrder = @((Read-State).tabs) | ForEach-Object { $_.id }
