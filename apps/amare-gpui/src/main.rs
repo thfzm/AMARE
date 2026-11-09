@@ -4,8 +4,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*,
-    px, rgb, size,
+    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions, actions,
+    div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use amare_core::{Bookmark, HistoryEntry};
@@ -58,6 +58,7 @@ enum LibraryPanel {
     None,
     Bookmarks,
     History,
+    Downloads,
 }
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
@@ -148,6 +149,7 @@ struct AmareApp {
     panel: LibraryPanel,
     bookmarks: Vec<Bookmark>,
     history: Vec<HistoryEntry>,
+    downloads: Vec<amare_store::DownloadRecord>,
     history_query: String,
     confirm_clear_history: bool,
     library_error: Option<String>,
@@ -235,6 +237,7 @@ impl AmareApp {
         let search_input = cx.new(|cx| AddressInput::new("", cx));
         let bookmarks = library::bookmarks().unwrap_or_default();
         let history = library::history("").unwrap_or_default();
+        let downloads = library::downloads().unwrap_or_default();
         let app = Self {
             tabs,
             active: 0,
@@ -247,6 +250,7 @@ impl AmareApp {
             panel: LibraryPanel::None,
             bookmarks,
             history,
+            downloads,
             history_query: String::new(),
             confirm_clear_history: false,
             library_error: None,
@@ -310,6 +314,7 @@ impl AmareApp {
             panel: LibraryPanel::None,
             bookmarks: library::bookmarks().unwrap_or_default(),
             history: library::history("").unwrap_or_default(),
+            downloads: library::downloads().unwrap_or_default(),
             history_query: String::new(),
             confirm_clear_history: false,
             library_error: None,
@@ -400,7 +405,13 @@ impl AmareApp {
             LibraryPanel::None => "none",
             LibraryPanel::Bookmarks => "bookmarks",
             LibraryPanel::History => "history",
+            LibraryPanel::Downloads => "downloads",
         };
+        let downloads = self.downloads.iter().map(|item| serde_json::json!({
+            "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
+            "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
+            "state": item.state, "error": item.error
+        })).collect::<Vec<_>>();
         let tabs = self
             .tabs
             .iter()
@@ -429,6 +440,7 @@ impl AmareApp {
             "history_query": self.history_query,
             "bookmarks": bookmarks,
             "history": history,
+            "downloads": downloads,
             "tabs": tabs,
             "ime_context": ime_context,
             "pid": std::process::id()
@@ -503,6 +515,8 @@ impl AmareApp {
             self.refresh_history();
             let handle = self.search_input.read(cx).focus_handle(cx);
             window.focus(&handle);
+        } else if self.panel == LibraryPanel::Downloads {
+            self.downloads = library::downloads().unwrap_or_default();
         }
         cx.notify();
     }
@@ -733,6 +747,7 @@ impl AmareApp {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("AMARE".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -963,6 +978,7 @@ impl AmareApp {
                 ))),
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("AMARE".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -995,7 +1011,8 @@ impl AmareApp {
         let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
         let accent = rgb(0x2f7df6);
         let is_history = self.panel == LibraryPanel::History;
-        let title = if is_history { "방문 기록" } else { "북마크" };
+        let is_downloads = self.panel == LibraryPanel::Downloads;
+        let title = if is_downloads { "다운로드" } else if is_history { "방문 기록" } else { "북마크" };
         let close = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.panel = LibraryPanel::None;
             cx.notify();
@@ -1003,7 +1020,42 @@ impl AmareApp {
         let clear = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.clear_history(cx);
         });
-        let rows = if is_history {
+        let rows = if is_downloads {
+            self.downloads.iter().map(|item| {
+                let id = item.id;
+                let path = item.path.clone();
+                let cancel = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.cancel_download(id, cx);
+                });
+                let remove = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.remove_download(id, cx);
+                });
+                let open_path = path.clone();
+                let open = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
+                    this.open_download_path(&open_path, false);
+                });
+                let open_folder = path.clone();
+                let folder = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
+                    this.open_download_path(&open_folder, true);
+                });
+                let percent = if item.total_bytes > 0 { (item.received_bytes as f64 / item.total_bytes as f64 * 100.0) as i64 } else { 0 };
+                div()
+                    .id(SharedString::from(format!("download-{id}")))
+                    .flex().flex_col().gap_1().px_3().py_2().border_b_1().border_color(border)
+                    .child(div().flex().justify_between().items_center()
+                        .child(div().text_sm().text_color(accent).overflow_hidden().child(item.filename.clone()))
+                        .child(div().text_xs().text_color(muted).child(format!("{}%", percent))))
+                    .child(div().text_xs().text_color(muted).overflow_hidden().child(item.url.clone()))
+                    .child(div().flex().items_center().gap_2()
+                        .child(div().h(px(5.0)).flex_1().rounded_full().bg(border).child(div().h(px(5.0)).w(px((percent.max(0).min(100) as f32 * 2.4))).bg(accent)))
+                        .child(div().text_xs().text_color(muted).child(item.state.clone())))
+                    .child(div().flex().items_center().gap_2()
+                        .child(div().id(SharedString::from(format!("download-cancel-{id}"))).text_xs().text_color(muted).cursor_pointer().child("취소").on_click(cancel))
+                        .child(div().id(SharedString::from(format!("download-remove-{id}"))).text_xs().text_color(muted).cursor_pointer().child("제거").on_click(remove))
+                        .child(div().id(SharedString::from(format!("download-open-{id}"))).text_xs().text_color(accent).cursor_pointer().child("열기").on_click(open))
+                        .child(div().id(SharedString::from(format!("download-folder-{id}"))).text_xs().text_color(muted).cursor_pointer().child("폴더").on_click(folder)))
+            }).collect::<Vec<_>>()
+        } else if is_history {
             self.history
                 .iter()
                 .map(|entry| {
@@ -1099,11 +1151,7 @@ impl AmareApp {
                 })
                 .collect::<Vec<_>>()
         };
-        let empty = if is_history {
-            "방문 기록이 없습니다."
-        } else {
-            "북마크가 없습니다."
-        };
+        let empty = if is_downloads { "다운로드가 없습니다." } else if is_history { "방문 기록이 없습니다." } else { "북마크가 없습니다." };
         let clear_label = if self.confirm_clear_history { "정말 전체 삭제" } else { "전체 기록 삭제" };
         div()
             .flex()
@@ -1197,6 +1245,81 @@ impl AmareApp {
             })
     }
 
+    fn refresh_downloads(&mut self) {
+        self.downloads = library::downloads().unwrap_or_default();
+    }
+
+    fn poll_downloads(&mut self, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        {
+            let mut snapshots = Vec::new();
+            for tab in &self.tabs {
+                if let Some(webview) = &tab.webview {
+                    snapshots.extend(webview.download_snapshots());
+                }
+            }
+            for snapshot in snapshots {
+                let id = snapshot.id as i64;
+                let existing = self.downloads.iter().find(|item| item.id == id).cloned();
+                let changed = existing.as_ref().map(|item| {
+                    item.received_bytes != snapshot.received_bytes
+                        || item.state != snapshot.state
+                        || item.total_bytes != snapshot.total_bytes
+                }).unwrap_or(true);
+                if changed {
+                    let _ = library::upsert_download(
+                        id,
+                        &snapshot.filename,
+                        &snapshot.url,
+                        &snapshot.path,
+                        &snapshot.mime_type,
+                        snapshot.total_bytes,
+                        snapshot.received_bytes,
+                        &snapshot.state,
+                        &snapshot.error,
+                    );
+                    self.downloads = library::downloads().unwrap_or_default();
+                }
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = (cx,);
+    }
+
+    fn cancel_download(&mut self, id: i64, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        for tab in &self.tabs {
+            if let Some(webview) = &tab.webview {
+                if webview.cancel_download(id as u64) {
+                    break;
+                }
+            }
+        }
+        self.refresh_downloads();
+        cx.notify();
+    }
+
+    fn remove_download(&mut self, id: i64, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        for tab in &self.tabs {
+            if let Some(webview) = &tab.webview {
+                webview.remove_download(id as u64);
+            }
+        }
+        self.downloads = library::delete_download(id).unwrap_or_else(|_| self.downloads.clone());
+        cx.notify();
+    }
+
+    fn open_download_path(&self, path: &str, folder: bool) {
+        let mut command = std::process::Command::new("explorer.exe");
+        if folder {
+            command.arg(format!("/select,{path}"));
+        } else {
+            command.arg(path);
+        }
+        let _ = command.spawn();
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
@@ -1218,6 +1341,7 @@ impl Render for AmareApp {
             self.start_status_poll(cx);
         }
         self.poll_drop_request(window, cx);
+        self.poll_downloads(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.sync_webview_bounds(window);
@@ -1250,7 +1374,13 @@ impl Render for AmareApp {
             LibraryPanel::None => "none",
             LibraryPanel::Bookmarks => "bookmarks",
             LibraryPanel::History => "history",
+            LibraryPanel::Downloads => "downloads",
         };
+        let downloads = self.downloads.iter().map(|item| serde_json::json!({
+            "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
+            "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
+            "state": item.state, "error": item.error
+        })).collect::<Vec<_>>();
         let tabs = self
             .tabs
             .iter()
@@ -1350,6 +1480,7 @@ impl Render for AmareApp {
                             .gap_1()
                             .flex_1()
                             .overflow_hidden()
+                            .window_control_area(WindowControlArea::Drag)
                             .child(div().flex().gap_1().children(tabs)),
                     )
                     .child(
@@ -1386,6 +1517,48 @@ impl Render for AmareApp {
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
                                 this.open_new_window(cx);
                             })),
+                    )
+                    .child(
+                        div()
+                            .id("window-min")
+                            .flex_none()
+                            .w(px(46.0))
+                            .h(px(44.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .window_control_area(WindowControlArea::Min)
+                            .child("—"),
+                    )
+                    .child(
+                        div()
+                            .id("window-max")
+                            .flex_none()
+                            .w(px(46.0))
+                            .h(px(44.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .window_control_area(WindowControlArea::Max)
+                            .child("□"),
+                    )
+                    .child(
+                        div()
+                            .id("window-close")
+                            .flex_none()
+                            .w(px(46.0))
+                            .h(px(44.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .hover(|style| style.bg(rgb(0xd9534f)))
+                            .cursor_pointer()
+                            .window_control_area(WindowControlArea::Close)
+                            .child("×"),
                     ),
             )
             .child(
@@ -1452,6 +1625,23 @@ impl Render for AmareApp {
                             .text_sm()
                             .text_color(muted)
                             .child(self.address_input.clone()),
+                    )
+                    .child(
+                        div()
+                            .id("downloads-panel")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("↓")
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.open_library_panel(LibraryPanel::Downloads, window, cx);
+                            })),
                     )
                     .child(
                         div()
@@ -1641,6 +1831,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("AMARE".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()

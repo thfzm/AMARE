@@ -1,5 +1,6 @@
 pub mod bookmarks;
 pub mod conversations;
+pub mod downloads;
 pub mod history;
 pub mod library;
 pub mod profiles;

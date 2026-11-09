@@ -33,6 +33,8 @@ use db::{open_connection, profile_db_path, schema_version, sqlite_version, valid
 use migrations::{PROFILE_MIGRATIONS, ROOT_MIGRATIONS, run_migrations};
 use repositories::bookmarks::BookmarkRepository;
 use repositories::conversations::ConversationRepository;
+use repositories::downloads::DownloadRepository;
+pub use repositories::downloads::DownloadRecord;
 use repositories::history::HistoryRepository;
 use repositories::library::{LibraryRepository, SourceRepository};
 use repositories::profiles::ProfileRepository;
@@ -242,6 +244,10 @@ impl ProfileStore {
 
     pub fn history(&self) -> HistoryRepository<'_> {
         HistoryRepository::new(&self.conn, &self.profile_id)
+    }
+
+    pub fn downloads(&self) -> DownloadRepository<'_> {
+        DownloadRepository::new(&self.conn, &self.profile_id)
     }
 
     pub fn sessions(&self) -> SessionRepository<'_> {

@@ -59,7 +59,7 @@ pub(crate) fn run_migrations(
 }
 
 pub(crate) const ROOT_SCHEMA_VERSION: u32 = 2;
-pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 3;
+pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 4;
 
 pub(crate) const ROOT_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -489,6 +489,25 @@ pub(crate) const PROFILE_MIGRATIONS: &[Migration] = &[
             END;
         "#,
     },
+    Migration {
+        version: 4,
+        sql: r#"
+            CREATE TABLE downloads (
+                id             INTEGER PRIMARY KEY,
+                filename       TEXT NOT NULL,
+                url            TEXT NOT NULL,
+                path           TEXT NOT NULL,
+                mime_type      TEXT NOT NULL DEFAULT '',
+                total_bytes    INTEGER NOT NULL DEFAULT 0,
+                received_bytes INTEGER NOT NULL DEFAULT 0,
+                state          TEXT NOT NULL,
+                error          TEXT NOT NULL DEFAULT '',
+                created_at_ms  INTEGER NOT NULL,
+                updated_at_ms  INTEGER NOT NULL
+            );
+            CREATE INDEX idx_downloads_created ON downloads(created_at_ms DESC, id DESC);
+        "#,
+    },
 ];
 
 #[cfg(test)]
@@ -499,22 +518,22 @@ mod tests {
     fn applies_and_reapplies_migrations_idempotently() {
         let conn = Connection::open_in_memory().unwrap();
         let version = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
         let again = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(again, 3);
+        assert_eq!(again, 4);
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(count, 4);
     }
 
     #[test]
     fn upgrades_a_v1_database_to_v3() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..1]).unwrap(), 1);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 3);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 4);
         for table in ["sessions", "library_items", "conversations", "workspaces"] {
             let count: u32 = conn
                 .query_row(
@@ -531,7 +550,7 @@ mod tests {
     fn upgrades_a_v2_database_to_v3() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..2]).unwrap(), 2);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 3);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 4);
         let fts: u32 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='library_fts'",

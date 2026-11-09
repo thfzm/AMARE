@@ -1,6 +1,6 @@
 use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit};
 use amare_services::{ProfileContext, ProfileService};
-use amare_store::FolderScope;
+use amare_store::{DownloadRecord, FolderScope};
 use std::{cell::RefCell, path::PathBuf, sync::Arc};
 
 thread_local! {
@@ -65,6 +65,41 @@ pub fn delete_bookmark(id: i64) -> Result<Vec<Bookmark>, String> {
         profile.bookmarks().delete(id).map_err(|e| e.to_string())?;
         let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
         Ok(page.items)
+    })
+}
+
+pub fn downloads() -> Result<Vec<DownloadRecord>, String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile.downloads().list(500, 0).map_err(|e| e.to_string())
+    })
+}
+
+pub fn upsert_download(
+    id: i64,
+    filename: &str,
+    url: &str,
+    path: &str,
+    mime_type: &str,
+    total_bytes: i64,
+    received_bytes: i64,
+    state: &str,
+    error: &str,
+) -> Result<(), String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile
+            .downloads()
+            .upsert(id, filename, url, path, mime_type, total_bytes, received_bytes, state, error)
+            .map_err(|e| e.to_string())
+    })
+}
+
+pub fn delete_download(id: i64) -> Result<Vec<DownloadRecord>, String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile.downloads().delete(id).map_err(|e| e.to_string())?;
+        profile.downloads().list(500, 0).map_err(|e| e.to_string())
     })
 }
 
