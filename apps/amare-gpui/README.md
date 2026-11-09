@@ -56,7 +56,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - IME rapid/mixed input and composition during focus movement.
 - Popup/new-window handling.
 - One WebView2 per tab and full tab page state.
-- Full bookmark/history/session/AI/update migration.
+- Full bookmark/history/AI/update migration.
 - Actual Windows 11 device validation.
 
 The existing WinUI 3 app remains the default packaged UI during the transition.
