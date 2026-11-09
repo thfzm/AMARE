@@ -118,11 +118,20 @@ function Ensure-Tabs([int]$target) {
         $rect = Get-Rect $script:hwnd
         $orig = Get-Origin $script:hwnd
         Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
-        $deadline = (Get-Date).AddSeconds(20)
+        $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { break }
             Start-Sleep -Milliseconds 300
+        }
+        if (@((Read-State).tabs).Count -lt $target) {
+            Send-Keys "^t"
+            $deadline = (Get-Date).AddSeconds(15)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { break }
+                Start-Sleep -Milliseconds 300
+            }
         }
     }
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
