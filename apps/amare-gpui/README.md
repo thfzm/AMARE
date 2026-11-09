@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.49.0)
+# AMARE GPUI Windows Shell (0.50.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -18,12 +18,13 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 - Per-tab URL/title/DOM/input/scroll/history preservation and inactive-controller hiding.
 - Window resize, minimize/restore, last-tab close exit, and graceful WebView2 cleanup.
 - Actual mouse tab drag reorder/cancel with GPUI drag/drop.
+- Cross-window tab transfer/detach is UNVERIFIED; official `SetParentWindow` path exists but is not validated end-to-end.
 
 ## WebView2
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.49.0)
+## Verified in Windows CI (0.50.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
