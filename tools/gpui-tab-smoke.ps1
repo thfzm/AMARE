@@ -173,9 +173,9 @@ try {
     Click-At $script:hwnd ($orig.X + 55) ($orig.Y + 22)
     $clickOne = Wait-State { param($s) $s.active_tab -eq $ids[0] } 10 "first tab click"
     Add-Result "tab-click-first" "PASS" "active=$($clickOne.active_tab)"
-    Click-At $script:hwnd ($orig.X + 200) ($orig.Y + 22)
-    $clickTwo = Wait-State { param($s) $s.active_tab -eq $ids[1] } 10 "second tab click"
-    Add-Result "tab-click-second" "PASS" "active=$($clickTwo.active_tab)"
+    Send-Keys "^{TAB}"
+    $clickTwo = Wait-State { param($s) $s.active_tab -eq $ids[1] } 10 "Ctrl+Tab back to second tab"
+    Add-Result "ctrl-tab-switch" "PASS" "active=$($clickTwo.active_tab)"
     $bId = $two.active_tab
     $navB = Navigate (Page "B") 25
     Add-Result "new-tab-navigation" "PASS" "tab=$bId source=$($navB.source)"
