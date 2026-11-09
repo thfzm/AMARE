@@ -20,7 +20,7 @@ use webview2_com::{
 };
 #[cfg(target_os = "windows")]
 use windows::{
-    core::HSTRING,
+    core::{HSTRING, Interface},
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::{
