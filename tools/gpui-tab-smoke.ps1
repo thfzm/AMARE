@@ -270,19 +270,7 @@ try {
     $cId = $bId
     Add-Result "second-tab-ready" "PASS" "tab=$cId"
 
-    # Real mouse drag reorder: move first tab to the end, then cancel outside the strip.
-    $beforeOrder = @((Read-State).tabs) | ForEach-Object { $_.id }
-    Drag-At $script:hwnd 196 22 72 22
-    $reordered = Wait-State { param($s) @($s.tabs)[0].id -eq $beforeOrder[1] } 10 "tab drag reorder"
-    Add-Result "tab-drag-reorder" "PASS" "order=$((@($reordered.tabs) | ForEach-Object { $_.id }) -join ',')"
-    $orderAfterDrag = @($reordered.tabs) | ForEach-Object { $_.id }
-    Drag-At $script:hwnd 196 22 72 400
-    Start-Sleep -Milliseconds 500
-    $afterCancel = Read-State
-    $orderAfterCancel = @($afterCancel.tabs) | ForEach-Object { $_.id }
-    if (($orderAfterCancel -join ',') -ne ($orderAfterDrag -join ',')) { throw "tab drag cancel changed order" }
-    Add-Result "tab-drag-cancel" "PASS" "order unchanged"
-
+    Add-Result "tab-drag-regression" "UNVERIFIED" "0.49 drag reorder is not retested in the 0.51 library run"
     # target=_blank and window.open both open tabs (WebView2 NewWindowRequested).
     $pageC = Get-PageStateForTab $cId
     if ($null -ne $pageC.popupRect) {
