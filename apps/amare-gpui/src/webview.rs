@@ -10,8 +10,9 @@ use webview2_com::{
     CreateCoreWebView2EnvironmentCompletedHandler, ExecuteScriptCompletedHandler,
     NavigationCompletedEventHandler, NavigationStartingEventHandler, take_pwstr, wait_with_pump,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2Controller, ICoreWebView2Environment,
+        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
+        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2Controller,
+        ICoreWebView2Environment,
     },
 };
 #[cfg(target_os = "windows")]
@@ -35,9 +36,7 @@ use windows::{
                     VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
-            WindowsAndMessaging::{
-                FindWindowExW, PostMessageW, WM_KEYDOWN, WM_KEYUP,
-            },
+            WindowsAndMessaging::{PostMessageW, WM_KEYDOWN, WM_KEYUP},
         },
     },
 };
@@ -466,16 +465,12 @@ impl WebViewHost {
 
     pub fn focus(&self) {
         unsafe {
-            for class in [
-                windows::core::w!("Chrome_WidgetWin_0"),
-                windows::core::w!("Chrome_WidgetWin_1"),
-            ] {
-                if let Ok(child) = FindWindowExW(Some(self.parent), None, class, None) {
-                    if !child.is_invalid() {
-                        let _ = SetFocus(Some(child));
-                        return;
-                    }
-                }
+            if self
+                .controller
+                .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
+                .is_ok()
+            {
+                return;
             }
             let _ = SetFocus(Some(self.parent));
         }

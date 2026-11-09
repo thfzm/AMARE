@@ -149,10 +149,11 @@ function Type-Hangul([string]$keys) {
 }
 function Process-Metrics([string]$label) {
     $webviews = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
-    $ws = 0; foreach ($p in $webviews) { try { $ws += [int64]$p.WorkingSet64 } catch {} }
+    $ws = 0; $handles = 0; foreach ($p in $webviews) { try { $ws += [int64]$p.WorkingSet64; $handles += [int64]$p.HandleCount } catch {} }
     $app = Get-Process -Id $script:app.Id -ErrorAction SilentlyContinue
     $appWs = if ($null -ne $app) { [int64]$app.WorkingSet64 } else { 0 }
-    Add-Result "metrics-$label" "PASS" "webview_processes=$($webviews.Count) webview_ws_mb=$([Math]::Round($ws / 1MB, 1)) app_ws_mb=$([Math]::Round($appWs / 1MB, 1))"
+    $appHandles = if ($null -ne $app) { $app.HandleCount } else { 0 }
+    Add-Result "metrics-$label" "PASS" "webview_processes=$($webviews.Count) webview_ws_mb=$([Math]::Round($ws / 1MB, 1)) webview_handles=$handles app_ws_mb=$([Math]::Round($appWs / 1MB, 1)) app_handles=$appHandles"
 }
 
 $script:hwnd = [IntPtr]::Zero
