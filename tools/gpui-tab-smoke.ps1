@@ -22,6 +22,7 @@ public static class AmareTab {
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayout(string id, uint flags);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 }
 '@
@@ -130,10 +131,22 @@ function Select-Tab([int]$id, [int]$timeout = 15) {
     }
     throw "Timed out selecting tab $id"
 }
-function Set-EnglishLayout([IntPtr]$hwnd) {
-    $hkl = [AmareTab]::LoadKeyboardLayout("00000409", 0x00000101)
+function Set-Layout([IntPtr]$hwnd, [string]$layout) {
+    $hkl = [AmareTab]::LoadKeyboardLayout($layout, 0x00000101)
     [void][AmareTab]::SendMessage($hwnd, 0x50, [IntPtr]::Zero, $hkl)
     Start-Sleep -Milliseconds 300
+}
+function Set-EnglishLayout([IntPtr]$hwnd) { Set-Layout $hwnd "00000409" }
+function Set-KoreanLayout([IntPtr]$hwnd) { Set-Layout $hwnd "00000412" }
+function Send-Vk([int]$vk, [int]$delay = 80) {
+    [AmareTab]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds $delay
+    [AmareTab]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 30
+}
+function Type-Hangul([string]$keys) {
+    $map = @{ g = 0x47; k = 0x4B; s = 0x53; r = 0x52; m = 0x4D; f = 0x46 }
+    foreach ($ch in $keys.ToCharArray()) { Send-Vk $map[[string]$ch] 80 }
 }
 function Process-Metrics([string]$label) {
     $webviews = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
@@ -246,6 +259,24 @@ try {
     [void](Select-Tab $bId)
     $bAgain = Wait-Page $bId { param($p) $p.text -eq "TAB-B-STATE" } 10 "tab B restore"
     Add-Result "tab-b-state-preserved" "PASS" "tab B text=$($bAgain.text)"
+
+    # Korean IME after tab switching, in the active tab's address bar.
+    [void](Select-Tab $aId)
+    Send-Keys "^l"
+    Start-Sleep -Milliseconds 300
+    Set-KoreanLayout $script:hwnd
+    Start-Sleep -Milliseconds 500
+    Type-Hangul "gksrmf"
+    Start-Sleep -Milliseconds 700
+    $imeState = Read-State
+    if ($imeState.address -match "한글") {
+        Add-Result "tab-switch-korean-ime" "PASS" "address=$($imeState.address)"
+    } else {
+        Add-Result "tab-switch-korean-ime" "UNVERIFIED" "address=$($imeState.address)"
+    }
+    Send-Keys "{ESC}"
+    Set-EnglishLayout $script:hwnd
+    Start-Sleep -Milliseconds 300
 
     # Per-tab history: navigate A, back should not change B.
     [void](Select-Tab $aId)
