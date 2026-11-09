@@ -38,11 +38,26 @@ const TAB_SLOT: f32 = 124.0;
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
-struct TabDrag {
+#[derive(Clone)]
+struct TabDragInfo {
     id: u64,
-    start_x: f32,
-    current_x: f32,
-    moved: bool,
+}
+
+struct TabDragPreview {
+    id: u64,
+}
+
+impl Render for TabDragPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_3()
+            .h(px(26.0))
+            .rounded_md()
+            .bg(rgb(0x2f7df6))
+            .text_color(rgb(0xffffff))
+            .text_sm()
+            .child(format!("tab {}", self.id))
+    }
 }
 
 struct TabState {
@@ -64,7 +79,6 @@ struct AmareApp {
     active: usize,
     next_tab_id: u64,
     window_id: u64,
-    tab_drag: Option<TabDrag>,
     activity_counter: u64,
     new_tab_url: String,
     address_input: gpui::Entity<AddressInput>,
@@ -153,7 +167,6 @@ impl AmareApp {
             active: 0,
             next_tab_id,
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
-            tab_drag: None,
             activity_counter: 1,
             new_tab_url,
             address_input,
@@ -243,8 +256,7 @@ impl AmareApp {
         let tabs = self
             .tabs
             .iter()
-            .enumerate()
-            .map(|(index, tab)| {
+            .map(|tab| {
                 serde_json::json!({
                     "id": tab.id,
                     "title": tab.title,
@@ -614,62 +626,14 @@ impl AmareApp {
         }
     }
 
-    fn start_tab_drag(&mut self, id: u64, event: &gpui::MouseDownEvent, cx: &mut Context<Self>) {
-        self.tab_drag = Some(TabDrag {
-            id,
-            start_x: f32::from(event.position.x),
-            current_x: f32::from(event.position.x),
-            moved: false,
-        });
-        cx.notify();
-    }
-
-    fn update_tab_drag(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
-        if let Some(drag) = self.tab_drag.as_mut() {
-            drag.current_x = f32::from(event.position.x);
-            if (drag.current_x - drag.start_x).abs() > 4.0 {
-                drag.moved = true;
-            }
-            cx.notify();
-        }
-    }
-
-    fn drag_target(&self) -> Option<usize> {
-        let drag = self.tab_drag.as_ref()?;
-        if !drag.moved || self.tabs.is_empty() {
-            return None;
-        }
-        let target = ((drag.current_x - TAB_START_X) / TAB_SLOT).round() as i32;
-        Some(target.clamp(0, self.tabs.len() as i32 - 1) as usize)
-    }
-
-    fn finish_tab_drag(
-        &mut self,
-        event: &gpui::MouseUpEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(drag) = self.tab_drag.take() else {
-            return;
-        };
-        if !drag.moved {
-            self.select_tab_by_id(drag.id, window, cx);
-            return;
-        }
-        let y = f32::from(event.position.y);
-        let width = f32::from(window.viewport_size().width);
-        if !(0.0..=44.0).contains(&y) || drag.current_x < 0.0 || drag.current_x > width {
-            cx.notify();
-            return;
-        }
-        let Some(from) = self.tabs.iter().position(|tab| tab.id == drag.id) else {
-            return;
-        };
+    fn move_tab_before(&mut self, dragged_id: u64, target_id: u64, cx: &mut Context<Self>) {
+        if dragged_id == target_id { return; }
+        let Some(from) = self.tabs.iter().position(|tab| tab.id == dragged_id) else { return; };
+        let Some(mut target) = self.tabs.iter().position(|tab| tab.id == target_id) else { return; };
         let active_id = self.active_tab().map(|tab| tab.id);
-        let target = self.drag_target().unwrap_or(from);
         let tab = self.tabs.remove(from);
-        let insert = target.min(self.tabs.len());
-        self.tabs.insert(insert, tab);
+        if from < target { target -= 1; }
+        self.tabs.insert(target.min(self.tabs.len()), tab);
         if let Some(active_id) = active_id {
             if let Some(index) = self.tabs.iter().position(|tab| tab.id == active_id) {
                 self.active = index;
@@ -714,17 +678,19 @@ impl Render for AmareApp {
         let tabs = self
             .tabs
             .iter()
-            .enumerate()
-            .map(|(index, tab)| {
+            .map(|tab| {
                 let active = tab.id == self.active_tab().map(|active| active.id).unwrap_or(0);
                 let id = tab.id;
+                let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
+                    this.select_tab_by_id(id, window, cx);
+                });
                 let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
                     this.close_tab(id, cx);
                 });
-                let start_drag = cx.listener(move |this: &mut Self, event: &gpui::MouseDownEvent, _, cx| {
-                    this.start_tab_drag(id, event, cx);
+                let drag_info = TabDragInfo { id };
+                let drop = cx.listener(move |this: &mut Self, info: &TabDragInfo, _, cx| {
+                    this.move_tab_before(info.id, id, cx);
                 });
-                let insertion = self.drag_target() == Some(index);
                 div()
                     .id(SharedString::from(format!("tab-{id}")))
                     .flex()
@@ -737,7 +703,6 @@ impl Render for AmareApp {
                     .bg(if active { surface } else { background })
                     .border_1()
                     .border_color(if active { border } else { background })
-                    .when(insertion, |el| el.border_l_2().border_color(accent))
                     .text_sm()
                     .text_color(if active { accent } else { muted })
                     .child(
@@ -748,13 +713,11 @@ impl Render for AmareApp {
                             .child(tab.title.clone()),
                     )
                     .child(if tab.loading { "◌" } else { "" })
-                    .on_mouse_down(gpui::MouseButton::Left, start_drag)
-                    .on_mouse_move(cx.listener(|this: &mut Self, event: &gpui::MouseMoveEvent, _, cx| {
-                        this.update_tab_drag(event, cx);
-                    }))
-                    .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseUpEvent, window, cx| {
-                        this.finish_tab_drag(event, window, cx);
-                    }))
+                    .on_drag(drag_info, |info: &TabDragInfo, _, _, cx| {
+                        cx.new(|_| TabDragPreview { id: info.id })
+                    })
+                    .on_drop(drop)
+                    .on_click(click)
                     .child(
                         div()
                             .id(SharedString::from(format!("tab-close-{id}")))
@@ -784,12 +747,6 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::new_window_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
-            .on_mouse_move(cx.listener(|this: &mut Self, event: &gpui::MouseMoveEvent, _, cx| {
-                this.update_tab_drag(event, cx);
-            }))
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseUpEvent, window, cx| {
-                this.finish_tab_drag(event, window, cx);
-            }))
             .flex()
             .flex_col()
             .size_full()
