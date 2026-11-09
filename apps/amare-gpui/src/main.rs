@@ -1,8 +1,8 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString, Timer,
-    Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
+    Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -10,6 +10,9 @@ mod text_input;
 mod webview;
 
 use text_input::AddressInput;
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
 
 actions!(
     amare,
@@ -20,23 +23,39 @@ actions!(
         ForwardPage,
         SubmitAddress,
         CancelAddress,
+        NewTab,
+        CloseTab,
     ]
 );
 
 const TOOLBAR_HEIGHT: f32 = 88.0;
 
 struct TabState {
+    id: u64,
     title: SharedString,
     url: SharedString,
+    loading: bool,
+    error: Option<SharedString>,
+    can_go_back: bool,
+    can_go_forward: bool,
+    favicon: Option<SharedString>,
+    last_active: u64,
+    #[cfg(target_os = "windows")]
+    webview: Option<webview::WebViewHost>,
 }
 
 struct AmareApp {
     tabs: Vec<TabState>,
     active: usize,
+    next_tab_id: u64,
+    activity_counter: u64,
+    new_tab_url: String,
     address_input: gpui::Entity<AddressInput>,
     focus_handle: FocusHandle,
     #[cfg(target_os = "windows")]
-    webview: Option<webview::WebViewHost>,
+    parent: Option<HWND>,
+    #[cfg(target_os = "windows")]
+    webview_env: Option<std::sync::Arc<webview::WebViewEnvironment>>,
     #[cfg(target_os = "windows")]
     webview_error: Option<String>,
     dark: bool,
@@ -48,45 +67,98 @@ impl AmareApp {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
 
+        let start_url = std::env::var("AMARE_GPUI_START_URL")
+            .unwrap_or_else(|_| "https://example.com/".to_string());
+        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
+            .unwrap_or_else(|_| "about:blank".to_string());
+
         #[cfg(target_os = "windows")]
-        let self_test = std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1");
-        #[cfg(target_os = "windows")]
-        let (webview, webview_error) = match window.window_handle().ok().map(|handle| handle.as_raw()) {
-            Some(RawWindowHandle::Win32(handle)) => {
-                let hwnd = windows::Win32::Foundation::HWND(handle.hwnd.get() as *mut _);
-                match webview::WebViewHost::create(hwnd) {
-                    Ok(view) => (Some(view), None),
-                    Err(error) => (None, Some(error)),
+        let parent = window
+            .window_handle()
+            .ok()
+            .map(|handle| handle.as_raw())
+            .and_then(|handle| match handle {
+                RawWindowHandle::Win32(handle) => {
+                    Some(HWND(handle.hwnd.get() as *mut _))
                 }
-            }
-            _ => (None, Some("Windows HWND unavailable".to_string())),
+                _ => None,
+            });
+        #[cfg(target_os = "windows")]
+        let (webview_env, mut webview_error) = match parent {
+            Some(_) => match webview::WebViewEnvironment::create() {
+                Ok(env) => (Some(std::sync::Arc::new(env)), None),
+                Err(error) => (None, Some(error)),
+            },
+            None => (None, Some("Windows HWND unavailable".to_string())),
         };
 
         #[cfg(target_os = "windows")]
-        if self_test {
-            if let Some(view) = &webview {
-                let _ = view.run_self_test();
-            }
-        }
+        let first_webview = match (webview_env.as_ref(), parent) {
+            (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
+                Ok(webview) => Some(webview),
+                Err(error) => {
+                    webview_error = Some(error);
+                    None
+                }
+            },
+            _ => None,
+        };
+        #[cfg(not(target_os = "windows"))]
+        let first_webview = ();
 
-        let start_url = std::env::var("AMARE_GPUI_START_URL")
-            .unwrap_or_else(|_| "https://example.com/".to_string());
+        let id = 1;
+        let next_tab_id = 2;
+        #[cfg(target_os = "windows")]
+        let first_error = webview_error.clone().map(Into::into);
+        #[cfg(not(target_os = "windows"))]
+        let first_error: Option<SharedString> = None;
+
+        let tabs = vec![TabState {
+            id,
+            title: "New Tab".into(),
+            url: start_url.clone().into(),
+            loading: false,
+            error: first_error,
+            can_go_back: false,
+            can_go_forward: false,
+            favicon: None,
+            last_active: 1,
+            #[cfg(target_os = "windows")]
+            webview: first_webview,
+        }];
+
         let address_input = cx.new(|cx| AddressInput::new(start_url.clone(), cx));
         let app = Self {
-            tabs: vec![TabState {
-                title: "New Tab".into(),
-                url: start_url.into(),
-            }],
+            tabs,
             active: 0,
+            next_tab_id,
+            activity_counter: 1,
+            new_tab_url,
             address_input,
             focus_handle,
             #[cfg(target_os = "windows")]
-            webview,
+            parent,
+            #[cfg(target_os = "windows")]
+            webview_env,
             #[cfg(target_os = "windows")]
             webview_error,
             dark: false,
             status_poll_started: false,
         };
+
+        #[cfg(target_os = "windows")]
+        if std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1") {
+            if let Some(view) = app.active_webview() {
+                let _ = view.run_self_test();
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = app.active_webview() {
+            webview.navigate(&start_url);
+            webview.set_active(true);
+        }
+
         let address_focus = app.address_input.read(cx).focus_handle(cx);
         window.focus(&address_focus);
         app
@@ -111,38 +183,74 @@ impl AmareApp {
             return;
         };
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             webview.ensure_ime();
         }
         let input = self.address_input.read(cx);
-        let length = input.content().len();
         let address = input.content();
         let marked = input
             .marked_range()
             .map(|range| serde_json::json!([range.start, range.end]));
         let selected = input.selected_range();
+        let active = self.active_tab();
         #[cfg(target_os = "windows")]
         let (source, title) = self
-            .webview
-            .as_ref()
+            .active_webview()
             .map(|webview| (webview.source(), webview.title()))
             .unwrap_or_default();
         #[cfg(not(target_os = "windows"))]
         let (source, title) = (String::new(), String::new());
+        #[cfg(target_os = "windows")]
+        let ime_context = self
+            .active_webview()
+            .map(|webview| webview.ime_context())
+            .unwrap_or(false);
+        #[cfg(not(target_os = "windows"))]
+        let ime_context = false;
+        let tabs = self
+            .tabs
+            .iter()
+            .map(|tab| {
+                serde_json::json!({
+                    "id": tab.id,
+                    "title": tab.title,
+                    "url": tab.url,
+                    "loading": tab.loading,
+                    "error": tab.error,
+                    "can_go_back": tab.can_go_back,
+                    "can_go_forward": tab.can_go_forward,
+                    "last_active": tab.last_active
+                })
+            })
+            .collect::<Vec<_>>();
         let payload = serde_json::json!({
             "address": address,
-            "address_len": length,
             "marked_range": marked,
             "selected_range": [selected.start, selected.end],
             "source": source,
             "title": title,
-            "ime_context": self.webview.as_ref().map(|webview| webview.ime_context()).unwrap_or(false),
+            "active_tab": active.map(|tab| tab.id),
+            "tabs": tabs,
+            "ime_context": ime_context,
             "pid": std::process::id()
         });
         if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+    }
+
+    fn active_tab(&self) -> Option<&TabState> {
+        self.tabs.get(self.active)
+    }
+
+    fn active_tab_mut(&mut self) -> Option<&mut TabState> {
+        self.tabs.get_mut(self.active)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn active_webview(&self) -> Option<&webview::WebViewHost> {
+        self.active_tab().and_then(|tab| tab.webview.as_ref())
     }
 
     fn set_address(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -155,92 +263,178 @@ impl AmareApp {
         self.address_input.read(cx).content()
     }
 
-    fn refresh_from_webview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn focus_address_input(&self, window: &mut Window, cx: &mut App) {
+        let handle = self.address_input.read(cx).focus_handle(cx);
+        window.focus(&handle);
+    }
+
+    fn refresh_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
-        let Some(webview) = &self.webview else {
-            return;
-        };
-        #[cfg(not(target_os = "windows"))]
-        return;
-        #[cfg(target_os = "windows")]
-        {
+        for tab in &mut self.tabs {
+            let Some(webview) = &tab.webview else {
+                continue;
+            };
             let source = webview.source();
-            if source.is_empty() {
-                return;
+            if !source.is_empty() {
+                tab.url = source.clone().into();
+                let title = webview.title();
+                tab.title = if title.is_empty() {
+                    title_for(&source).into()
+                } else {
+                    title.into()
+                };
             }
-            let title = webview.title();
-            if let Some(tab) = self.tabs.get_mut(self.active) {
-                if tab.url.as_ref() != source {
-                    tab.url = source.clone().into();
-                    tab.title = if title.is_empty() {
-                        title_for(&source).into()
-                    } else {
-                        title.into()
-                    };
-                }
-            }
-            let focused = self.address_input.read(cx).is_focused(window);
-            if !focused && self.address_value(cx) != source {
+            tab.can_go_back = webview.can_go_back();
+            tab.can_go_forward = webview.can_go_forward();
+            let (loading, error) = webview.signals();
+            tab.loading = loading;
+            tab.error = error.map(Into::into);
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = &self.tabs;
+
+        let focused = self.address_input.read(cx).is_focused(window);
+        if !focused {
+            let source = self
+                .active_tab()
+                .map(|tab| tab.url.to_string())
+                .unwrap_or_default();
+            if !source.is_empty() && self.address_value(cx) != source {
                 self.set_address(source, cx);
             }
         }
     }
 
-    fn active_tab(&self) -> &TabState {
-        &self.tabs[self.active.min(self.tabs.len() - 1)]
-    }
-
     fn navigate(&mut self, cx: &mut Context<Self>) {
         let url = normalize_url(&self.address_value(cx));
-        if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.url = url.clone().into();
-            tab.title = title_for(&url).into();
-        }
+        let tab = self.active_tab_mut();
+        let Some(tab) = tab else { return };
+        tab.url = url.clone().into();
+        tab.title = title_for(&url).into();
+        tab.loading = true;
+        tab.error = None;
         self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = &self.tabs[self.active].webview {
             webview.navigate(&url);
             webview.focus();
         }
     }
 
-    fn new_tab(&mut self, cx: &mut Context<Self>) {
+    fn create_webview(&self) -> (Option<webview::WebViewHost>, Option<String>) {
+        #[cfg(target_os = "windows")]
+        {
+            match (self.webview_env.as_ref(), self.parent) {
+                (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
+                    Ok(webview) => (Some(webview), None),
+                    Err(error) => (None, Some(error)),
+                },
+                _ => (None, self.webview_error.clone()),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        (None, None)
+    }
+
+    fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (webview, error) = self.create_webview();
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+        self.activity_counter += 1;
+        let error = error.map(Into::into);
         self.tabs.push(TabState {
+            id,
             title: "New Tab".into(),
-            url: "about:blank".into(),
+            url: self.new_tab_url.clone().into(),
+            loading: false,
+            error,
+            can_go_back: false,
+            can_go_forward: false,
+            favicon: None,
+            last_active: self.activity_counter,
+            #[cfg(target_os = "windows")]
+            webview,
         });
         self.active = self.tabs.len() - 1;
-        self.set_address("about:blank", cx);
+        self.set_address(self.new_tab_url.clone(), cx);
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
-            webview.navigate("about:blank");
+        if let Some(webview) = &self.tabs[self.active].webview {
+            webview.navigate(&self.new_tab_url);
+            webview.set_active(true);
         }
+        self.focus_address_input(window, cx);
+        cx.notify();
+    }
+
+    fn select_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= self.tabs.len() || index == self.active {
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = self.active_webview() {
+            webview.set_active(false);
+        }
+        self.active = index;
+        self.activity_counter += 1;
+        let activity = self.activity_counter;
+        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+        if let Some(tab) = self.active_tab_mut() {
+            tab.last_active = activity;
+        }
+        self.set_address(url, cx);
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = self.active_webview() {
+            webview.set_active(true);
+            webview.focus();
+        }
+        let _ = window;
+        cx.notify();
+    }
+
+    fn select_tab_by_id(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.tabs.iter().position(|tab| tab.id == id) {
+            self.select_tab(index, window, cx);
+        }
+    }
+
+    fn close_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
+        if self.tabs.len() == 1 {
+            cx.quit();
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = &self.tabs[index].webview {
+            webview.set_active(false);
+        }
+        self.tabs.remove(index);
+        if self.active >= self.tabs.len() {
+            self.active = self.tabs.len() - 1;
+        } else if index < self.active {
+            self.active -= 1;
+        }
+        self.activity_counter += 1;
+        let activity = self.activity_counter;
+        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+        if let Some(tab) = self.active_tab_mut() {
+            tab.last_active = activity;
+        }
+        self.set_address(url, cx);
+        #[cfg(target_os = "windows")]
+        if let Some(webview) = self.active_webview() {
+            webview.set_active(true);
+            webview.set_bounds(0, 0, 1, 1);
+            webview.focus();
+        }
+        cx.notify();
     }
 
     fn close_active_tab(&mut self, cx: &mut Context<Self>) {
-        if self.tabs.len() <= 1 {
-            return;
-        }
-        self.tabs.remove(self.active);
-        self.active = self.active.min(self.tabs.len() - 1);
-        let url = self.active_tab().url.to_string();
-        self.set_address(url.clone(), cx);
-        #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
-            webview.navigate(&url);
-        }
-    }
-
-    fn select_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.tabs.len() {
-            return;
-        }
-        self.active = index;
-        let url = self.active_tab().url.to_string();
-        self.set_address(url.clone(), cx);
-        #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
-            webview.navigate(&url);
+        if let Some(tab) = self.active_tab() {
+            let id = tab.id;
+            self.close_tab(id, cx);
         }
     }
 
@@ -252,8 +446,7 @@ impl AmareApp {
     ) {
         self.address_input
             .update(cx, |input, cx| input.select_all_text(cx));
-        let handle = self.address_input.read(cx).focus_handle(cx);
-        window.focus(&handle);
+        self.focus_address_input(window, cx);
         cx.notify();
     }
 
@@ -273,10 +466,10 @@ impl AmareApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let url = self.active_tab().url.to_string();
+        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
         self.set_address(url, cx);
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             webview.focus();
         }
         cx.notify();
@@ -284,7 +477,7 @@ impl AmareApp {
 
     fn reload_page(&mut self, _: &ReloadPage, _window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             webview.reload();
             webview.focus();
         }
@@ -293,7 +486,7 @@ impl AmareApp {
 
     fn go_back(&mut self, _: &BackPage, _window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             webview.back();
             webview.focus();
         }
@@ -302,16 +495,24 @@ impl AmareApp {
 
     fn go_forward(&mut self, _: &ForwardPage, _window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             webview.forward();
             webview.focus();
         }
         cx.notify();
     }
 
+    fn new_tab_action(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_tab(window, cx);
+    }
+
+    fn close_tab_action(&mut self, _: &CloseTab, _window: &mut Window, cx: &mut Context<Self>) {
+        self.close_active_tab(cx);
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.webview {
+        if let Some(webview) = self.active_webview() {
             let viewport = window.viewport_size();
             let scale = window.scale_factor();
             let width = (f32::from(viewport.width) * scale).round().max(1.0) as i32;
@@ -328,7 +529,7 @@ impl Render for AmareApp {
             self.status_poll_started = true;
             self.start_status_poll(cx);
         }
-        self.refresh_from_webview(window, cx);
+        self.refresh_tabs(window, cx);
         self.sync_webview_bounds(window);
         let dark = self.dark;
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
@@ -336,22 +537,29 @@ impl Render for AmareApp {
         let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
         let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
         let accent = rgb(0x2f7df6);
+        let can_back = self.active_tab().map(|tab| tab.can_go_back).unwrap_or(false);
+        let can_forward = self
+            .active_tab()
+            .map(|tab| tab.can_go_forward)
+            .unwrap_or(false);
         let tabs = self
             .tabs
             .iter()
-            .enumerate()
-            .map(|(index, tab)| {
-                let active = index == self.active;
-                let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                    this.select_tab(index, cx);
-                    cx.notify();
+            .map(|tab| {
+                let active = tab.id == self.active_tab().map(|active| active.id).unwrap_or(0);
+                let id = tab.id;
+                let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
+                    this.select_tab_by_id(id, window, cx);
+                });
+                let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.close_tab(id, cx);
                 });
                 div()
-                    .id(SharedString::from(format!("tab-{index}")))
+                    .id(SharedString::from(format!("tab-{id}")))
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .px_3()
+                    .gap_1()
+                    .px_2()
                     .h(px(34.0))
                     .rounded_md()
                     .bg(if active { surface } else { background })
@@ -359,7 +567,27 @@ impl Render for AmareApp {
                     .border_color(if active { border } else { background })
                     .text_sm()
                     .text_color(if active { accent } else { muted })
-                    .child(tab.title.clone())
+                    .child(
+                        div()
+                            .max_w(px(150.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(tab.title.clone()),
+                    )
+                    .child(if tab.loading { "◌" } else { "" })
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tab-close-{id}")))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(20.0))
+                            .rounded_sm()
+                            .hover(|style| style.bg(border))
+                            .child("×")
+                            .on_click(close),
+                    )
                     .on_click(click)
             })
             .collect::<Vec<_>>();
@@ -372,6 +600,8 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::reload_page))
             .on_action(cx.listener(Self::go_back))
             .on_action(cx.listener(Self::go_forward))
+            .on_action(cx.listener(Self::new_tab_action))
+            .on_action(cx.listener(Self::close_tab_action))
             .flex()
             .flex_col()
             .size_full()
@@ -392,12 +622,14 @@ impl Render for AmareApp {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .overflow_hidden()
-                            .child(div().flex().gap_1().children(tabs))
+                            .flex_1()
+                            .overflow_x_scroll()
+                            .child(div().flex().gap_1().children(tabs)),
                     )
                     .child(
                         div()
                             .id("new-tab")
+                            .flex_none()
                             .flex()
                             .items_center()
                             .justify_center()
@@ -407,11 +639,11 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .text_lg()
                             .child("+")
-                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                this.new_tab(cx);
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.new_tab(window, cx);
                                 cx.notify();
                             })),
-                    )
+                    ),
             )
             .child(
                 div()
@@ -432,13 +664,33 @@ impl Render for AmareApp {
                             .items_center()
                             .justify_center()
                             .rounded_md()
+                            .opacity(if can_back { 1.0 } else { 0.35 })
                             .hover(|style| style.bg(border))
                             .cursor_pointer()
                             .child("‹")
-                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                #[cfg(target_os = "windows")]
-                                if let Some(webview) = &this.webview {
-                                    webview.back();
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                if this.active_tab().map(|tab| tab.can_go_back).unwrap_or(false) {
+                                    this.go_back(&BackPage, window, cx);
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("forward")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .opacity(if can_forward { 1.0 } else { 0.35 })
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .child("›")
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                if this.active_tab().map(|tab| tab.can_go_forward).unwrap_or(false) {
+                                    this.go_forward(&ForwardPage, window, cx);
                                 }
                                 cx.notify();
                             })),
@@ -474,7 +726,7 @@ impl Render for AmareApp {
                                 this.dark = !this.dark;
                                 cx.notify();
                             })),
-                    )
+                    ),
             )
             .child(
                 div()
@@ -489,10 +741,11 @@ impl Render for AmareApp {
                                 .text_sm()
                                 .text_color(muted)
                                 .child(self.webview_error.clone().unwrap_or_else(|| {
-                                    "WebView2 content is hosted in the native child window below the toolbar.".into()
+                                    "WebView2 content is hosted in native child windows below the toolbar."
+                                        .into()
                                 })),
                         )
-                    })
+                    }),
             )
     }
 }
@@ -539,6 +792,8 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("ctrl-l", FocusAddress, None),
             KeyBinding::new("ctrl-r", ReloadPage, None),
+            KeyBinding::new("ctrl-t", NewTab, None),
+            KeyBinding::new("ctrl-w", CloseTab, None),
             KeyBinding::new("alt-left", BackPage, None),
             KeyBinding::new("alt-right", ForwardPage, None),
             KeyBinding::new("enter", SubmitAddress, None),

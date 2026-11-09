@@ -1,14 +1,17 @@
 #[cfg(target_os = "windows")]
+use std::sync::{Arc, Mutex};
+
+#[cfg(target_os = "windows")]
 use std::sync::mpsc;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, CreateCoreWebView2ControllerCompletedHandler,
     CreateCoreWebView2EnvironmentCompletedHandler, ExecuteScriptCompletedHandler,
-    NavigationCompletedEventHandler, take_pwstr, wait_with_pump,
+    NavigationCompletedEventHandler, NavigationStartingEventHandler, take_pwstr, wait_with_pump,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2Controller,
+        ICoreWebView2Controller, ICoreWebView2Environment,
     },
 };
 #[cfg(target_os = "windows")]
@@ -16,7 +19,10 @@ use windows::{
     core::HSTRING,
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
-        System::{Com::{CoInitializeEx, COINIT_APARTMENTTHREADED}, Threading::GetCurrentThreadId},
+        System::{
+            Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
+            Threading::GetCurrentThreadId,
+        },
         UI::{
             Input::{
                 Ime::{
@@ -25,9 +31,8 @@ use windows::{
                     ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
-                    ActivateKeyboardLayout, GetKeyState, GetKeyboardLayout,
-                    KLF_ACTIVATE, KLF_SETFORPROCESS, LoadKeyboardLayoutW, SetFocus, VK_CONTROL,
-                    VK_L, VK_LEFT, VK_MENU, VK_R, VK_RIGHT,
+                    GetKeyboardLayout, GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU,
+                    VK_R, VK_RIGHT, VK_T, VK_W,
                 },
             },
             WindowsAndMessaging::{
@@ -38,54 +43,22 @@ use windows::{
 };
 
 #[cfg(target_os = "windows")]
-pub fn activate_korean_layout() {
-    unsafe {
-        if let Ok(hkl) = LoadKeyboardLayoutW(
-            windows::core::w!("00000412"),
-            KLF_ACTIVATE,
-        ) {
-            let _ = ActivateKeyboardLayout(hkl, KLF_SETFORPROCESS);
-        }
-    }
-}
-
-pub struct WebViewHost {
-    controller: ICoreWebView2Controller,
-    webview: ICoreWebView2,
-    parent: HWND,
-    accelerator_token: i64,
+#[derive(Default)]
+pub struct TabSignals {
+    pub loading: bool,
+    pub error: Option<String>,
 }
 
 #[cfg(target_os = "windows")]
-fn write_status(webview: &ICoreWebView2, path: &str) {
-    let source = unsafe {
-        let mut value = windows::core::PWSTR::null();
-        if webview.Source(&mut value).is_err() { String::new() } else { take_pwstr(value) }
-    };
-    let title = unsafe {
-        let mut value = windows::core::PWSTR::null();
-        if webview.DocumentTitle(&mut value).is_err() { String::new() } else { take_pwstr(value) }
-    };
-    let payload = serde_json::json!({
-        "source": source,
-        "title": title,
-        "pid": std::process::id()
-    });
-    if let Some(parent) = std::path::Path::new(path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+pub struct WebViewEnvironment {
+    environment: ICoreWebView2Environment,
 }
 
 #[cfg(target_os = "windows")]
-impl WebViewHost {
-    pub fn create(parent: HWND) -> std::result::Result<Self, String> {
+impl WebViewEnvironment {
+    pub fn create() -> std::result::Result<Self, String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            let ime_context = ImmCreateContext();
-            if !ime_context.0.is_null() {
-                let _ = ImmAssociateContext(parent, ime_context);
-            }
         }
         let environment = {
             let (tx, rx) = mpsc::channel();
@@ -101,12 +74,42 @@ impl WebViewHost {
                 }),
             )
             .map_err(|error| format!("WebView2 environment: {error:?}"))?;
-            rx.recv().map_err(|_| "WebView2 environment channel closed".to_string())?
+            rx.recv()
+                .map_err(|_| "WebView2 environment channel closed".to_string())?
         }
         .map_err(|error| format!("WebView2 environment: {error:?}"))?;
+        Ok(Self { environment })
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub struct WebViewHost {
+    controller: ICoreWebView2Controller,
+    webview: ICoreWebView2,
+    parent: HWND,
+    signals: Arc<Mutex<TabSignals>>,
+    accelerator_token: i64,
+    navigation_starting_token: i64,
+    navigation_completed_token: i64,
+}
+
+#[cfg(target_os = "windows")]
+impl WebViewHost {
+    pub fn create(
+        environment: &WebViewEnvironment,
+        parent: HWND,
+    ) -> std::result::Result<Self, String> {
+        unsafe {
+            let ime_context = ImmCreateContext();
+            if !ime_context.0.is_null() {
+                let _ = ImmAssociateContext(parent, ime_context);
+            }
+            let _ = ImmAssociateContextEx(parent, HIMC::default(), IACE_DEFAULT);
+        }
 
         let controller = {
             let (tx, rx) = mpsc::channel();
+            let environment = environment.environment.clone();
             CreateCoreWebView2ControllerCompletedHandler::wait_for_async_operation(
                 Box::new(move |handler| unsafe {
                     environment
@@ -121,43 +124,61 @@ impl WebViewHost {
                 }),
             )
             .map_err(|error| format!("WebView2 controller: {error:?}"))?;
-            rx.recv().map_err(|_| "WebView2 controller channel closed".to_string())?
+            rx.recv()
+                .map_err(|_| "WebView2 controller channel closed".to_string())?
         }
         .map_err(|error| format!("WebView2 controller: {error:?}"))?;
 
         unsafe {
-            controller.SetIsVisible(true).map_err(|error| format!("WebView2 visible: {error:?}"))?;
-            let webview = controller.CoreWebView2().map_err(|error| format!("WebView2 core: {error:?}"))?;
-            let self_test = std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1");
-            let mut token = 0;
-            let (initial_tx, initial_rx) = mpsc::channel();
-            let initial_handler = NavigationCompletedEventHandler::create(Box::new(move |_, _| {
-                let _ = initial_tx.send(());
-                Ok(())
-            }));
-            if self_test {
-                webview.add_NavigationCompleted(&initial_handler, &mut token)
-                    .map_err(|error| format!("initial navigation handler: {error:?}"))?;
-            }
-            let initial_url = std::env::var("AMARE_GPUI_START_URL")
-                .unwrap_or_else(|_| "https://example.com/".to_string());
-            webview.Navigate(&HSTRING::from(initial_url))
-                .map_err(|error| format!("WebView2 navigate: {error:?}"))?;
-            if self_test {
-                let _ = wait_with_pump(initial_rx);
-                let _ = webview.remove_NavigationCompleted(token);
-            }
-            if let Ok(status_path) = std::env::var("AMARE_GPUI_STATUS") {
-                let status_webview = webview.clone();
-                let status_path_for_handler = status_path.clone();
-                let status_handler = NavigationCompletedEventHandler::create(Box::new(move |_, _| {
-                    write_status(&status_webview, &status_path_for_handler);
+            controller
+                .SetIsVisible(false)
+                .map_err(|error| format!("WebView2 visible: {error:?}"))?;
+            let webview = controller
+                .CoreWebView2()
+                .map_err(|error| format!("WebView2 core: {error:?}"))?;
+            let signals = Arc::new(Mutex::new(TabSignals::default()));
+
+            let starting_signals = signals.clone();
+            let navigation_starting = NavigationStartingEventHandler::create(Box::new(
+                move |_webview, _args| {
+                    if let Ok(mut signals) = starting_signals.lock() {
+                        signals.loading = true;
+                        signals.error = None;
+                    }
                     Ok(())
-                }));
-                let mut status_token = 0;
-                let _ = webview.add_NavigationCompleted(&status_handler, &mut status_token);
-                write_status(&webview, &status_path);
-            }
+                },
+            ));
+            let mut navigation_starting_token = 0;
+            webview
+                .add_NavigationStarting(&navigation_starting, &mut navigation_starting_token)
+                .map_err(|error| format!("navigation starting handler: {error:?}"))?;
+
+            let completed_signals = signals.clone();
+            let navigation_completed = NavigationCompletedEventHandler::create(Box::new(
+                move |_webview, args| {
+                    let mut success = true;
+                    if let Some(args) = args {
+                        let mut value = windows::core::BOOL(0);
+                        if args.IsSuccess(&mut value).is_ok() {
+                            success = value.as_bool();
+                        }
+                    }
+                    if let Ok(mut signals) = completed_signals.lock() {
+                        signals.loading = false;
+                        signals.error = if success {
+                            None
+                        } else {
+                            Some("navigation failed".to_string())
+                        };
+                    }
+                    Ok(())
+                },
+            ));
+            let mut navigation_completed_token = 0;
+            webview
+                .add_NavigationCompleted(&navigation_completed, &mut navigation_completed_token)
+                .map_err(|error| format!("navigation completed handler: {error:?}"))?;
+
             let accelerator_token = {
                 let accelerator_parent = parent;
                 let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
@@ -174,6 +195,10 @@ impl WebViewHost {
                                 Some(VK_L.0)
                             } else if control && vk == VK_R.0 as u32 {
                                 Some(VK_R.0)
+                            } else if control && vk == VK_T.0 as u32 {
+                                Some(VK_T.0)
+                            } else if control && vk == VK_W.0 as u32 {
+                                Some(VK_W.0)
                             } else if alt && vk == VK_LEFT.0 as u32 {
                                 Some(VK_LEFT.0)
                             } else if alt && vk == VK_RIGHT.0 as u32 {
@@ -206,11 +231,21 @@ impl WebViewHost {
                     },
                 ));
                 let mut token = 0;
-                controller.add_AcceleratorKeyPressed(&accelerator_handler, &mut token)
+                controller
+                    .add_AcceleratorKeyPressed(&accelerator_handler, &mut token)
                     .map_err(|error| format!("accelerator handler: {error:?}"))?;
                 token
             };
-            Ok(Self { controller, webview, parent, accelerator_token })
+
+            Ok(Self {
+                controller,
+                webview,
+                parent,
+                signals,
+                accelerator_token,
+                navigation_starting_token,
+                navigation_completed_token,
+            })
         }
     }
 
@@ -244,12 +279,16 @@ impl WebViewHost {
         let page_ok = source.contains("example.com") && title.eq_ignore_ascii_case("Example Domain");
         self.navigate_and_wait("https://example.com/?amare=gpui", 20)?;
         self.wait_for_action(|| unsafe {
-            self.webview.GoBack().map_err(|error| format!("GoBack: {error:?}"))
+            self.webview
+                .GoBack()
+                .map_err(|error| format!("GoBack: {error:?}"))
         })?;
         let back_source = self.source();
         let back_ok = back_source.contains("example.com");
         self.wait_for_action(|| unsafe {
-            self.webview.Reload().map_err(|error| format!("Reload: {error:?}"))
+            self.webview
+                .Reload()
+                .map_err(|error| format!("Reload: {error:?}"))
         })?;
         Ok(serde_json::json!({
             "success": page_ok && back_ok,
@@ -271,9 +310,11 @@ impl WebViewHost {
         }));
         let mut token = 0;
         unsafe {
-            self.webview.add_NavigationCompleted(&handler, &mut token)
+            self.webview
+                .add_NavigationCompleted(&handler, &mut token)
                 .map_err(|error| format!("add_NavigationCompleted: {error:?}"))?;
-            self.webview.Navigate(&HSTRING::from(url))
+            self.webview
+                .Navigate(&HSTRING::from(url))
                 .map_err(|error| format!("Navigate: {error:?}"))?;
         }
         let result = wait_with_pump(rx);
@@ -293,11 +334,16 @@ impl WebViewHost {
         }));
         let mut token = 0;
         unsafe {
-            self.webview.add_NavigationCompleted(&handler, &mut token)
+            self.webview
+                .add_NavigationCompleted(&handler, &mut token)
                 .map_err(|error| format!("add_NavigationCompleted: {error:?}"))?;
         }
         let action_result = action();
-        let result = if action_result.is_ok() { wait_with_pump(rx) } else { Ok(()) };
+        let result = if action_result.is_ok() {
+            wait_with_pump(rx)
+        } else {
+            Ok(())
+        };
         unsafe {
             let _ = self.webview.remove_NavigationCompleted(token);
         }
@@ -308,7 +354,9 @@ impl WebViewHost {
     pub fn source(&self) -> String {
         unsafe {
             let mut value = windows::core::PWSTR::null();
-            if self.webview.Source(&mut value).is_err() { return String::new(); }
+            if self.webview.Source(&mut value).is_err() {
+                return String::new();
+            }
             take_pwstr(value)
         }
     }
@@ -316,9 +364,32 @@ impl WebViewHost {
     pub fn title(&self) -> String {
         unsafe {
             let mut value = windows::core::PWSTR::null();
-            if self.webview.DocumentTitle(&mut value).is_err() { return String::new(); }
+            if self.webview.DocumentTitle(&mut value).is_err() {
+                return String::new();
+            }
             take_pwstr(value)
         }
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        unsafe {
+            let mut value = windows::core::BOOL(0);
+            self.webview.CanGoBack(&mut value).is_ok() && value.as_bool()
+        }
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        unsafe {
+            let mut value = windows::core::BOOL(0);
+            self.webview.CanGoForward(&mut value).is_ok() && value.as_bool()
+        }
+    }
+
+    pub fn signals(&self) -> (bool, Option<String>) {
+        self.signals
+            .lock()
+            .map(|signals| (signals.loading, signals.error.clone()))
+            .unwrap_or((false, None))
     }
 
     fn execute_script(&self, script: &str) -> Result<String, String> {
@@ -327,7 +398,8 @@ impl WebViewHost {
         let script = HSTRING::from(script);
         ExecuteScriptCompletedHandler::wait_for_async_operation(
             Box::new(move |handler| unsafe {
-                webview.ExecuteScript(&script, &handler)
+                webview
+                    .ExecuteScript(&script, &handler)
                     .map_err(webview2_com::Error::WindowsError)
             }),
             Box::new(move |error, result| {
@@ -335,18 +407,35 @@ impl WebViewHost {
                 let _ = tx.send(result);
                 Ok(())
             }),
-        ).map_err(|error| format!("ExecuteScript: {error:?}"))?;
-        rx.recv().map_err(|_| "ExecuteScript channel closed".to_string())
+        )
+        .map_err(|error| format!("ExecuteScript: {error:?}"))?;
+        rx.recv()
+            .map_err(|_| "ExecuteScript channel closed".to_string())
     }
 
     pub fn set_bounds(&self, left: i32, top: i32, width: i32, height: i32) {
-        let rect = RECT { left, top, right: width, bottom: height };
+        let rect = RECT {
+            left,
+            top,
+            right: width,
+            bottom: height,
+        };
         unsafe {
             let _ = self.controller.SetBounds(rect);
         }
     }
 
+    pub fn set_active(&self, active: bool) {
+        unsafe {
+            let _ = self.controller.SetIsVisible(active);
+        }
+    }
+
     pub fn navigate(&self, url: &str) {
+        if let Ok(mut signals) = self.signals.lock() {
+            signals.loading = true;
+            signals.error = None;
+        }
         unsafe {
             let _ = self.webview.Navigate(&HSTRING::from(url));
         }
@@ -370,23 +459,32 @@ impl WebViewHost {
         }
     }
 
+    pub fn focus(&self) {
+        unsafe {
+            for class in [
+                windows::core::w!("Chrome_WidgetWin_0"),
+                windows::core::w!("Chrome_WidgetWin_1"),
+            ] {
+                if let Ok(child) = FindWindowExW(Some(self.parent), None, class, None) {
+                    if !child.is_invalid() {
+                        let _ = SetFocus(Some(child));
+                        return;
+                    }
+                }
+            }
+            let _ = SetFocus(Some(self.parent));
+        }
+    }
+
     pub fn ensure_ime(&self) {
         unsafe {
             let korean = (GetKeyboardLayout(GetCurrentThreadId()).0 as u32 & 0xFFFF) == 0x0412;
             if ImmGetContext(self.parent).0.is_null() {
                 let context = ImmCreateContext();
-                let created = !context.0.is_null();
-                let previous = ImmAssociateContext(self.parent, context);
-                let after_create = ImmGetContext(self.parent).0 as usize;
-                let _ = ImmAssociateContextEx(self.parent, HIMC::default(), IACE_DEFAULT);
-                let after_default = ImmGetContext(self.parent).0 as usize;
-                if let Ok(path) = std::env::var("AMARE_GPUI_IME_LOG") {
-                    let payload = format!(
-                        "parent={:?} created={} context={:?} previous={:?} after_create={} after_default={}\n",
-                        self.parent, created, context.0, previous.0, after_create, after_default
-                    );
-                    let _ = std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut file| std::io::Write::write_all(&mut file, payload.as_bytes()));
+                if !context.0.is_null() {
+                    let _ = ImmAssociateContext(self.parent, context);
                 }
+                let _ = ImmAssociateContextEx(self.parent, HIMC::default(), IACE_DEFAULT);
             }
             if korean {
                 let context = ImmGetContext(self.parent);
@@ -406,29 +504,17 @@ impl WebViewHost {
     pub fn ime_context(&self) -> bool {
         unsafe { !ImmGetContext(self.parent).0.is_null() }
     }
-
-    pub fn focus(&self) {
-        unsafe {
-            for class in [
-                windows::core::w!("Chrome_WidgetWin_0"),
-                windows::core::w!("Chrome_WidgetWin_1"),
-            ] {
-                if let Ok(child) = FindWindowExW(Some(self.parent), None, class, None) {
-                    if !child.is_invalid() {
-                        let _ = SetFocus(Some(child));
-                        return;
-                    }
-                }
-            }
-            let _ = SetFocus(Some(self.parent));
-        }
-    }
 }
 
 #[cfg(target_os = "windows")]
 impl Drop for WebViewHost {
     fn drop(&mut self) {
         unsafe {
+            let _ = self.webview.remove_NavigationStarting(self.navigation_starting_token);
+            let _ = self.webview.remove_NavigationCompleted(self.navigation_completed_token);
+            let _ = self
+                .controller
+                .remove_AcceleratorKeyPressed(self.accelerator_token);
             let _ = self.controller.Close();
         }
     }
