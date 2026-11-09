@@ -407,7 +407,7 @@ try {
     $windowCount = Count-Windows
     $rect = Get-Rect $script:hwnd
     $orig = Get-Origin $script:hwnd
-    $outsideX = ($rect.Right - $orig.X) + 120
+    $outsideX = ($rect.Right - $orig.X) + 400
     Drag-At $script:hwnd 72 22 $outsideX 22
     $detached = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "source tab detach"
     $detachedWindows = Count-Windows
