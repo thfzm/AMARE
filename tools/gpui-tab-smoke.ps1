@@ -345,7 +345,7 @@ try {
     Shot "gpui-tabs-10.png"
 
     # Select tab A by cycle, then preserve input/scroll, switch to B and back.
-    $aId = @($ten.tabs)[0].id
+    $aId = 1
     [void](Select-Tab $aId)
     $aState = Read-State
     if ($aState.source -notlike "*tab=A*") { throw "tab A source mismatch: $($aState.source)" }
