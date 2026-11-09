@@ -20,7 +20,7 @@ public static class AmareDl {
 }
 '@ -ReferencedAssemblies System.Drawing
 $script:results=[System.Collections.Generic.List[object]]::new()
-function Add-Result([string]$name,[string]$state,[string]$detail){$script:results.Add([pscustomobject]@{name=$name;result=$state;detail=$detail});Write-Host "$state $name: $detail"}
+function Add-Result([string]$name,[string]$state,[string]$detail){$script:results.Add([pscustomobject]@{name=$name;result=$state;detail=$detail});Write-Host "$state ${name}: $detail"}
 function Read-State { if(-not(Test-Path $Status)){return $null};try{return Get-Content $Status -Raw|ConvertFrom-Json}catch{return $null} }
 function Wait-State([scriptblock]$cond,[int]$sec,[string]$label){$d=(Get-Date).AddSeconds($sec);while((Get-Date)-lt$d){$s=Read-State;if($null-ne$s -and (& $cond $s)){return $s};Start-Sleep -Milliseconds 250};throw "Timed out waiting for $label"}
 function Shot([string]$name){$r=New-Object AmareDl+RECT;[void][AmareDl]::GetWindowRect($script:hwnd,[ref]$r);$w=[Math]::Max(1,$r.Right-$r.Left);$h=[Math]::Max(1,$r.Bottom-$r.Top);$b=New-Object System.Drawing.Bitmap($w,$h);$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen($r.Left,$r.Top,0,0,$b.Size);$p=Join-Path $ScreenshotDir $name;$b.Save($p,[System.Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$b.Dispose();Add-Result $name "PASS" "$p ($w x $h, $((Get-Item $p).Length) bytes)"}
