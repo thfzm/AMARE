@@ -2,8 +2,7 @@ use std::time::Duration;
 
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*,
-    px, rgb, size,
+    Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -570,7 +569,7 @@ impl Render for AmareApp {
                     .text_color(if active { accent } else { muted })
                     .child(
                         div()
-                            .max_w(px(150.0))
+                            .max_w(px(90.0))
                             .overflow_hidden()
                             .text_ellipsis()
                             .child(tab.title.clone()),
@@ -624,7 +623,7 @@ impl Render for AmareApp {
                             .items_center()
                             .gap_1()
                             .flex_1()
-                            .overflow_x_scroll()
+                            .overflow_hidden()
                             .child(div().flex().gap_1().children(tabs)),
                     )
                     .child(
