@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.47.0 GPUI Input, Focus & Korean IME Stabilization** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2 셸에서 주소창/페이지 input의 실제 Korean IME 조합·검색, Ctrl+L/Ctrl+R/Alt+Left/Right/Escape, 마우스 선택·링크·휠·포커스 전환을 실제 Windows 입력으로 CI 검증했습니다. 우클릭 context menu, 125/150/200% DPI/멀티모니터, IME rapid/mixed stress는 **UNVERIFIED**이며, 실제 Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.48.0 GPUI Multi-Tab & Per-Tab WebView2** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 탭별 독립 Controller/WebView2를 사용해 10탭 생성·전환·닫기, 탭별 DOM/입력/스크롤/history 보존, 탭 전환 후 Korean IME, 마지막 탭 종료/WebView2 정리를 실제 Windows 입력으로 CI 검증했습니다. favicon, loading/error UI 세부, context menu, DPI/multi-monitor, IME stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -143,11 +143,12 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.45.0: **GPUI actual screenshot 1044×788+resized 960×700 PASS, example.com source/title/DOM+Back/Reload PASS, Alt+F4 exit code0/WebView2 0→0 PASS, WinUI preserved**; 실제 주소창 입력/focus/IME/mouse/DPI/popup/per-tab/Windows11은 UNVERIFIED, 기존 GUI 42/42/143 PASS
 - Windows 0.46.0: **GPUI 실제 주소창 mouse click+keyboard 입력+Enter→exact URL PASS, address screenshot PASS, window/resize screenshot+Alt+F4/WebView2 0→0 PASS, WinUI preserved**; Ctrl+L/focus/IME/page input/mouse/DPI/popup/per-tab/Windows11은 UNVERIFIED, 기존 GUI 42/42/143 PASS
 - Windows 0.47.0: **GPUI 실제 주소창+WebView2 input/textarea Korean IME PASS(한글, composition/marked range), Ctrl+L from page/전체 선택, Ctrl+R, Alt+Left/Right, Escape, page selection/drag/link/wheel/minimize-restore PASS, 26 PASS/0 FAIL/2 UNVERIFIED, GUI 42/42/143 PASS**; context menu/DPI/multi-monitor/IME stress/Windows11은 UNVERIFIED
+- Windows 0.48.0: **GPUI 탭별 WebView2 10탭 생성·전환·닫기 PASS, 탭별 DOM/입력/스크롤/history 보존, 탭 전환 후 Korean IME, 마지막 탭 종료/WebView2 0→0 PASS, tab 22/0, GUI 42/42/143 PASS**; favicon/loading/error UI 세부/context menu/DPI/multi-monitor/IME stress/Windows11은 UNVERIFIED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
-Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 0.47.0 report에 기록되어 있습니다.
+Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 0.48.0 report에 기록되어 있습니다.
 
 ## 라이선스 및 공개 정책
 
