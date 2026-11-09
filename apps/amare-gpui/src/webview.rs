@@ -1,5 +1,8 @@
 #[cfg(target_os = "windows")]
-use std::{cell::RefCell, sync::{Arc, Mutex}};
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(target_os = "windows")]
 use std::sync::mpsc;
@@ -7,24 +10,24 @@ use std::sync::mpsc;
 #[cfg(target_os = "windows")]
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, CreateCoreWebView2ControllerCompletedHandler,
-    CreateCoreWebView2EnvironmentCompletedHandler, ExecuteScriptCompletedHandler,
-    DownloadStartingEventHandler, NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    NewWindowRequestedEventHandler, take_pwstr, wait_with_pump,
+    CreateCoreWebView2EnvironmentCompletedHandler, DownloadStartingEventHandler,
+    ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED,
-        COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+        COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
+        COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
         COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2Controller, ICoreWebView2DownloadOperation, ICoreWebView2Environment,
-        ICoreWebView2_4,
+        ICoreWebView2_4, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
+        ICoreWebView2Environment,
     },
+    NavigationCompletedEventHandler, NavigationStartingEventHandler,
+    NewWindowRequestedEventHandler, take_pwstr, wait_with_pump,
 };
 #[cfg(target_os = "windows")]
 use windows::{
-    core::{HSTRING, Interface},
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::{
-            Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
+            Com::{COINIT_APARTMENTTHREADED, CoInitializeEx},
             Threading::GetCurrentThreadId,
         },
         UI::{
@@ -35,13 +38,14 @@ use windows::{
                     ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
-                    GetKeyboardLayout, GetKeyState, SetFocus, VK_CONTROL, VK_L, VK_LEFT, VK_MENU,
-                    VK_B, VK_D, VK_H, VK_N, VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
+                    GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
+                    VK_LEFT, VK_MENU, VK_N, VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
             WindowsAndMessaging::{PostMessageW, WM_KEYDOWN, WM_KEYUP},
         },
     },
+    core::{HSTRING, Interface},
 };
 
 #[cfg(target_os = "windows")]
@@ -81,7 +85,8 @@ impl WebViewEnvironment {
             let (tx, rx) = mpsc::channel();
             CreateCoreWebView2EnvironmentCompletedHandler::wait_for_async_operation(
                 Box::new(|handler| unsafe {
-                    CreateCoreWebView2Environment(&handler).map_err(webview2_com::Error::WindowsError)
+                    CreateCoreWebView2Environment(&handler)
+                        .map_err(webview2_com::Error::WindowsError)
                 }),
                 Box::new(move |error, environment| {
                     error?;
@@ -161,9 +166,28 @@ fn sanitize_filename(name: &str) -> String {
     if name.is_empty()
         || matches!(
             stem.as_str(),
-            "con" | "prn" | "aux" | "nul" | "com1" | "com2" | "com3" | "com4" | "com5"
-                | "com6" | "com7" | "com8" | "com9" | "lpt1" | "lpt2" | "lpt3" | "lpt4"
-                | "lpt5" | "lpt6" | "lpt7" | "lpt8" | "lpt9"
+            "con"
+                | "prn"
+                | "aux"
+                | "nul"
+                | "com1"
+                | "com2"
+                | "com3"
+                | "com4"
+                | "com5"
+                | "com6"
+                | "com7"
+                | "com8"
+                | "com9"
+                | "lpt1"
+                | "lpt2"
+                | "lpt3"
+                | "lpt4"
+                | "lpt5"
+                | "lpt6"
+                | "lpt7"
+                | "lpt8"
+                | "lpt9"
         )
     {
         name = format!("download-{name}");
@@ -180,8 +204,14 @@ fn unique_download_path(preferred: Option<&str>) -> std::path::PathBuf {
         .unwrap_or("download");
     let name = sanitize_filename(name);
     let path = std::path::Path::new(&name);
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("download");
-    let ext = path.extension().and_then(|value| value.to_str()).unwrap_or("");
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("download");
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
     let mut candidate = dir.join(&name);
     let mut index = 1;
     while candidate.exists() {
@@ -257,23 +287,22 @@ impl WebViewHost {
             let signals = Arc::new(Mutex::new(TabSignals::default()));
 
             let starting_signals = signals.clone();
-            let navigation_starting = NavigationStartingEventHandler::create(Box::new(
-                move |_webview, _args| {
+            let navigation_starting =
+                NavigationStartingEventHandler::create(Box::new(move |_webview, _args| {
                     if let Ok(mut signals) = starting_signals.lock() {
                         signals.loading = true;
                         signals.error = None;
                     }
                     Ok(())
-                },
-            ));
+                }));
             let mut navigation_starting_token = 0;
             webview
                 .add_NavigationStarting(&navigation_starting, &mut navigation_starting_token)
                 .map_err(|error| format!("navigation starting handler: {error:?}"))?;
 
             let completed_signals = signals.clone();
-            let navigation_completed = NavigationCompletedEventHandler::create(Box::new(
-                move |_webview, args| {
+            let navigation_completed =
+                NavigationCompletedEventHandler::create(Box::new(move |_webview, args| {
                     let mut success = true;
                     if let Some(args) = args {
                         let mut value = windows::core::BOOL(0);
@@ -290,8 +319,7 @@ impl WebViewHost {
                         };
                     }
                     Ok(())
-                },
-            ));
+                }));
             let mut navigation_completed_token = 0;
             webview
                 .add_NavigationCompleted(&navigation_completed, &mut navigation_completed_token)
@@ -332,7 +360,11 @@ impl WebViewHost {
                     let mut default_path = windows::core::PWSTR::null();
                     let _ = args.ResultFilePath(&mut default_path);
                     let default_path = take_pwstr(default_path);
-                    let path = unique_download_path(if default_path.is_empty() { None } else { Some(&default_path) });
+                    let path = unique_download_path(if default_path.is_empty() {
+                        None
+                    } else {
+                        Some(&default_path)
+                    });
                     let path_string = path.to_string_lossy().to_string();
                     let path_h = HSTRING::from(path_string.clone());
                     args.SetResultFilePath(windows::core::PCWSTR(path_h.as_ptr()))?;
@@ -341,11 +373,23 @@ impl WebViewHost {
                     let _ = operation.MimeType(&mut mime);
                     let mime_type = take_pwstr(mime);
                     let id = NEXT_DOWNLOAD_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let filename = path.file_name().and_then(|value| value.to_str()).unwrap_or("download").to_string();
+                    let filename = path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("download")
+                        .to_string();
                     if let Ok(mut list) = downloads.lock() {
                         list.push(DownloadState {
-                            id, operation, filename, url, path: path_string, mime_type,
-                            total_bytes: 0, received_bytes: 0, state: "in_progress".into(), error: String::new(),
+                            id,
+                            operation,
+                            filename,
+                            url,
+                            path: path_string,
+                            mime_type,
+                            total_bytes: 0,
+                            received_bytes: 0,
+                            state: "in_progress".into(),
+                            error: String::new(),
                         });
                     }
                     Ok(())
@@ -403,7 +447,9 @@ impl WebViewHost {
                                 let mut lparam = 0i32;
                                 args.KeyEventLParam(&mut lparam)?;
                                 unsafe {
-                                    let parent = *accelerator_parent.lock().unwrap_or_else(|e| e.into_inner());
+                                    let parent = *accelerator_parent
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner());
                                     let _ = SetFocus(Some(parent));
                                     let _ = PostMessageW(
                                         Some(parent),
@@ -462,7 +508,10 @@ impl WebViewHost {
             if let Some(parent) = std::path::Path::new(&path).parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+            let _ = std::fs::write(
+                path,
+                serde_json::to_vec_pretty(&payload).unwrap_or_default(),
+            );
         }
         result.map(|_| ())
     }
@@ -474,7 +523,8 @@ impl WebViewHost {
         let title = self.title();
         let script = self.execute_script("document.body ? document.body.innerText : ''")?;
         let has_content = script.to_lowercase().contains("example domain");
-        let page_ok = source.contains("example.com") && title.eq_ignore_ascii_case("Example Domain");
+        let page_ok =
+            source.contains("example.com") && title.eq_ignore_ascii_case("Example Domain");
         self.navigate_and_wait("https://example.com/?amare=gpui", 20)?;
         self.wait_for_action(|| unsafe {
             self.webview
@@ -606,10 +656,15 @@ impl WebViewHost {
                 }
                 .to_string();
                 out.push(DownloadSnapshot {
-                    id: download.id, filename: download.filename.clone(), url: download.url.clone(),
-                    path: download.path.clone(), mime_type: download.mime_type.clone(),
-                    total_bytes: download.total_bytes, received_bytes: download.received_bytes,
-                    state: download.state.clone(), error: download.error.clone(),
+                    id: download.id,
+                    filename: download.filename.clone(),
+                    url: download.url.clone(),
+                    path: download.path.clone(),
+                    mime_type: download.mime_type.clone(),
+                    total_bytes: download.total_bytes,
+                    received_bytes: download.received_bytes,
+                    state: download.state.clone(),
+                    error: download.error.clone(),
                 });
             }
         }
@@ -619,7 +674,9 @@ impl WebViewHost {
     pub fn cancel_download(&self, id: u64) -> bool {
         if let Ok(mut downloads) = self.downloads.lock() {
             if let Some(download) = downloads.iter_mut().find(|download| download.id == id) {
-                unsafe { let _ = download.operation.Cancel(); }
+                unsafe {
+                    let _ = download.operation.Cancel();
+                }
                 download.state = "canceled".to_string();
                 return true;
             }
@@ -775,9 +832,15 @@ impl WebViewHost {
 impl Drop for WebViewHost {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.webview.remove_NavigationStarting(self.navigation_starting_token);
-            let _ = self.webview.remove_NavigationCompleted(self.navigation_completed_token);
-            let _ = self.webview.remove_NewWindowRequested(self.new_window_token);
+            let _ = self
+                .webview
+                .remove_NavigationStarting(self.navigation_starting_token);
+            let _ = self
+                .webview
+                .remove_NavigationCompleted(self.navigation_completed_token);
+            let _ = self
+                .webview
+                .remove_NewWindowRequested(self.new_window_token);
             if let Ok(download_webview) = self.webview.cast::<ICoreWebView2_4>() {
                 let _ = download_webview.remove_DownloadStarting(self.download_token);
             }

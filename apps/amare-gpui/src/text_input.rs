@@ -3,8 +3,8 @@ use std::ops::Range;
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
     EntityInputHandler, FocusHandle, Focusable, GlobalElementId, PaintQuad, Pixels, Point,
-    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill,
-    hsla, point, prelude::*, px, relative, rgba, size,
+    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill, hsla,
+    point, prelude::*, px, relative, rgba, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -189,7 +189,12 @@ impl AddressInput {
         }
     }
 
-    fn on_mouse_down(&mut self, event: &gpui::MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_down(
+        &mut self,
+        event: &gpui::MouseDownEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.is_selecting = true;
         if event.modifiers.shift {
             self.select_to(self.index_for_mouse_position(event.position), cx);
@@ -206,7 +211,12 @@ impl AddressInput {
         self.is_selecting = false;
     }
 
-    fn on_mouse_move(&mut self, event: &gpui::MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(
+        &mut self,
+        event: &gpui::MouseMoveEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.is_selecting {
             self.select_to(self.index_for_mouse_position(event.position), cx);
         }
@@ -216,7 +226,8 @@ impl AddressInput {
         if self.content.is_empty() {
             return 0;
         }
-        let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref()) else {
+        let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
+        else {
             return 0;
         };
         if position.y < bounds.top() {
@@ -303,8 +314,14 @@ impl EntityInputHandler for AddressInput {
         })
     }
 
-    fn marked_text_range(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<Range<usize>> {
-        self.marked_range.as_ref().map(|range| self.range_to_utf16(range))
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        self.marked_range
+            .as_ref()
+            .map(|range| self.range_to_utf16(range))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
@@ -323,10 +340,9 @@ impl EntityInputHandler for AddressInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
-        self.content = (self.content[0..range.start].to_owned()
-            + new_text
-            + &self.content[range.end..])
-            .into();
+        self.content =
+            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
+                .into();
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.selection_reversed = false;
         self.marked_range.take();
@@ -346,10 +362,9 @@ impl EntityInputHandler for AddressInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
-        self.content = (self.content[0..range.start].to_owned()
-            + new_text
-            + &self.content[range.end..])
-            .into();
+        self.content =
+            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
+                .into();
         if new_text.is_empty() {
             self.marked_range = None;
         } else {
@@ -359,9 +374,7 @@ impl EntityInputHandler for AddressInput {
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .map(|new_range| new_range.start + range.start..new_range.end + range.start)
-            .unwrap_or_else(|| {
-                range.start + new_text.len()..range.start + new_text.len()
-            });
+            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
         self.selection_reversed = false;
         cx.notify();
     }
@@ -376,8 +389,14 @@ impl EntityInputHandler for AddressInput {
         let last_layout = self.last_layout.as_ref()?;
         let range = self.range_from_utf16(&range_utf16);
         Some(Bounds::from_corners(
-            point(bounds.left() + last_layout.x_for_index(range.start), bounds.top()),
-            point(bounds.left() + last_layout.x_for_index(range.end), bounds.bottom()),
+            point(
+                bounds.left() + last_layout.x_for_index(range.start),
+                bounds.top(),
+            ),
+            point(
+                bounds.left() + last_layout.x_for_index(range.end),
+                bounds.bottom(),
+            ),
         ))
     }
 
@@ -466,7 +485,10 @@ impl Element for AddressTextElement {
         };
         let runs = if let Some(marked_range) = input.marked_range.as_ref() {
             vec![
-                TextRun { len: marked_range.start, ..run.clone() },
+                TextRun {
+                    len: marked_range.start,
+                    ..run.clone()
+                },
                 TextRun {
                     len: marked_range.end - marked_range.start,
                     underline: Some(UnderlineStyle {
@@ -476,7 +498,10 @@ impl Element for AddressTextElement {
                     }),
                     ..run.clone()
                 },
-                TextRun { len: display_text.len() - marked_range.end, ..run },
+                TextRun {
+                    len: display_text.len() - marked_range.end,
+                    ..run
+                },
             ]
             .into_iter()
             .filter(|run| run.len > 0)
@@ -485,7 +510,9 @@ impl Element for AddressTextElement {
             vec![run]
         };
         let font_size = style.font_size.to_pixels(window.rem_size());
-        let line = window.text_system().shape_line(display_text, font_size, &runs, None);
+        let line = window
+            .text_system()
+            .shape_line(display_text, font_size, &runs, None);
         let cursor_pos = line.x_for_index(cursor);
         let (selection, cursor) = if selected_range.is_empty() {
             (
@@ -502,15 +529,25 @@ impl Element for AddressTextElement {
             (
                 Some(fill(
                     Bounds::from_corners(
-                        point(bounds.left() + line.x_for_index(selected_range.start), bounds.top()),
-                        point(bounds.left() + line.x_for_index(selected_range.end), bounds.bottom()),
+                        point(
+                            bounds.left() + line.x_for_index(selected_range.start),
+                            bounds.top(),
+                        ),
+                        point(
+                            bounds.left() + line.x_for_index(selected_range.end),
+                            bounds.bottom(),
+                        ),
                     ),
                     rgba(0x3311ff30),
                 )),
                 None,
             )
         };
-        AddressPrepaintState { line: Some(line), cursor, selection }
+        AddressPrepaintState {
+            line: Some(line),
+            cursor,
+            selection,
+        }
     }
 
     fn paint(
@@ -533,7 +570,8 @@ impl Element for AddressTextElement {
             window.paint_quad(selection);
         }
         let line = prepaint.line.take().unwrap();
-        line.paint(bounds.origin, window.line_height(), window, cx).unwrap();
+        line.paint(bounds.origin, window.line_height(), window, cx)
+            .unwrap();
         if focus_handle.is_focused(window) {
             if let Some(cursor) = prepaint.cursor.take() {
                 window.paint_quad(cursor);

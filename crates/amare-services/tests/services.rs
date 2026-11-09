@@ -369,7 +369,7 @@ fn reset_profile_clears_data_but_keeps_identity() {
             .unwrap()
             .schema_version()
             .unwrap(),
-        3
+        4
     );
 }
 

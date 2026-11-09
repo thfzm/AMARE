@@ -27,7 +27,7 @@ fn creates_root_and_profile_dbs_and_reopens() {
     assert_eq!(profile.name, "Personal");
     assert!(profile.is_default);
     let profile_store = reopened.open_profile(&id).unwrap();
-    assert_eq!(profile_store.schema_version().unwrap(), 3);
+    assert_eq!(profile_store.schema_version().unwrap(), 4);
     assert_eq!(profile_store.profile_id(), &id);
     let raw = rusqlite::Connection::open(&path).unwrap();
     let journal: String = raw
@@ -45,13 +45,13 @@ fn migrations_are_idempotent_and_settings_persist() {
             .settings()
             .set("theme", "appearance", SettingValue::Text("dark".into()))
             .unwrap();
-        assert_eq!(profile.schema_version().unwrap(), 3);
+        assert_eq!(profile.schema_version().unwrap(), 4);
     }
     drop(store);
 
     let reopened = Store::open(dir.path()).unwrap();
     let profile = reopened.open_profile(&id).unwrap();
-    assert_eq!(profile.schema_version().unwrap(), 3);
+    assert_eq!(profile.schema_version().unwrap(), 4);
     let setting = profile.settings().get("theme").unwrap().unwrap();
     assert_eq!(setting.value, SettingValue::Text("dark".into()));
 }

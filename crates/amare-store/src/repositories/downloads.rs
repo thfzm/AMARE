@@ -59,7 +59,9 @@ impl<'a> DownloadRepository<'a> {
         validate_text("download url", url, 8192)?;
         validate_text("download path", path, 8192)?;
         if state.len() > 64 || error.len() > 2048 {
-            return Err(StoreError::InvalidInput("download state/error too long".into()));
+            return Err(StoreError::InvalidInput(
+                "download state/error too long".into(),
+            ));
         }
         let now = now_ms();
         self.conn.execute(
@@ -76,7 +78,10 @@ impl<'a> DownloadRepository<'a> {
     }
 
     pub fn delete(&self, id: i64) -> Result<bool, StoreError> {
-        Ok(self.conn.execute("DELETE FROM downloads WHERE id = ?1", params![id])? > 0)
+        Ok(self
+            .conn
+            .execute("DELETE FROM downloads WHERE id = ?1", params![id])?
+            > 0)
     }
 
     pub fn get(&self, id: i64) -> Result<Option<DownloadRecord>, StoreError> {
@@ -93,23 +98,51 @@ impl<'a> DownloadRepository<'a> {
     }
 }
 
-struct DownloadRow { id: i64, filename: String, url: String, path: String, mime_type: String, total_bytes: i64, received_bytes: i64, state: String, error: String, created_at_ms: i64, updated_at_ms: i64 }
+struct DownloadRow {
+    id: i64,
+    filename: String,
+    url: String,
+    path: String,
+    mime_type: String,
+    total_bytes: i64,
+    received_bytes: i64,
+    state: String,
+    error: String,
+    created_at_ms: i64,
+    updated_at_ms: i64,
+}
 
 impl DownloadRow {
     fn into_record(self, profile_id: &ProfileId) -> DownloadRecord {
         DownloadRecord {
-            id: self.id, profile_id: profile_id.clone(), filename: self.filename, url: self.url,
-            path: self.path, mime_type: self.mime_type, total_bytes: self.total_bytes,
-            received_bytes: self.received_bytes, state: self.state, error: self.error,
-            created_at_ms: self.created_at_ms, updated_at_ms: self.updated_at_ms,
+            id: self.id,
+            profile_id: profile_id.clone(),
+            filename: self.filename,
+            url: self.url,
+            path: self.path,
+            mime_type: self.mime_type,
+            total_bytes: self.total_bytes,
+            received_bytes: self.received_bytes,
+            state: self.state,
+            error: self.error,
+            created_at_ms: self.created_at_ms,
+            updated_at_ms: self.updated_at_ms,
         }
     }
 }
 
 fn map_download(row: &Row<'_>) -> rusqlite::Result<DownloadRow> {
     Ok(DownloadRow {
-        id: row.get(0)?, filename: row.get(1)?, url: row.get(2)?, path: row.get(3)?,
-        mime_type: row.get(4)?, total_bytes: row.get(5)?, received_bytes: row.get(6)?,
-        state: row.get(7)?, error: row.get(8)?, created_at_ms: row.get(9)?, updated_at_ms: row.get(10)?,
+        id: row.get(0)?,
+        filename: row.get(1)?,
+        url: row.get(2)?,
+        path: row.get(3)?,
+        mime_type: row.get(4)?,
+        total_bytes: row.get(5)?,
+        received_bytes: row.get(6)?,
+        state: row.get(7)?,
+        error: row.get(8)?,
+        created_at_ms: row.get(9)?,
+        updated_at_ms: row.get(10)?,
     })
 }

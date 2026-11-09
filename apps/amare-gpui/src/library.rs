@@ -17,7 +17,9 @@ fn data_root() -> PathBuf {
     std::env::temp_dir().join("amare-gpui")
 }
 
-fn with_library<R>(f: impl FnOnce(&ProfileService, &ProfileContext) -> Result<R, String>) -> Result<R, String> {
+fn with_library<R>(
+    f: impl FnOnce(&ProfileService, &ProfileContext) -> Result<R, String>,
+) -> Result<R, String> {
     LIBRARY.with(|cell| {
         if cell.borrow().is_none() {
             let service = Arc::new(ProfileService::open(data_root()).map_err(|e| e.to_string())?);
@@ -33,7 +35,10 @@ fn with_library<R>(f: impl FnOnce(&ProfileService, &ProfileContext) -> Result<R,
 pub fn bookmarks() -> Result<Vec<Bookmark>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
-        let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
+        let page = profile
+            .bookmarks()
+            .list(FolderScope::All, 500, 0)
+            .map_err(|e| e.to_string())?;
         Ok(page.items)
     })
 }
@@ -41,20 +46,41 @@ pub fn bookmarks() -> Result<Vec<Bookmark>, String> {
 pub fn toggle_bookmark(title: &str, url: &str) -> Result<(bool, Vec<Bookmark>), String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
-        let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
-        let existing = page.items.iter().find(|bookmark| bookmark.url == url).cloned();
+        let page = profile
+            .bookmarks()
+            .list(FolderScope::All, 500, 0)
+            .map_err(|e| e.to_string())?;
+        let existing = page
+            .items
+            .iter()
+            .find(|bookmark| bookmark.url == url)
+            .cloned();
         if let Some(bookmark) = existing {
-            profile.bookmarks().delete(bookmark.id).map_err(|e| e.to_string())?;
-            let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
+            profile
+                .bookmarks()
+                .delete(bookmark.id)
+                .map_err(|e| e.to_string())?;
+            let page = profile
+                .bookmarks()
+                .list(FolderScope::All, 500, 0)
+                .map_err(|e| e.to_string())?;
             return Ok((false, page.items));
         }
         let title = title.chars().take(512).collect::<String>();
         let url = url.chars().take(4096).collect::<String>();
         profile
             .bookmarks()
-            .create(NewBookmark { title, url, folder_id: None, position: None })
+            .create(NewBookmark {
+                title,
+                url,
+                folder_id: None,
+                position: None,
+            })
             .map_err(|e| e.to_string())?;
-        let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
+        let page = profile
+            .bookmarks()
+            .list(FolderScope::All, 500, 0)
+            .map_err(|e| e.to_string())?;
         Ok((true, page.items))
     })
 }
@@ -63,7 +89,10 @@ pub fn delete_bookmark(id: i64) -> Result<Vec<Bookmark>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
         profile.bookmarks().delete(id).map_err(|e| e.to_string())?;
-        let page = profile.bookmarks().list(FolderScope::All, 500, 0).map_err(|e| e.to_string())?;
+        let page = profile
+            .bookmarks()
+            .list(FolderScope::All, 500, 0)
+            .map_err(|e| e.to_string())?;
         Ok(page.items)
     })
 }
@@ -90,7 +119,17 @@ pub fn upsert_download(
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
         profile
             .downloads()
-            .upsert(id, filename, url, path, mime_type, total_bytes, received_bytes, state, error)
+            .upsert(
+                id,
+                filename,
+                url,
+                path,
+                mime_type,
+                total_bytes,
+                received_bytes,
+                state,
+                error,
+            )
             .map_err(|e| e.to_string())
     })
 }
@@ -109,7 +148,13 @@ pub fn history(query: &str) -> Result<Vec<HistoryEntry>, String> {
         let query = query.trim();
         let page = profile
             .history()
-            .search(if query.is_empty() { None } else { Some(query) }, None, None, 500, 0)
+            .search(
+                if query.is_empty() { None } else { Some(query) },
+                None,
+                None,
+                500,
+                0,
+            )
             .map_err(|e| e.to_string())?;
         Ok(page.items)
     })
@@ -132,8 +177,14 @@ pub fn record_history(title: &str, url: &str, visited_at_ms: i64) -> Result<(), 
 pub fn delete_history(url: &str) -> Result<Vec<HistoryEntry>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
-        profile.history().delete_url(url).map_err(|e| e.to_string())?;
-        let page = profile.history().search(None, None, None, 500, 0).map_err(|e| e.to_string())?;
+        profile
+            .history()
+            .delete_url(url)
+            .map_err(|e| e.to_string())?;
+        let page = profile
+            .history()
+            .search(None, None, None, 500, 0)
+            .map_err(|e| e.to_string())?;
         Ok(page.items)
     })
 }
@@ -142,7 +193,10 @@ pub fn clear_history() -> Result<Vec<HistoryEntry>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
         profile.history().clear().map_err(|e| e.to_string())?;
-        let page = profile.history().search(None, None, None, 500, 0).map_err(|e| e.to_string())?;
+        let page = profile
+            .history()
+            .search(None, None, None, 500, 0)
+            .map_err(|e| e.to_string())?;
         Ok(page.items)
     })
 }

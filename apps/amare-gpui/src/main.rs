@@ -1,14 +1,14 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use amare_core::{Bookmark, HistoryEntry};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions, actions,
-    div, prelude::*, px, rgb, size,
+    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions,
+    actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use amare_core::{Bookmark, HistoryEntry};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -100,25 +100,27 @@ impl Render for TabDragPreview {
 #[cfg(target_os = "windows")]
 fn start_drop_watch(source_window_id: u64, tab_id: u64) {
     let serial = DROP_SERIAL.fetch_add(1, Ordering::Relaxed);
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_millis(15));
-        let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } < 0;
-        if !down {
-            let mut point = POINT::default();
-            if unsafe { GetCursorPos(&mut point) }.is_ok()
-                && DROP_SERIAL.load(Ordering::Relaxed) == serial
-            {
-                if let Ok(mut request) = DROP_REQUEST.lock() {
-                    *request = Some(DropRequest {
-                        serial,
-                        source_window_id,
-                        tab_id,
-                        x: point.x,
-                        y: point.y,
-                    });
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(15));
+            let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } < 0;
+            if !down {
+                let mut point = POINT::default();
+                if unsafe { GetCursorPos(&mut point) }.is_ok()
+                    && DROP_SERIAL.load(Ordering::Relaxed) == serial
+                {
+                    if let Ok(mut request) = DROP_REQUEST.lock() {
+                        *request = Some(DropRequest {
+                            serial,
+                            source_window_id,
+                            tab_id,
+                            x: point.x,
+                            y: point.y,
+                        });
+                    }
                 }
+                break;
             }
-            break;
         }
     });
 }
@@ -172,11 +174,16 @@ impl AmareApp {
         Self::new_with_url(window, cx, start_url, true)
     }
 
-    fn new_with_url(window: &mut Window, cx: &mut App, start_url: String, run_self_test: bool) -> Self {
+    fn new_with_url(
+        window: &mut Window,
+        cx: &mut App,
+        start_url: String,
+        run_self_test: bool,
+    ) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
-            .unwrap_or_else(|_| "about:blank".to_string());
+        let new_tab_url =
+            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
 
         #[cfg(target_os = "windows")]
         let parent = window
@@ -184,9 +191,7 @@ impl AmareApp {
             .ok()
             .map(|handle| handle.as_raw())
             .and_then(|handle| match handle {
-                RawWindowHandle::Win32(handle) => {
-                    Some(HWND(handle.hwnd.get() as *mut _))
-                }
+                RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
                 _ => None,
             });
         #[cfg(target_os = "windows")]
@@ -267,9 +272,7 @@ impl AmareApp {
         };
 
         #[cfg(target_os = "windows")]
-        if run_self_test
-            && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
-        {
+        if run_self_test && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1") {
             if let Some(view) = app.active_webview() {
                 let _ = view.run_self_test();
             }
@@ -289,8 +292,8 @@ impl AmareApp {
     fn new_with_seed(window: &mut Window, cx: &mut App, seed: TabState) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
-            .unwrap_or_else(|_| "about:blank".to_string());
+        let new_tab_url =
+            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
         #[cfg(target_os = "windows")]
         let parent = window
             .window_handle()
@@ -340,15 +343,17 @@ impl AmareApp {
     }
 
     fn start_status_poll(&mut self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| loop {
-            Timer::after(Duration::from_millis(250)).await;
-            if this.upgrade().is_none() {
-                break;
+        cx.spawn(async move |this, cx| {
+            loop {
+                Timer::after(Duration::from_millis(250)).await;
+                if this.upgrade().is_none() {
+                    break;
+                }
+                this.update(cx, |app, cx| {
+                    app.write_status(cx);
+                    cx.notify();
+                });
             }
-            this.update(cx, |app, cx| {
-                app.write_status(cx);
-                cx.notify();
-            });
         })
         .detach();
     }
@@ -408,11 +413,17 @@ impl AmareApp {
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
         };
-        let downloads = self.downloads.iter().map(|item| serde_json::json!({
-            "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
-            "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
-            "state": item.state, "error": item.error
-        })).collect::<Vec<_>>();
+        let downloads = self
+            .downloads
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
+                    "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
+                    "state": item.state, "error": item.error
+                })
+            })
+            .collect::<Vec<_>>();
         let tabs = self
             .tabs
             .iter()
@@ -449,7 +460,10 @@ impl AmareApp {
         if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = std::fs::write(path, serde_json::to_vec_pretty(&payload).unwrap_or_default());
+        let _ = std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&payload).unwrap_or_default(),
+        );
     }
 
     fn active_tab(&self) -> Option<&TabState> {
@@ -467,7 +481,9 @@ impl AmareApp {
 
     #[cfg(target_os = "windows")]
     fn active_webview_mut(&mut self) -> Option<&mut webview::WebViewHost> {
-        self.tabs.get_mut(self.active).and_then(|tab| tab.webview.as_mut())
+        self.tabs
+            .get_mut(self.active)
+            .and_then(|tab| tab.webview.as_mut())
     }
 
     fn set_address(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -505,13 +521,23 @@ impl AmareApp {
         }
     }
 
-    fn open_library_panel(&mut self, panel: LibraryPanel, window: &mut Window, cx: &mut Context<Self>) {
-        self.panel = if self.panel == panel { LibraryPanel::None } else { panel };
+    fn open_library_panel(
+        &mut self,
+        panel: LibraryPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.panel = if self.panel == panel {
+            LibraryPanel::None
+        } else {
+            panel
+        };
         self.confirm_clear_history = false;
         if self.panel == LibraryPanel::Bookmarks {
             self.refresh_bookmarks();
         } else if self.panel == LibraryPanel::History {
-            self.search_input.update(cx, |input, cx| input.set_content("", cx));
+            self.search_input
+                .update(cx, |input, cx| input.set_content("", cx));
             self.history_query.clear();
             self.refresh_history();
             let handle = self.search_input.read(cx).focus_handle(cx);
@@ -526,7 +552,9 @@ impl AmareApp {
         let Some(tab) = self.active_tab() else { return };
         let title = tab.title.to_string();
         let url = tab.url.to_string();
-        if url.is_empty() || url.starts_with("about:") { return; }
+        if url.is_empty() || url.starts_with("about:") {
+            return;
+        }
         match library::toggle_bookmark(&title, &url) {
             Ok((_added, bookmarks)) => {
                 self.bookmarks = bookmarks;
@@ -546,7 +574,10 @@ impl AmareApp {
 
     fn delete_bookmark(&mut self, id: i64, cx: &mut Context<Self>) {
         match library::delete_bookmark(id) {
-            Ok(bookmarks) => { self.bookmarks = bookmarks; self.library_error = None; }
+            Ok(bookmarks) => {
+                self.bookmarks = bookmarks;
+                self.library_error = None;
+            }
             Err(error) => self.library_error = Some(error),
         }
         cx.notify();
@@ -554,7 +585,10 @@ impl AmareApp {
 
     fn delete_history(&mut self, url: String, cx: &mut Context<Self>) {
         match library::delete_history(&url) {
-            Ok(history) => { self.history = history; self.library_error = None; }
+            Ok(history) => {
+                self.history = history;
+                self.library_error = None;
+            }
             Err(error) => self.library_error = Some(error),
         }
         cx.notify();
@@ -567,25 +601,49 @@ impl AmareApp {
             return;
         }
         match library::clear_history() {
-            Ok(_) => { self.history.clear(); self.confirm_clear_history = false; self.library_error = None; }
+            Ok(_) => {
+                self.history.clear();
+                self.confirm_clear_history = false;
+                self.library_error = None;
+            }
             Err(error) => self.library_error = Some(error),
         }
         cx.notify();
     }
 
-    fn toggle_bookmark_action(&mut self, _: &ToggleBookmark, _window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_bookmark_action(
+        &mut self,
+        _: &ToggleBookmark,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.toggle_active_bookmark(cx);
     }
 
-    fn toggle_bookmarks_panel_action(&mut self, _: &ToggleBookmarksPanel, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_bookmarks_panel_action(
+        &mut self,
+        _: &ToggleBookmarksPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.open_library_panel(LibraryPanel::Bookmarks, window, cx);
     }
 
-    fn toggle_history_panel_action(&mut self, _: &ToggleHistoryPanel, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_history_panel_action(
+        &mut self,
+        _: &ToggleHistoryPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.open_library_panel(LibraryPanel::History, window, cx);
     }
 
-    fn toggle_downloads_panel_action(&mut self, _: &ToggleDownloadsPanel, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_downloads_panel_action(
+        &mut self,
+        _: &ToggleDownloadsPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.open_library_panel(LibraryPanel::Downloads, window, cx);
     }
 
@@ -607,7 +665,10 @@ impl AmareApp {
                 };
                 let key = history_key(&source);
                 if !key.is_empty() && tab.history_url != key && !tab.title.is_empty() {
-                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
                     if library::record_history(&tab.title, &source, now).is_ok() {
                         tab.history_url = key;
                         history_changed = true;
@@ -628,7 +689,10 @@ impl AmareApp {
             if query != self.history_query {
                 self.history_query = query;
                 match library::history(&self.history_query) {
-                    Ok(history) => { self.history = history; self.library_error = None; }
+                    Ok(history) => {
+                        self.history = history;
+                        self.library_error = None;
+                    }
                     Err(error) => self.library_error = Some(error),
                 }
             }
@@ -773,7 +837,10 @@ impl AmareApp {
         self.active = index;
         self.activity_counter += 1;
         let activity = self.activity_counter;
-        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+        let url = self
+            .active_tab()
+            .map(|tab| tab.url.to_string())
+            .unwrap_or_default();
         if let Some(tab) = self.active_tab_mut() {
             tab.last_active = activity;
         }
@@ -813,7 +880,10 @@ impl AmareApp {
         }
         self.activity_counter += 1;
         let activity = self.activity_counter;
-        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+        let url = self
+            .active_tab()
+            .map(|tab| tab.url.to_string())
+            .unwrap_or_default();
         if let Some(tab) = self.active_tab_mut() {
             tab.last_active = activity;
         }
@@ -834,35 +904,23 @@ impl AmareApp {
         }
     }
 
-    fn focus_address(
-        &mut self,
-        _: &FocusAddress,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn focus_address(&mut self, _: &FocusAddress, window: &mut Window, cx: &mut Context<Self>) {
         self.address_input
             .update(cx, |input, cx| input.select_all_text(cx));
         self.focus_address_input(window, cx);
         cx.notify();
     }
 
-    fn submit_address(
-        &mut self,
-        _: &SubmitAddress,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn submit_address(&mut self, _: &SubmitAddress, _window: &mut Window, cx: &mut Context<Self>) {
         self.navigate(cx);
         cx.notify();
     }
 
-    fn cancel_address(
-        &mut self,
-        _: &CancelAddress,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+    fn cancel_address(&mut self, _: &CancelAddress, _window: &mut Window, cx: &mut Context<Self>) {
+        let url = self
+            .active_tab()
+            .map(|tab| tab.url.to_string())
+            .unwrap_or_default();
         self.set_address(url, cx);
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
@@ -917,20 +975,37 @@ impl AmareApp {
         }
     }
 
-    fn previous_tab_action(&mut self, _: &PreviousTab, window: &mut Window, cx: &mut Context<Self>) {
+    fn previous_tab_action(
+        &mut self,
+        _: &PreviousTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.tabs.len() > 1 {
-            let previous = if self.active == 0 { self.tabs.len() - 1 } else { self.active - 1 };
+            let previous = if self.active == 0 {
+                self.tabs.len() - 1
+            } else {
+                self.active - 1
+            };
             self.select_tab(previous, window, cx);
         }
     }
 
     fn move_tab_before(&mut self, dragged_id: u64, target_id: u64, cx: &mut Context<Self>) {
-        if dragged_id == target_id { return; }
-        let Some(from) = self.tabs.iter().position(|tab| tab.id == dragged_id) else { return; };
-        let Some(mut target) = self.tabs.iter().position(|tab| tab.id == target_id) else { return; };
+        if dragged_id == target_id {
+            return;
+        }
+        let Some(from) = self.tabs.iter().position(|tab| tab.id == dragged_id) else {
+            return;
+        };
+        let Some(mut target) = self.tabs.iter().position(|tab| tab.id == target_id) else {
+            return;
+        };
         let active_id = self.active_tab().map(|tab| tab.id);
         let tab = self.tabs.remove(from);
-        if from < target { target -= 1; }
+        if from < target {
+            target -= 1;
+        }
         self.tabs.insert(target.min(self.tabs.len()), tab);
         if let Some(active_id) = active_id {
             if let Some(index) = self.tabs.iter().position(|tab| tab.id == active_id) {
@@ -999,7 +1074,10 @@ impl AmareApp {
             } else if self.tabs.is_empty() {
                 self.new_tab(window, cx);
             } else {
-                let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+                let url = self
+                    .active_tab()
+                    .map(|tab| tab.url.to_string())
+                    .unwrap_or_default();
                 self.set_address(url, cx);
             }
             cx.notify();
@@ -1017,7 +1095,13 @@ impl AmareApp {
         let accent = rgb(0x2f7df6);
         let is_history = self.panel == LibraryPanel::History;
         let is_downloads = self.panel == LibraryPanel::Downloads;
-        let title = if is_downloads { "다운로드" } else if is_history { "방문 기록" } else { "북마크" };
+        let title = if is_downloads {
+            "다운로드"
+        } else if is_history {
+            "방문 기록"
+        } else {
+            "북마크"
+        };
         let close = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.panel = LibraryPanel::None;
             cx.notify();
@@ -1026,40 +1110,126 @@ impl AmareApp {
             this.clear_history(cx);
         });
         let rows = if is_downloads {
-            self.downloads.iter().map(|item| {
-                let id = item.id;
-                let path = item.path.clone();
-                let cancel = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                    this.cancel_download(id, cx);
-                });
-                let remove = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                    this.remove_download(id, cx);
-                });
-                let open_path = path.clone();
-                let open = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
-                    this.open_download_path(&open_path, false);
-                });
-                let open_folder = path.clone();
-                let folder = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
-                    this.open_download_path(&open_folder, true);
-                });
-                let percent = if item.total_bytes > 0 { (item.received_bytes as f64 / item.total_bytes as f64 * 100.0) as i64 } else { 0 };
-                div()
-                    .id(SharedString::from(format!("download-{id}")))
-                    .flex().flex_col().gap_1().px_3().py_2().border_b_1().border_color(border)
-                    .child(div().flex().justify_between().items_center()
-                        .child(div().text_sm().text_color(accent).overflow_hidden().child(item.filename.clone()))
-                        .child(div().text_xs().text_color(muted).child(format!("{}%", percent))))
-                    .child(div().text_xs().text_color(muted).overflow_hidden().child(item.url.clone()))
-                    .child(div().flex().items_center().gap_2()
-                        .child(div().h(px(5.0)).flex_1().rounded_full().bg(border).child(div().h(px(5.0)).w(px((percent.max(0).min(100) as f32 * 2.4))).bg(accent)))
-                        .child(div().text_xs().text_color(muted).child(item.state.clone())))
-                    .child(div().flex().items_center().gap_2()
-                        .child(div().id(SharedString::from(format!("download-cancel-{id}"))).text_xs().text_color(muted).cursor_pointer().child("취소").on_click(cancel))
-                        .child(div().id(SharedString::from(format!("download-remove-{id}"))).text_xs().text_color(muted).cursor_pointer().child("제거").on_click(remove))
-                        .child(div().id(SharedString::from(format!("download-open-{id}"))).text_xs().text_color(accent).cursor_pointer().child("열기").on_click(open))
-                        .child(div().id(SharedString::from(format!("download-folder-{id}"))).text_xs().text_color(muted).cursor_pointer().child("폴더").on_click(folder)))
-            }).collect::<Vec<_>>()
+            self.downloads
+                .iter()
+                .map(|item| {
+                    let id = item.id;
+                    let path = item.path.clone();
+                    let cancel =
+                        cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                            this.cancel_download(id, cx);
+                        });
+                    let remove =
+                        cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                            this.remove_download(id, cx);
+                        });
+                    let open_path = path.clone();
+                    let open = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
+                        this.open_download_path(&open_path, false);
+                    });
+                    let open_folder = path.clone();
+                    let folder = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, _| {
+                        this.open_download_path(&open_folder, true);
+                    });
+                    let percent = if item.total_bytes > 0 {
+                        (item.received_bytes as f64 / item.total_bytes as f64 * 100.0) as i64
+                    } else {
+                        0
+                    };
+                    div()
+                        .id(SharedString::from(format!("download-{id}")))
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .px_3()
+                        .py_2()
+                        .border_b_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .flex()
+                                .justify_between()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(accent)
+                                        .overflow_hidden()
+                                        .child(item.filename.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(format!("{}%", percent)),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .overflow_hidden()
+                                .child(item.url.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div().h(px(5.0)).flex_1().rounded_full().bg(border).child(
+                                        div()
+                                            .h(px(5.0))
+                                            .w(px((percent.max(0).min(100) as f32 * 2.4)))
+                                            .bg(accent),
+                                    ),
+                                )
+                                .child(div().text_xs().text_color(muted).child(item.state.clone())),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("download-cancel-{id}")))
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("취소")
+                                        .on_click(cancel),
+                                )
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("download-remove-{id}")))
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("제거")
+                                        .on_click(remove),
+                                )
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("download-open-{id}")))
+                                        .text_xs()
+                                        .text_color(accent)
+                                        .cursor_pointer()
+                                        .child("열기")
+                                        .on_click(open),
+                                )
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("download-folder-{id}")))
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("폴더")
+                                        .on_click(folder),
+                                ),
+                        )
+                })
+                .collect::<Vec<_>>()
         } else if is_history {
             self.history
                 .iter()
@@ -1069,9 +1239,10 @@ impl AmareApp {
                         this.navigate_to(url.clone(), cx);
                     });
                     let delete_url = entry.url.clone();
-                    let delete = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                        this.delete_history(delete_url.clone(), cx);
-                    });
+                    let delete =
+                        cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                            this.delete_history(delete_url.clone(), cx);
+                        });
                     div()
                         .id(SharedString::from(format!("history-{}", entry.id)))
                         .flex()
@@ -1089,9 +1260,24 @@ impl AmareApp {
                                 .flex_col()
                                 .flex_1()
                                 .overflow_hidden()
-                                .child(div().text_sm().text_color(accent).overflow_hidden().child(entry.title.clone()))
-                                .child(div().text_xs().text_color(muted).overflow_hidden().child(entry.url.clone()))
-                                .child(div().text_xs().text_color(muted).child(format!("{}회 · {}", entry.visit_count, entry.last_visited_at_ms))),
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(accent)
+                                        .overflow_hidden()
+                                        .child(entry.title.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .overflow_hidden()
+                                        .child(entry.url.clone()),
+                                )
+                                .child(div().text_xs().text_color(muted).child(format!(
+                                    "{}회 · {}",
+                                    entry.visit_count, entry.last_visited_at_ms
+                                ))),
                         )
                         .child(
                             div()
@@ -1117,9 +1303,10 @@ impl AmareApp {
                         this.navigate_to(url.clone(), cx);
                     });
                     let id = bookmark.id;
-                    let delete = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                        this.delete_bookmark(id, cx);
-                    });
+                    let delete =
+                        cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                            this.delete_bookmark(id, cx);
+                        });
                     div()
                         .id(SharedString::from(format!("bookmark-{id}")))
                         .flex()
@@ -1137,8 +1324,20 @@ impl AmareApp {
                                 .flex_col()
                                 .flex_1()
                                 .overflow_hidden()
-                                .child(div().text_sm().text_color(accent).overflow_hidden().child(bookmark.title.clone()))
-                                .child(div().text_xs().text_color(muted).overflow_hidden().child(bookmark.url.clone())),
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(accent)
+                                        .overflow_hidden()
+                                        .child(bookmark.title.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .overflow_hidden()
+                                        .child(bookmark.url.clone()),
+                                ),
                         )
                         .child(
                             div()
@@ -1156,8 +1355,18 @@ impl AmareApp {
                 })
                 .collect::<Vec<_>>()
         };
-        let empty = if is_downloads { "다운로드가 없습니다." } else if is_history { "방문 기록이 없습니다." } else { "북마크가 없습니다." };
-        let clear_label = if self.confirm_clear_history { "정말 전체 삭제" } else { "전체 기록 삭제" };
+        let empty = if is_downloads {
+            "다운로드가 없습니다."
+        } else if is_history {
+            "방문 기록이 없습니다."
+        } else {
+            "북마크가 없습니다."
+        };
+        let clear_label = if self.confirm_clear_history {
+            "정말 전체 삭제"
+        } else {
+            "전체 기록 삭제"
+        };
         div()
             .flex()
             .flex_col()
@@ -1192,20 +1401,15 @@ impl AmareApp {
             )
             .when(is_history, |el| {
                 el.child(
-                    div()
-                        .px_3()
-                        .py_2()
-                        .border_b_1()
-                        .border_color(border)
-                        .child(
-                            div()
-                                .h(px(30.0))
-                                .rounded_md()
-                                .bg(background)
-                                .border_1()
-                                .border_color(border)
-                                .child(self.search_input.clone()),
-                        ),
+                    div().px_3().py_2().border_b_1().border_color(border).child(
+                        div()
+                            .h(px(30.0))
+                            .rounded_md()
+                            .bg(background)
+                            .border_1()
+                            .border_color(border)
+                            .child(self.search_input.clone()),
+                    ),
                 )
             })
             .child(
@@ -1239,9 +1443,17 @@ impl AmareApp {
                                 .px_2()
                                 .py_1()
                                 .rounded_sm()
-                                .bg(if self.confirm_clear_history { rgb(0xd9534f) } else { background })
+                                .bg(if self.confirm_clear_history {
+                                    rgb(0xd9534f)
+                                } else {
+                                    background
+                                })
                                 .text_sm()
-                                .text_color(if self.confirm_clear_history { rgb(0xffffff) } else { muted })
+                                .text_color(if self.confirm_clear_history {
+                                    rgb(0xffffff)
+                                } else {
+                                    muted
+                                })
                                 .cursor_pointer()
                                 .child(clear_label)
                                 .on_click(clear),
@@ -1266,11 +1478,14 @@ impl AmareApp {
             for snapshot in snapshots {
                 let id = snapshot.id as i64;
                 let existing = self.downloads.iter().find(|item| item.id == id).cloned();
-                let changed = existing.as_ref().map(|item| {
-                    item.received_bytes != snapshot.received_bytes
-                        || item.state != snapshot.state
-                        || item.total_bytes != snapshot.total_bytes
-                }).unwrap_or(true);
+                let changed = existing
+                    .as_ref()
+                    .map(|item| {
+                        item.received_bytes != snapshot.received_bytes
+                            || item.state != snapshot.state
+                            || item.total_bytes != snapshot.total_bytes
+                    })
+                    .unwrap_or(true);
                 if changed {
                     let _ = library::upsert_download(
                         id,
@@ -1330,8 +1545,13 @@ impl AmareApp {
         if let Some(webview) = self.active_webview() {
             let viewport = window.viewport_size();
             let scale = window.scale_factor();
-            let panel = if self.panel == LibraryPanel::None { 0 } else { (PANEL_WIDTH * scale).round() as i32 };
-            let width = ((f32::from(viewport.width) * scale).round().max(1.0) as i32 - panel).max(1);
+            let panel = if self.panel == LibraryPanel::None {
+                0
+            } else {
+                (PANEL_WIDTH * scale).round() as i32
+            };
+            let width =
+                ((f32::from(viewport.width) * scale).round().max(1.0) as i32 - panel).max(1);
             let height = (f32::from(viewport.height) * scale).round().max(1.0) as i32;
             let toolbar = (TOOLBAR_HEIGHT * scale).round() as i32;
             webview.set_bounds(0, toolbar, width, (height - toolbar).max(1));
@@ -1356,14 +1576,22 @@ impl Render for AmareApp {
         let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
         let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
         let accent = rgb(0x2f7df6);
-        let can_back = self.active_tab().map(|tab| tab.can_go_back).unwrap_or(false);
+        let can_back = self
+            .active_tab()
+            .map(|tab| tab.can_go_back)
+            .unwrap_or(false);
         let can_forward = self
             .active_tab()
             .map(|tab| tab.can_go_forward)
             .unwrap_or(false);
-        let bookmarked = self.active_tab().map(|tab| {
-            self.bookmarks.iter().any(|bookmark| bookmark.url == tab.url.as_ref())
-        }).unwrap_or(false);
+        let bookmarked = self
+            .active_tab()
+            .map(|tab| {
+                self.bookmarks
+                    .iter()
+                    .any(|bookmark| bookmark.url == tab.url.as_ref())
+            })
+            .unwrap_or(false);
         let source_window_id = self.window_id;
         let bookmarks = self
             .bookmarks
@@ -1381,20 +1609,27 @@ impl Render for AmareApp {
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
         };
-        let downloads = self.downloads.iter().map(|item| serde_json::json!({
-            "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
-            "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
-            "state": item.state, "error": item.error
-        })).collect::<Vec<_>>();
+        let downloads = self
+            .downloads
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "id": item.id, "filename": item.filename, "url": item.url, "path": item.path,
+                    "total_bytes": item.total_bytes, "received_bytes": item.received_bytes,
+                    "state": item.state, "error": item.error
+                })
+            })
+            .collect::<Vec<_>>();
         let tabs = self
             .tabs
             .iter()
             .map(|tab| {
                 let active = tab.id == self.active_tab().map(|active| active.id).unwrap_or(0);
                 let id = tab.id;
-                let click = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
-                    this.select_tab_by_id(id, window, cx);
-                });
+                let click =
+                    cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
+                        this.select_tab_by_id(id, window, cx);
+                    });
                 let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
                     this.close_tab(id, cx);
                 });
