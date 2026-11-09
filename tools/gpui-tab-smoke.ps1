@@ -398,11 +398,31 @@ try {
     $aAfterClose = Wait-State { param($s) $s.active_tab -eq $aId -and $s.source -like "*tab=A2*" } 10 "tab A after close"
     Add-Result "tab-survives-other-close" "PASS" "tab A source=$($aAfterClose.source)"
 
-    # Reduce to one tab via Ctrl+W, then use the tab close button to exit.
-    while (@((Read-State).tabs).Count -gt 1) {
+    # Reduce to two tabs, detach one outside the source window, then close it.
+    while (@((Read-State).tabs).Count -gt 2) {
         Send-Keys "^w"
         Start-Sleep -Milliseconds 700
     }
+    [void](Wait-State { param($s) @($s.tabs).Count -eq 2 } 20 "two tabs for detach")
+    $windowCount = Count-Windows
+    $rect = Get-Rect $script:hwnd
+    $orig = Get-Origin $script:hwnd
+    $outsideX = ($rect.Right - $orig.X) + 120
+    Drag-At $script:hwnd 72 22 $outsideX 22
+    $detached = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "source tab detach"
+    $detachedWindows = Count-Windows
+    if ($detachedWindows -le $windowCount) { throw "detached tab did not create a new window" }
+    Add-Result "tab-detach-new-window" "PASS" "source_tabs=1 windows $windowCount->$detachedWindows"
+    [void][AmareTab]::SetForegroundWindow([AmareTab]::GetForegroundWindow())
+    Send-Keys "%{F4}"
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        if ((Count-Windows) -le $windowCount) { break }
+    }
+    if ((Count-Windows) -gt $windowCount) { throw "detached browser window did not close" }
+    Add-Result "tab-detach-window-close" "PASS" "windows back to $windowCount"
+
+    # Close the last remaining source tab via the tab close button.
     $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
     Shot "gpui-tabs-one.png"
     $orig = Get-Origin $script:hwnd
