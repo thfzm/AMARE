@@ -154,20 +154,26 @@ try {
     $p = New-Object LibPoint+POINT
     [void][LibPoint]::ClientToScreen($script:hwnd, [ref]$p)
     [void][AmareLib]::SetForegroundWindow($script:hwnd)
-    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w - 69), ($p.Y + 22))
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w - 99), ($p.Y + 22))
     Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LibClick { [DllImport("user32.dll")] public static extern void mouse_event(uint f,int x,int y,int d,UIntPtr e); }'
     [LibClick]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [LibClick]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
     Start-Sleep -Seconds 1
     Shot "08-titlebar-maximized.png"
-    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w - 69), ($p.Y + 22))
+    $rect2 = New-Object AmareLib+RECT
+    [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect2)
+    $w2 = $rect2.Right - $rect2.Left
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + $w2 - 99), ($p.Y + 22))
     [LibClick]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [LibClick]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
     Start-Sleep -Seconds 1
     Shot "08b-titlebar-restored.png"
     ShotFull "13-windows-taskbar-icon.png"
-    [System.Windows.Forms.SendKeys]::SendWait("%{TAB}")
-    Start-Sleep -Seconds 1
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LibAlt { [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra); }'
+    [LibAlt]::keybd_event(0x12,0,0,[UIntPtr]::Zero)
+    [LibAlt]::keybd_event(0x09,0,0,[UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 500
     ShotFull "14-windows-alt-tab-icon.png"
-    [System.Windows.Forms.SendKeys]::SendWait("%{TAB}")
+    [LibAlt]::keybd_event(0x09,0,2,[UIntPtr]::Zero)
+    [LibAlt]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
     Start-Sleep -Seconds 1
     [void][AmareLib]::SetForegroundWindow($script:hwnd)
 

@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.51.0 GPUI Bookmarks, History & Library UI** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 SQLite 기반 북마크/방문 기록, 검색·삭제 패널, 실제 GPUI 스크린샷, 기존 다중 탭/팝업/창 생명주기와 Korean IME를 CI 검증했습니다. 창 간 탭 이동/분리, 명시적 팝업 창, context menu, DPI/multi-monitor, 장시간 IME/Handle stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.52.0 GPUI Downloads, Native Titlebar & Icon** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 WebView2 다운로드/진행·완료·실패 UI, SQLite 북마크/방문 기록, Windows custom titlebar 탭 통합, exe/창 아이콘 리소스와 실제 스크린샷을 CI 검증했습니다. 창 간 탭 이동/분리, 명시적 팝업 창, context menu, DPI/multi-monitor, 장시간 IME/Handle stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -147,6 +147,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.49.0: **GPUI target=_blank/window.open 새 탭, 새 브라우저 창 생성·종료, 실제 mouse tab drag reorder/cancel, 10탭/팝업/창 생명주기 PASS, tab 28/0/0, single-tab input 26/3, GUI 42/42/143 PASS**; 창 간 탭 이동/분리/명시적 팝업 창/context menu/favicon/loading UI 세부/DPI/multi-monitor/IME stress/Windows11은 UNVERIFIED
 - Windows 0.50.0: **GPUI popup/new window/tab drag 28 PASS, single-tab input 26 PASS; cross-window tab move/detach is UNVERIFIED** (SetParentWindow 기반 이전 안전성/자동화 미확립), GUI 42/42/143 PASS
 - Windows 0.51.0: **GPUI SQLite bookmark/history add/search/delete/persistence PASS, 8 actual screenshots PASS, tab/popup/new-window regression PASS, GUI 42/42/143 PASS**; cross-window move/detach/context menu/DPI/multi-monitor/IME·Handle stress UNVERIFIED
+- Windows 0.52.0: **WebView2 download progress/complete/failure UI PASS, custom titlebar tab integration + window controls, exe icon resource, 14 actual screenshots/desktop captures PASS, bookmark/history regression PASS**; download pause/resume/cancel automation, all titlebar controls/DPI/taskbar-AltTab icon details, cross-window move/detach, context menu/IME stress UNVERIFIED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
