@@ -24,7 +24,8 @@ fn with_library<R>(f: impl FnOnce(&ProfileService, &ProfileContext) -> Result<R,
             let context = service.initialize().map_err(|e| e.to_string())?;
             *cell.borrow_mut() = Some((service, context));
         }
-        let (service, context) = cell.borrow().as_ref().expect("library initialized");
+        let binding = cell.borrow();
+        let (service, context) = binding.as_ref().expect("library initialized");
         f(service, context)
     })
 }
