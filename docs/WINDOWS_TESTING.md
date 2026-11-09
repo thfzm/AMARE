@@ -69,7 +69,7 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 - WebSocket actual AMARE tab-close and browser-close cleanup: **PASS**; connect/echo/reconnect PASS
 - Certificate error: **PASS** Kestrel Tls13 handshake + actual self-signed/expired/hostname-mismatch event/dialog + retry/back/other-tab; no bypass; CA chain/SAN/EKU/custom-trust TLS simulation **PASS**; CurrentUser/WebView2 local CA **UNVERIFIED** (trust-store prompt/timeout)
 - Certificate error: `ServerCertificateErrorDetected` Cancel + Korean warning; actual self-signed/expired/hostname-mismatch **PASS**; trusted local CA **UNVERIFIED**; no bypass
-- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.50 values in report); GPUI popup tabs/new browser window/mouse tab drag reorder/cancel/10-tab lifecycle/tab-switch Korean IME PASS; cross-window tab move/detach/context menu/favicon/loading/error UI/DPI/multi-monitor/IME stress **UNVERIFIED**
+- 5/10/20/30-tab WebView2 memory breakdown, empty/content/background/suspend/close, startup/navigation/tab timing **PASS** (0.51 values in report); GPUI SQLite bookmarks/history/search/delete/restart persistence + 8 actual screenshots PASS; cross-window move/detach/context menu/favicon/loading/error UI/DPI/multi-monitor/IME stress **UNVERIFIED**
 - Native tab drag reorder: **PASS** actual pointer 9 combos+cancel+after-close+tear-off new window+re-merge; cross-window forward+reverse **PASS**
 - New window open/close: **PASS**; cross-window tab move **UNVERIFIED**
 - AI API request/response parsing tests: PASS

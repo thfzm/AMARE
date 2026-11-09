@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.50.0)
+# AMARE GPUI Windows Shell (0.51.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -13,6 +13,8 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 - WebView2 `AcceleratorKeyPressed` forwarding of browser shortcuts from page focus.
 - Address/title synchronization after WebView2 navigation.
 - Shared WebView2 Environment/Profile with one Controller/WebView2 per tab.
+- SQLite-backed bookmarks and visit history through amare-store/amare-services.
+- Bookmark/history panels with search, delete, empty states, and restart persistence.
 - WebView2 NewWindowRequested popups (target=_blank/window.open) open as new tabs.
 - Ctrl+N and toolbar button open independent browser windows with shared profile.
 - Per-tab URL/title/DOM/input/scroll/history preservation and inactive-controller hiding.
@@ -24,7 +26,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.50.0)
+## Verified in Windows CI (0.51.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -34,7 +36,10 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Korean IME in the address bar: `한글`, composition/marked range, Enter search.
 - Local test page: input/password/textarea, Korean IME, Tab, Ctrl+A/C/V, selection, mouse drag, link click, wheel, Enter/Escape.
 - Address↔WebView2 focus transfer, minimize/restore, graceful exit, WebView2 0→0.
-- 10-tab create/switch/close, tab click/Ctrl+Tab, new-tab/close buttons, popup tabs/new window, tab drag reorder/cancel, tab-switch Korean IME, tab state/history isolation.
+- GPUI bookmark/history add, duplicate handling, list, navigation, search, delete, clear confirmation, restart persistence.
+- Actual 1044×788 screenshots for initial/example/multi-tab/bookmark/history/search/maximized screens.
+- Tab/popup/new-window/IME regression subset and WebView2 cleanup.
+- Cross-window transfer/detach and context menu remain UNVERIFIED.
 - WinUI regression remains separate and passing.
 
 ## Not verified / not implemented
