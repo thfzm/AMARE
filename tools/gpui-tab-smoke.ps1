@@ -115,23 +115,12 @@ function Ensure-Tabs([int]$target) {
             Start-Sleep -Milliseconds 700
             continue
         }
-        $rect = Get-Rect $script:hwnd
-        $orig = Get-Origin $script:hwnd
-        Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
-        $deadline = (Get-Date).AddSeconds(10)
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(15)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { break }
             Start-Sleep -Milliseconds 300
-        }
-        if (@((Read-State).tabs).Count -lt $target) {
-            Send-Keys "^t"
-            $deadline = (Get-Date).AddSeconds(15)
-            while ((Get-Date) -lt $deadline) {
-                $state = Read-State
-                if (@($state.tabs).Count -ge $target) { break }
-                Start-Sleep -Milliseconds 300
-            }
         }
     }
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
@@ -292,7 +281,7 @@ try {
     Add-Result "new-browser-window-regression" "UNVERIFIED" "new-window API is present but not retested in this 0.51 tab run"
     # New tab button actual click (with delayed-controller tolerance).
     $four = Ensure-Tabs 4
-    Add-Result "new-tab-button" "PASS" "tabs=$(@($four.tabs).Count)"
+    Add-Result "new-tab-button" "UNVERIFIED" "titlebar controls overlap old coordinate; Ctrl+T fallback used"
     $navD = Navigate (Page "D") 25
     # Five tabs + metrics.
     $five = Ensure-Tabs 5
