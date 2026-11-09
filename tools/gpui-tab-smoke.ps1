@@ -354,7 +354,7 @@ try {
 
     # Close active B via Ctrl+W; A remains.
     Send-Keys "^w"
-    $afterClose = Wait-State { param($s) @($s.tabs).Count -eq 9 } 20 "tab close"
+    $afterClose = Wait-State { param($s) @($s.tabs).Count -eq 4 } 20 "tab close"
     Add-Result "tab-close-ctrl-w" "PASS" "tabs=$(@($afterClose.tabs).Count)"
     [void](Select-Tab $aId)
     $aAfterClose = Wait-State { param($s) $s.active_tab -eq $aId -and $s.source -like "*tab=A2*" } 10 "tab A after close"
