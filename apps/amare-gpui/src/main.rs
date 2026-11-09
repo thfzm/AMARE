@@ -1,8 +1,9 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
+    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*,
+    px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
