@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.48.0 GPUI Multi-Tab & Per-Tab WebView2** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 탭별 독립 Controller/WebView2를 사용해 10탭 생성·전환·닫기, 탭별 DOM/입력/스크롤/history 보존, 탭 전환 후 Korean IME, 마지막 탭 종료/WebView2 정리를 실제 Windows 입력으로 CI 검증했습니다. favicon, loading/error UI 세부, context menu, DPI/multi-monitor, IME stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.48.0 GPUI Multi-Tab & Per-Tab WebView2** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 탭별 독립 Controller/WebView2를 사용해 10탭 생성·전환·닫기, 탭별 DOM/입력/스크롤/history 보존, 탭 전환 후 Korean IME, 마지막 탭을 닫으면 브라우저가 종료되고 WebView2가 정리되는 동작을 실제 Windows 입력으로 CI 검증했습니다. favicon, loading/error UI 세부, context menu, DPI/multi-monitor, IME stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
