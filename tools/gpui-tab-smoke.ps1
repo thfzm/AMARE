@@ -21,6 +21,8 @@ public static class AmareTab {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayout(string id, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 }
 '@
 
@@ -128,6 +130,11 @@ function Select-Tab([int]$id, [int]$timeout = 15) {
     }
     throw "Timed out selecting tab $id"
 }
+function Set-EnglishLayout([IntPtr]$hwnd) {
+    $hkl = [AmareTab]::LoadKeyboardLayout("00000409", 0x00000101)
+    [void][AmareTab]::SendMessage($hwnd, 0x50, [IntPtr]::Zero, $hkl)
+    Start-Sleep -Milliseconds 300
+}
 function Process-Metrics([string]$label) {
     $webviews = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
     $ws = 0; foreach ($p in $webviews) { try { $ws += [int64]$p.WorkingSet64 } catch {} }
@@ -152,6 +159,9 @@ try {
     $script:hwnd = $script:app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareTab]::SetForegroundWindow($script:hwnd)
+    Set-EnglishLayout $script:hwnd
+    $child = [AmareTab]::FindWindowEx($script:hwnd, [IntPtr]::Zero, "Chrome_WidgetWin_0", $null)
+    if ($child -ne [IntPtr]::Zero) { Set-EnglishLayout $child }
     Add-Result "initial-tab" "PASS" "id=$($initial.active_tab) source=$($initial.source)"
     Process-Metrics "1-tab"
     $orig = Get-Origin $script:hwnd
