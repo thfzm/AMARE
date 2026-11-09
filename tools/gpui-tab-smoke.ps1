@@ -164,8 +164,7 @@ try {
     if ($child -ne [IntPtr]::Zero) { Set-EnglishLayout $child }
     Add-Result "initial-tab" "PASS" "id=$($initial.active_tab) source=$($initial.source)"
     Process-Metrics "1-tab"
-    $orig = Get-Origin $script:hwnd
-    Click-At $script:hwnd ($orig.X + 20) ($orig.Y + 22)
+    [void][AmareTab]::SetForegroundWindow($script:hwnd)
     Send-Keys "^t"
     $two = Wait-Tabs 2 20 "second tab via Ctrl+T"
     Add-Result "new-tab-ctrl-t" "PASS" "tabs=$(@($two.tabs).Count) active=$($two.active_tab)"
