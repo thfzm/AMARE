@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.52.0)
+# AMARE GPUI Windows Shell (0.53.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -20,13 +20,14 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 - Per-tab URL/title/DOM/input/scroll/history preservation and inactive-controller hiding.
 - Window resize, minimize/restore, last-tab close exit, and graceful WebView2 cleanup.
 - Actual mouse tab drag reorder/cancel with GPUI drag/drop.
+- SQLite settings-backed session save/restore for tab URLs/titles/order, active tab, window geometry, and maximized state, with `AMARE_GPUI_RESTORE=0` opt-out.
 - Cross-window tab transfer/detach is UNVERIFIED; official `SetParentWindow` path exists but is not validated end-to-end.
 
 ## WebView2
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.52.0)
+## Verified in Windows CI (0.53.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -37,12 +38,13 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Local test page: input/password/textarea, Korean IME, Tab, Ctrl+A/C/V, selection, mouse drag, link click, wheel, Enter/Escape.
 - Address↔WebView2 focus transfer, minimize/restore, graceful exit, WebView2 0→0.
 - GPUI bookmark/history add, duplicate handling, list, navigation, search, delete, clear confirmation, restart persistence.
+- Session restore after restart: tab count/order/title/URL/active tab/window geometry PASS for one window; `15-session-restored.png` and `16-downloads-after-restart.png`.
 - WebView2 DownloadStarting progress/complete/failure/restart metadata and file open/folder controls.
 - Windows custom titlebar tab integration with system min/max/restore/close hit areas.
 - AMARE.ico embedded Windows resource and window/taskbar/Alt+Tab icon capture.
 - Actual screenshots for initial/example/multi-tab/bookmark/history/search/download/maximized screens.
 - Tab/popup/new-window/IME regression subset and WebView2 cleanup.
-- Cross-window transfer/detach, download pause/resume/cancel automation, context menu, and DPI/multi-monitor remain UNVERIFIED.
+- Multi-window restore, session settings/progress/failure UI, DOM/scroll/history restore, cross-window transfer/detach, download pause/resume/cancel automation, context menu, and DPI/multi-monitor remain UNVERIFIED.
 - WinUI regression remains separate and passing.
 
 ## Not verified / not implemented

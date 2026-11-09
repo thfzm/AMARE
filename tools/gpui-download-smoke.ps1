@@ -71,14 +71,14 @@ try {
  Add-Result "download-exit-cleanup" "PASS" "exit=$($app.ExitCode) webview2=$before->$after"
  $app2=Start-Process $Exe -PassThru
  $restored=Wait-State {param($s) @($s.downloads).Count -ge 1} 60 "restored download list"
- $app2.Refresh();$script:hwnd=$app2.MainWindowHandle
- if($script:hwnd-ne[IntPtr]::Zero){
-   [void][AmareDl]::SetForegroundWindow($script:hwnd)
-   [System.Windows.Forms.SendKeys]::SendWait("^+d");Start-Sleep -Milliseconds 500
-   Shot "12-download-list-restored.png"
-   Add-Result "download-restart-persistence" "PASS" "downloads=$(@($restored.downloads).Count)"
-   [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-   if(-not$app2.WaitForExit(20000)){throw "restarted download app did not exit"}
- }
+ for($i=0;$i-lt40;$i++){Start-Sleep -Milliseconds 500;$app2.Refresh();if($app2.MainWindowHandle-ne[IntPtr]::Zero){break}}
+ $script:hwnd=$app2.MainWindowHandle
+ if($script:hwnd-eq[IntPtr]::Zero){throw "restarted download window missing"}
+ [void][AmareDl]::SetForegroundWindow($script:hwnd)
+ [System.Windows.Forms.SendKeys]::SendWait("^+d");Start-Sleep -Milliseconds 500
+ Shot "12-download-list-restored.png"
+ Add-Result "download-restart-persistence" "PASS" "downloads=$(@($restored.downloads).Count)"
+ [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+ if(-not$app2.WaitForExit(20000)){throw "restarted download app did not exit"}
 } catch {Add-Result "fatal" "FAIL" $_.Exception.Message;try{Shot "99-download-failure.png"}catch{}}
 finally {if($null-ne$app-and-not$app.HasExited){try{$app.Kill()}catch{}};if($null-ne$app2-and-not$app2.HasExited){try{$app2.Kill()}catch{}};if($null-ne$server){try{Stop-Process -Id $server.Id -Force}catch{}};$summary=[pscustomobject]@{generated_at=(Get-Date).ToUniversalTime().ToString("o");results=$script:results;pass=@($script:results|? result -eq "PASS").Count;fail=@($script:results|? result -eq "FAIL").Count;unverified=@($script:results|? result -eq "UNVERIFIED").Count};$summary|ConvertTo-Json -Depth 8|Set-Content (Join-Path $ScreenshotDir "gpui-download-results.json") -Encoding UTF8;Write-Host "GPUI download summary PASS=$($summary.pass) FAIL=$($summary.fail) UNVERIFIED=$($summary.unverified)";if($summary.fail-gt 0){exit 1}}
