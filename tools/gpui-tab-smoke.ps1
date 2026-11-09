@@ -78,6 +78,28 @@ function Active-Tab { return (Read-State).active_tab }
 function Wait-Tabs([int]$count, [int]$seconds, [string]$label) {
     return Wait-State { param($s) @($s.tabs).Count -eq $count } $seconds $label
 }
+function Ensure-Tabs([int]$target) {
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        $state = Read-State
+        $count = @($state.tabs).Count
+        if ($count -eq $target) { return $state }
+        if ($count -gt $target) {
+            Send-Keys "^w"
+            Start-Sleep -Milliseconds 700
+            continue
+        }
+        $rect = Get-Rect $script:hwnd
+        $orig = Get-Origin $script:hwnd
+        Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { break }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
+}
 function Navigate([string]$url, [int]$timeout = 20) {
     Send-Keys "^l"
     Start-Sleep -Milliseconds 200
@@ -204,31 +226,14 @@ try {
     Add-Result "new-tab-button" "PASS" "tabs=$(@($four.tabs).Count)"
     $navD = Navigate (Page "D") 25
     # Five tabs + metrics.
-    $rect = Get-Rect $script:hwnd
-    $orig = Get-Origin $script:hwnd
-    Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
-    $five = Wait-Tabs 5 20 "fifth tab"
+    $five = Ensure-Tabs 5
     $eId = $five.active_tab
     $navE = Navigate (Page "E") 25
     Add-Result "five-tabs" "PASS" "tabs=5 active=$eId"
     Process-Metrics "5-tabs"
     # Ten tabs.
     for ($i = 6; $i -le 10; $i++) {
-        $created = $false
-        for ($attempt = 0; $attempt -lt 3; $attempt++) {
-            if (@((Read-State).tabs).Count -ge $i) { $created = $true; break }
-            $rect = Get-Rect $script:hwnd
-            $orig = Get-Origin $script:hwnd
-            Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
-            try {
-                [void](Wait-Tabs $i 20 "tab $i")
-                $created = $true
-                break
-            } catch {
-                Write-Host "Retrying new-tab button for tab $i"
-            }
-        }
-        if (-not $created) { throw "Could not create tab $i" }
+        [void](Ensure-Tabs $i)
         [void](Navigate (Page ([string]$i)) 25)
     }
     $ten = Wait-Tabs 10 25 "ten tabs"
