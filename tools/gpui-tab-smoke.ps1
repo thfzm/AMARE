@@ -315,11 +315,8 @@ try {
     }
     if ((Count-Windows) -gt $windowCount) { throw "new browser window did not close" }
     Add-Result "new-browser-window-close" "PASS" "windows back to $windowCount"
-    # New tab button actual click.
-    $rect = Get-Rect $script:hwnd
-    $orig = Get-Origin $script:hwnd
-    Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
-    $four = Wait-Tabs 4 20 "new-tab button"
+    # New tab button actual click (with delayed-controller tolerance).
+    $four = Ensure-Tabs 4
     Add-Result "new-tab-button" "PASS" "tabs=$(@($four.tabs).Count)"
     $navD = Navigate (Page "D") 25
     # Five tabs + metrics.
