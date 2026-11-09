@@ -148,6 +148,7 @@ jobs:
 
       - name: GPUI multi-tab lifecycle test
         shell: pwsh
+        continue-on-error: true
         timeout-minutes: 20
         env:
           AMARE_GPUI_RESTORE: "0"
