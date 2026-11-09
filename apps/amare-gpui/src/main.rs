@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use gpui::{
@@ -6,6 +7,15 @@ use gpui::{
     Timer, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+#[cfg(target_os = "windows")]
+use windows::Win32::{
+    Foundation::POINT,
+    UI::{
+        Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON},
+        WindowsAndMessaging::GetCursorPos,
+    },
+};
 
 mod text_input;
 mod webview;
@@ -43,6 +53,17 @@ struct TabDragInfo {
     id: u64,
 }
 
+struct DropRequest {
+    serial: u64,
+    source_window_id: u64,
+    tab_id: u64,
+    x: i32,
+    y: i32,
+}
+
+static DROP_REQUEST: Mutex<Option<DropRequest>> = Mutex::new(None);
+static DROP_SERIAL: AtomicU64 = AtomicU64::new(1);
+
 struct TabDragPreview {
     id: u64,
 }
@@ -58,6 +79,32 @@ impl Render for TabDragPreview {
             .text_sm()
             .child(format!("tab {}", self.id))
     }
+}
+
+#[cfg(target_os = "windows")]
+fn start_drop_watch(source_window_id: u64, tab_id: u64) {
+    let serial = DROP_SERIAL.fetch_add(1, Ordering::Relaxed);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } < 0;
+        if !down {
+            let mut point = POINT::default();
+            if unsafe { GetCursorPos(&mut point) }.is_ok()
+                && DROP_SERIAL.load(Ordering::Relaxed) == serial
+            {
+                if let Ok(mut request) = DROP_REQUEST.lock() {
+                    *request = Some(DropRequest {
+                        serial,
+                        source_window_id,
+                        tab_id,
+                        x: point.x,
+                        y: point.y,
+                    });
+                }
+            }
+            break;
+        }
+    });
 }
 
 struct TabState {
@@ -201,6 +248,51 @@ impl AmareApp {
         app
     }
 
+    fn new_with_seed(window: &mut Window, cx: &mut App, seed: TabState) -> Self {
+        let focus_handle = cx.focus_handle();
+        focus_handle.focus(window);
+        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
+            .unwrap_or_else(|_| "about:blank".to_string());
+        #[cfg(target_os = "windows")]
+        let parent = window
+            .window_handle()
+            .ok()
+            .map(|handle| handle.as_raw())
+            .and_then(|handle| match handle {
+                RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
+                _ => None,
+            });
+        #[cfg(target_os = "windows")]
+        let webview_env = webview::shared_environment().ok();
+        let address = seed.url.to_string();
+        let mut app = Self {
+            tabs: vec![seed],
+            active: 0,
+            next_tab_id: 2,
+            window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
+            activity_counter: 1,
+            new_tab_url,
+            address_input: cx.new(|cx| AddressInput::new(address, cx)),
+            focus_handle,
+            #[cfg(target_os = "windows")]
+            parent,
+            #[cfg(target_os = "windows")]
+            webview_env,
+            #[cfg(target_os = "windows")]
+            webview_error: None,
+            dark: false,
+            status_poll_started: false,
+        };
+        #[cfg(target_os = "windows")]
+        if let (Some(parent), Some(webview)) = (app.parent, app.active_webview_mut()) {
+            if webview.reparent(parent).is_ok() {
+                webview.set_active(true);
+                webview.focus();
+            }
+        }
+        app
+    }
+
     fn start_status_poll(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| loop {
             Timer::after(Duration::from_millis(250)).await;
@@ -253,6 +345,7 @@ impl AmareApp {
             .unwrap_or(false);
         #[cfg(not(target_os = "windows"))]
         let ime_context = false;
+        let source_window_id = self.window_id;
         let tabs = self
             .tabs
             .iter()
@@ -298,6 +391,11 @@ impl AmareApp {
     #[cfg(target_os = "windows")]
     fn active_webview(&self) -> Option<&webview::WebViewHost> {
         self.active_tab().and_then(|tab| tab.webview.as_ref())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn active_webview_mut(&mut self) -> Option<&mut webview::WebViewHost> {
+        self.tabs.get_mut(self.active).and_then(|tab| tab.webview.as_mut())
     }
 
     fn set_address(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -642,6 +740,73 @@ impl AmareApp {
         cx.notify();
     }
 
+    fn poll_drop_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        {
+            let request = if let Ok(mut slot) = DROP_REQUEST.lock() {
+                match slot.as_ref() {
+                    Some(request) if request.source_window_id == self.window_id => slot.take(),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let Some(request) = request else { return };
+            let bounds = window.bounds();
+            let inside = request.x as f32 >= f32::from(bounds.origin.x)
+                && request.x as f32 <= f32::from(bounds.origin.x) + f32::from(bounds.size.width)
+                && request.y as f32 >= f32::from(bounds.origin.y)
+                && request.y as f32 <= f32::from(bounds.origin.y) + f32::from(bounds.size.height);
+            if inside {
+                return;
+            }
+            let Some(index) = self.tabs.iter().position(|tab| tab.id == request.tab_id) else {
+                return;
+            };
+            let tab = self.tabs.remove(index);
+            let active_id = self.active_tab().map(|tab| tab.id);
+            if self.active >= self.tabs.len() {
+                self.active = self.tabs.len().saturating_sub(1);
+            }
+            if let Some(active_id) = active_id {
+                if let Some(index) = self.tabs.iter().position(|tab| tab.id == active_id) {
+                    self.active = index;
+                }
+            }
+            let seed = std::rc::Rc::new(std::cell::RefCell::new(Some(tab)));
+            let slot = seed.clone();
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1180.0), px(760.0)),
+                    cx,
+                ))),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("AMARE".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let result = cx.open_window(options, move |window, cx| {
+                let seed = slot.borrow_mut().take().expect("detached tab seed");
+                cx.new(|cx| AmareApp::new_with_seed(window, cx, seed))
+            });
+            if result.is_err() {
+                if let Some(tab) = seed.borrow_mut().take() {
+                    self.tabs.insert(index.min(self.tabs.len()), tab);
+                }
+            } else if self.tabs.is_empty() {
+                self.new_tab(window, cx);
+            } else {
+                let url = self.active_tab().map(|tab| tab.url.to_string()).unwrap_or_default();
+                self.set_address(url, cx);
+            }
+            cx.notify();
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = (window, cx);
+    }
+
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
@@ -661,6 +826,7 @@ impl Render for AmareApp {
             self.status_poll_started = true;
             self.start_status_poll(cx);
         }
+        self.poll_drop_request(window, cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.sync_webview_bounds(window);
@@ -675,6 +841,7 @@ impl Render for AmareApp {
             .active_tab()
             .map(|tab| tab.can_go_forward)
             .unwrap_or(false);
+        let source_window_id = self.window_id;
         let tabs = self
             .tabs
             .iter()
@@ -713,7 +880,9 @@ impl Render for AmareApp {
                             .child(tab.title.clone()),
                     )
                     .child(if tab.loading { "◌" } else { "" })
-                    .on_drag(drag_info, |info: &TabDragInfo, _, _, cx| {
+                    .on_drag(drag_info, move |info: &TabDragInfo, _, _, cx| {
+                        #[cfg(target_os = "windows")]
+                        start_drop_watch(source_window_id, info.id);
                         cx.new(|_| TabDragPreview { id: info.id })
                     })
                     .on_drop(drop)

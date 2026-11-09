@@ -101,7 +101,7 @@ impl WebViewEnvironment {
 pub struct WebViewHost {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
-    parent: HWND,
+    parent: Arc<Mutex<HWND>>,
     signals: Arc<Mutex<TabSignals>>,
     accelerator_token: i64,
     navigation_starting_token: i64,
@@ -218,8 +218,9 @@ impl WebViewHost {
                 .add_NewWindowRequested(&popup_handler, &mut new_window_token)
                 .map_err(|error| format!("new window handler: {error:?}"))?;
 
+            let parent_handle = Arc::new(Mutex::new(parent));
             let accelerator_token = {
-                let accelerator_parent = parent;
+                let accelerator_parent = parent_handle.clone();
                 let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
                     move |_controller, args| {
                         let Some(args) = args else { return Ok(()) };
@@ -256,15 +257,16 @@ impl WebViewHost {
                                 let mut lparam = 0i32;
                                 args.KeyEventLParam(&mut lparam)?;
                                 unsafe {
-                                    let _ = SetFocus(Some(accelerator_parent));
+                                    let parent = *accelerator_parent.lock().unwrap_or_else(|e| e.into_inner());
+                                    let _ = SetFocus(Some(parent));
                                     let _ = PostMessageW(
-                                        Some(accelerator_parent),
+                                        Some(parent),
                                         WM_KEYDOWN,
                                         WPARAM(key as usize),
                                         LPARAM(lparam as isize),
                                     );
                                     let _ = PostMessageW(
-                                        Some(accelerator_parent),
+                                        Some(parent),
                                         WM_KEYUP,
                                         WPARAM(key as usize),
                                         LPARAM(lparam as isize),
@@ -286,7 +288,7 @@ impl WebViewHost {
             Ok(Self {
                 controller,
                 webview,
-                parent,
+                parent: parent_handle,
                 signals,
                 accelerator_token,
                 navigation_starting_token,
@@ -523,22 +525,35 @@ impl WebViewHost {
             {
                 return;
             }
-            let _ = SetFocus(Some(self.parent));
+            let parent = *self.parent.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = SetFocus(Some(parent));
         }
+    }
+
+    pub fn reparent(&mut self, parent: HWND) -> Result<(), String> {
+        unsafe {
+            self.controller
+                .SetParentWindow(parent)
+                .map_err(|error| format!("WebView2 SetParentWindow: {error:?}"))?;
+            *self.parent.lock().unwrap_or_else(|e| e.into_inner()) = parent;
+            let _ = self.controller.NotifyParentWindowPositionChanged();
+        }
+        Ok(())
     }
 
     pub fn ensure_ime(&self) {
         unsafe {
+            let parent = *self.parent.lock().unwrap_or_else(|e| e.into_inner());
             let korean = (GetKeyboardLayout(GetCurrentThreadId()).0 as u32 & 0xFFFF) == 0x0412;
-            if ImmGetContext(self.parent).0.is_null() {
+            if ImmGetContext(parent).0.is_null() {
                 let context = ImmCreateContext();
                 if !context.0.is_null() {
-                    let _ = ImmAssociateContext(self.parent, context);
+                    let _ = ImmAssociateContext(parent, context);
                 }
-                let _ = ImmAssociateContextEx(self.parent, HIMC::default(), IACE_DEFAULT);
+                let _ = ImmAssociateContextEx(parent, HIMC::default(), IACE_DEFAULT);
             }
             if korean {
-                let context = ImmGetContext(self.parent);
+                let context = ImmGetContext(parent);
                 if !context.0.is_null() {
                     let _ = ImmSetOpenStatus(context, true);
                     let _ = ImmSetConversionStatus(
@@ -546,14 +561,15 @@ impl WebViewHost {
                         IME_CONVERSION_MODE(0x00000001),
                         IME_SENTENCE_MODE(0),
                     );
-                    let _ = ImmReleaseContext(self.parent, context);
+                    let _ = ImmReleaseContext(parent, context);
                 }
             }
         }
     }
 
     pub fn ime_context(&self) -> bool {
-        unsafe { !ImmGetContext(self.parent).0.is_null() }
+        let parent = *self.parent.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { !ImmGetContext(parent).0.is_null() }
     }
 }
 
