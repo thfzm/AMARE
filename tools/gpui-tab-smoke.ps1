@@ -200,13 +200,16 @@ try {
     for ($i = 6; $i -le 10; $i++) {
         $created = $false
         for ($attempt = 0; $attempt -lt 3; $attempt++) {
-            Send-Keys "^t"
+            if (@((Read-State).tabs).Count -ge $i) { $created = $true; break }
+            $rect = Get-Rect $script:hwnd
+            $orig = Get-Origin $script:hwnd
+            Click-At $script:hwnd ($rect.Right - 28) ($orig.Y + 22)
             try {
-                [void](Wait-Tabs $i 8 "tab $i")
+                [void](Wait-Tabs $i 20 "tab $i")
                 $created = $true
                 break
             } catch {
-                Write-Host "Retrying tab $i creation"
+                Write-Host "Retrying new-tab button for tab $i"
             }
         }
         if (-not $created) { throw "Could not create tab $i" }
