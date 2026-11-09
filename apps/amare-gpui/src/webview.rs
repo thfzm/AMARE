@@ -15,6 +15,7 @@ use webview2_com::{
         COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
         COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
         ICoreWebView2Controller, ICoreWebView2DownloadOperation, ICoreWebView2Environment,
+        ICoreWebView2_4,
     },
 };
 #[cfg(target_os = "windows")]
@@ -351,7 +352,10 @@ impl WebViewHost {
                 }))
             };
             let mut download_token = 0;
-            webview
+            let download_webview: ICoreWebView2_4 = webview
+                .cast()
+                .map_err(|error| format!("WebView2 download interface: {error:?}"))?;
+            download_webview
                 .add_DownloadStarting(&download_handler, &mut download_token)
                 .map_err(|error| format!("download handler: {error:?}"))?;
 
@@ -774,7 +778,9 @@ impl Drop for WebViewHost {
             let _ = self.webview.remove_NavigationStarting(self.navigation_starting_token);
             let _ = self.webview.remove_NavigationCompleted(self.navigation_completed_token);
             let _ = self.webview.remove_NewWindowRequested(self.new_window_token);
-            let _ = self.webview.remove_DownloadStarting(self.download_token);
+            if let Ok(download_webview) = self.webview.cast::<ICoreWebView2_4>() {
+                let _ = download_webview.remove_DownloadStarting(self.download_token);
+            }
             let _ = self
                 .controller
                 .remove_AcceleratorKeyPressed(self.accelerator_token);
