@@ -185,6 +185,11 @@ try {
     # Restart with the same data directory and verify persistence.
     $beforeRestart = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     $app2 = Start-Process $Exe -PassThru
+    for ($i = 0; $i -lt 40; $i++) {
+        Start-Sleep -Milliseconds 500
+        $app2.Refresh()
+        if ($app2.MainWindowHandle -ne [IntPtr]::Zero) { break }
+    }
     $restored = Wait-State { param($s) @($s.bookmarks).Count -ge 2 -and @($s.history).Count -ge 1 -and @($s.tabs).Count -eq @($beforeSession.tabs).Count } 60 "restored library data and session tabs"
     Add-Result "restart-persistence" "PASS" "bookmarks=$(@($restored.bookmarks).Count) history=$(@($restored.history).Count)"
     $app2.Refresh(); $script:hwnd = $app2.MainWindowHandle

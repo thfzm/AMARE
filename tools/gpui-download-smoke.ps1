@@ -43,7 +43,8 @@ try {
  [void](Wait-State {param($s) $s.source -like "*tab=DL*" -and $null-ne$s.address} 60 "download test page")
  $app.Refresh();$script:hwnd=$app.MainWindowHandle;if($script:hwnd-eq[IntPtr]::Zero){throw "window missing"}
  [void][AmareDl]::SetForegroundWindow($script:hwnd)
- $pageState=PageState
+ $pageState=$null
+ for($i=0;$i-lt40;$i++){ $pageState=PageState; if($null-ne$pageState-and$null-ne$pageState.downloadRect){break}; Start-Sleep -Milliseconds 250 }
  if($null-eq$pageState-or$null-eq$pageState.downloadRect){throw "download link rect unavailable"}
  Click-Web ([int]$pageState.downloadRect.left+5) ([int]$pageState.downloadRect.top+5)
  $started=Wait-State {param($s) @($s.downloads).Count -ge 1} 20 "download start"
