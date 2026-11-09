@@ -138,8 +138,12 @@ try {
         Send-Keys "%{F4}"
         if (-not $app2.WaitForExit(20000)) { throw "restarted library app did not exit" }
     }
-    Start-Sleep -Seconds 2
     $after2 = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        $after2 = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+        if ($after2 -le $beforeRestart) { break }
+    }
     if ($after2 -gt $beforeRestart) { throw "WebView2 remained after restarted app exit" }
     Add-Result "restart-webview2-cleanup" "PASS" "webview2=$beforeRestart->$after2"
 }
