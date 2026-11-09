@@ -1,5 +1,5 @@
-use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit, ProfileContext};
-use amare_services::ProfileService;
+use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit};
+use amare_services::{ProfileContext, ProfileService};
 use amare_store::FolderScope;
 use std::{cell::RefCell, path::PathBuf, sync::Arc};
 
