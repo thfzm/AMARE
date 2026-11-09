@@ -241,12 +241,6 @@ try {
             Start-Sleep -Milliseconds 500
         }
     }
-    if (-not $ctrlT) {
-        $rect = Get-Rect $script:hwnd
-        $orig = Get-Origin $script:hwnd
-        Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
-        $two = Wait-Tabs 2 20 "second tab via button fallback"
-    }
     $two = Ensure-Tabs 2
     if ($ctrlT) {
         Add-Result "new-tab-ctrl-t" "PASS" "tabs=$(@($two.tabs).Count) active=$($two.active_tab)"
