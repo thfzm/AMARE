@@ -1,15 +1,17 @@
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use amare_core::{Bookmark, HistoryEntry};
-use serde::{Deserialize, Serialize};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
     StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions,
-    actions, div, prelude::*, px, rgb, size,
+    actions, div, point, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use serde::{Deserialize, Serialize};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -368,15 +370,11 @@ impl AmareApp {
         app
     }
 
-    fn new_restored(
-        window: &mut Window,
-        cx: &mut App,
-        snapshot: SessionWindowSnapshot,
-    ) -> Self {
+    fn new_restored(window: &mut Window, cx: &mut App, snapshot: SessionWindowSnapshot) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
-            .unwrap_or_else(|_| "about:blank".to_string());
+        let new_tab_url =
+            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
         #[cfg(target_os = "windows")]
         let parent = window
             .window_handle()
@@ -420,10 +418,18 @@ impl AmareApp {
         }
         if tabs.is_empty() {
             tabs.push(TabState {
-                id: 1, title: "New Tab".into(), url: "about:blank".into(), loading: false,
-                error: None, can_go_back: false, can_go_forward: false, favicon: None,
-                last_active: 1, history_url: String::new(),
-                #[cfg(target_os = "windows")] webview: None,
+                id: 1,
+                title: "New Tab".into(),
+                url: "about:blank".into(),
+                loading: false,
+                error: None,
+                can_go_back: false,
+                can_go_forward: false,
+                favicon: None,
+                last_active: 1,
+                history_url: String::new(),
+                #[cfg(target_os = "windows")]
+                webview: None,
             });
         }
         let active = snapshot.active.min(tabs.len() - 1);
@@ -434,16 +440,31 @@ impl AmareApp {
         let history = library::history("").unwrap_or_default();
         let downloads = library::downloads().unwrap_or_default();
         let mut app = Self {
-            tabs, active, next_tab_id: snapshot.tabs.len() as u64 + 1,
+            tabs,
+            active,
+            next_tab_id: snapshot.tabs.len() as u64 + 1,
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
-            activity_counter: snapshot.active as u64 + 1, new_tab_url,
-            address_input, search_input, panel: LibraryPanel::None,
-            bookmarks, history, downloads, history_query: String::new(),
-            confirm_clear_history: false, library_error: None, focus_handle,
-            #[cfg(target_os = "windows")] parent,
-            #[cfg(target_os = "windows")] webview_env,
-            #[cfg(target_os = "windows")] webview_error: None,
-            dark: false, status_poll_started: false, last_session_save: Instant::now(),
+            activity_counter: snapshot.active as u64 + 1,
+            new_tab_url,
+            address_input,
+            search_input,
+            panel: LibraryPanel::None,
+            bookmarks,
+            history,
+            downloads,
+            history_query: String::new(),
+            confirm_clear_history: false,
+            library_error: None,
+            focus_handle,
+            #[cfg(target_os = "windows")]
+            parent,
+            #[cfg(target_os = "windows")]
+            webview_env,
+            #[cfg(target_os = "windows")]
+            webview_error: None,
+            dark: false,
+            status_poll_started: false,
+            last_session_save: Instant::now(),
         };
         #[cfg(target_os = "windows")]
         if let Some(webview) = app.active_webview() {
@@ -1662,12 +1683,18 @@ impl AmareApp {
             height: f32::from(bounds.size.height),
             maximized: window.is_maximized(),
             active: self.active,
-            tabs: self.tabs.iter().map(|tab| SessionTabSnapshot {
-                url: tab.url.to_string(),
-                title: tab.title.to_string(),
-            }).collect(),
+            tabs: self
+                .tabs
+                .iter()
+                .map(|tab| SessionTabSnapshot {
+                    url: tab.url.to_string(),
+                    title: tab.title.to_string(),
+                })
+                .collect(),
         };
-        SESSION_WINDOWS.with(|cell| { cell.borrow_mut().insert(self.window_id, snapshot); });
+        SESSION_WINDOWS.with(|cell| {
+            cell.borrow_mut().insert(self.window_id, snapshot);
+        });
         if self.last_session_save.elapsed() >= Duration::from_secs(2) {
             persist_session();
             self.last_session_save = Instant::now();
@@ -2121,13 +2148,15 @@ impl Render for AmareApp {
 
 impl Drop for AmareApp {
     fn drop(&mut self) {
-        SESSION_WINDOWS.with(|cell| { cell.borrow_mut().remove(&self.window_id); });
+        SESSION_WINDOWS.with(|cell| {
+            cell.borrow_mut().remove(&self.window_id);
+        });
         persist_session();
     }
 }
 
 fn persist_session() {
-    let payload = SESSION_WINDOWS.with(|cell| {
+    let payload: Option<String> = SESSION_WINDOWS.with(|cell| {
         serde_json::to_string(&cell.borrow().values().cloned().collect::<Vec<_>>()).ok()
     });
     if let Some(payload) = payload {
@@ -2142,7 +2171,9 @@ fn load_session_windows() -> Vec<SessionWindowSnapshot> {
         return Vec::new();
     }
     match library::load_session() {
-        Ok(Some(json)) => serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json).unwrap_or_default(),
+        Ok(Some(json)) => {
+            serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json).unwrap_or_default()
+        }
         _ => Vec::new(),
     }
 }
@@ -2250,7 +2281,10 @@ fn main() {
             for snapshot in restored {
                 let bounds = Bounds::new(
                     point(px(snapshot.x.max(0.0)), px(snapshot.y.max(0.0))),
-                    size(px(snapshot.width.max(640.0)), px(snapshot.height.max(480.0))),
+                    size(
+                        px(snapshot.width.max(640.0)),
+                        px(snapshot.height.max(480.0)),
+                    ),
                 );
                 let window_bounds = if snapshot.maximized {
                     WindowBounds::Maximized(bounds)

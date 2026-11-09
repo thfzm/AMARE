@@ -102,7 +102,12 @@ pub fn save_session(json: &str) -> Result<(), String> {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
         profile
             .settings()
-            .set("gpui.session", "browser", SettingValue::Json(json.to_string()))
+            .set(
+                "gpui.session",
+                "browser",
+                SettingValue::Json(json.to_string()),
+            )
+            .map(|_| ())
             .map_err(|e| e.to_string())
     })
 }
@@ -110,7 +115,10 @@ pub fn save_session(json: &str) -> Result<(), String> {
 pub fn load_session() -> Result<Option<String>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
-        let value = profile.settings().get("gpui.session").map_err(|e| e.to_string())?;
+        let value = profile
+            .settings()
+            .get("gpui.session")
+            .map_err(|e| e.to_string())?;
         Ok(match value {
             Some(entry) => match entry.value {
                 SettingValue::Json(json) => Some(json),
