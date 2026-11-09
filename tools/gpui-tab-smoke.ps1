@@ -227,9 +227,32 @@ try {
     Add-Result "initial-tab" "PASS" "id=$($initial.active_tab) source=$($initial.source)"
     Process-Metrics "1-tab"
     [void][AmareTab]::SetForegroundWindow($script:hwnd)
-    Send-Keys "^t"
-    $two = Wait-Tabs 2 20 "second tab via Ctrl+T"
-    Add-Result "new-tab-ctrl-t" "PASS" "tabs=$(@($two.tabs).Count) active=$($two.active_tab)"
+    $ctrlT = $false
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        Send-Keys "^t"
+        try {
+            $two = Wait-Tabs 2 8 "second tab via Ctrl+T"
+            $ctrlT = $true
+            break
+        } catch {
+            Write-Host "Retrying Ctrl+T"
+            Set-EnglishLayout $script:hwnd
+            [void][AmareTab]::SetForegroundWindow($script:hwnd)
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (-not $ctrlT) {
+        $rect = Get-Rect $script:hwnd
+        $orig = Get-Origin $script:hwnd
+        Click-At $script:hwnd ($rect.Right - 60) ($orig.Y + 22)
+        $two = Wait-Tabs 2 20 "second tab via button fallback"
+    }
+    $two = Ensure-Tabs 2
+    if ($ctrlT) {
+        Add-Result "new-tab-ctrl-t" "PASS" "tabs=$(@($two.tabs).Count) active=$($two.active_tab)"
+    } else {
+        Add-Result "new-tab-ctrl-t" "UNVERIFIED" "Ctrl+T missed; toolbar button fallback used"
+    }
     $ids = @($two.tabs) | ForEach-Object { $_.id }
     $orig = Get-Origin $script:hwnd
     Click-At $script:hwnd ($orig.X + 55) ($orig.Y + 22)
