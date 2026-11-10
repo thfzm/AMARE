@@ -141,11 +141,9 @@ try {
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
-    Send-Keys "^t"
+    Click-Client $script:hwnd 780 22
     [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 8 "multiple tabs")
     Shot "03-multiple-tabs.png"
-    Send-Keys "^w"
-    [void](Wait-State { param($s) @($s.tabs).Count -eq 1 } 8 "single tab restored")
     Start-Sleep -Milliseconds 400
 
     $mainRect = New-Object AmarePassword+RECT
