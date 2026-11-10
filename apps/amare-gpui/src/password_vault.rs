@@ -6,6 +6,7 @@
 //! Non-Windows builds return `Unsupported`; no plaintext fallback is provided.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use url::Url;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -13,6 +14,11 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 const VAULT_MAGIC: &[u8; 9] = b"AMAREVLT1";
 const VAULT_AAD: &[u8] = b"amare.gpui.password-vault.v1";
 const MAX_VAULT_BYTES: usize = 8 * 1024 * 1024;
+static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub fn generation() -> u64 {
+    VAULT_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PasswordEntry {
@@ -62,6 +68,7 @@ pub fn same_origin(left: &str, right: &str) -> bool {
 #[derive(Default)]
 pub struct PasswordVault {
     entries: Vec<PasswordEntry>,
+    deleted_ids: BTreeSet<u64>,
     unlocked: bool,
 }
 
@@ -84,7 +91,29 @@ impl PasswordVault {
 
     pub fn lock(&mut self) {
         self.entries.clear();
+        self.deleted_ids.clear();
         self.unlocked = false;
+    }
+
+    pub fn backup(&self) -> Result<PathBuf, String> {
+        let (_, vault_path) = Self::paths()?;
+        if !vault_path.exists() {
+            return Err("백업할 vault 파일이 없습니다.".into());
+        }
+        let root = vault_path
+            .parent()
+            .ok_or_else(|| "vault 경로가 올바르지 않습니다.".to_string())?
+            .join("recovery");
+        std::fs::create_dir_all(&root)
+            .map_err(|_| "복구 백업 폴더를 만들 수 없습니다.".to_string())?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let destination = root.join(format!("vault-{stamp}.bin"));
+        std::fs::copy(&vault_path, &destination)
+            .map_err(|_| "vault 백업에 실패했습니다.".to_string())?;
+        Ok(destination)
     }
 
     #[cfg(target_os = "windows")]
@@ -96,20 +125,15 @@ impl PasswordVault {
     }
 
     #[cfg(target_os = "windows")]
-    pub fn unlock(&mut self) -> Result<(), String> {
-        use amare_platform::WindowsDpapiKeyProtector;
-        use amare_security::{KeyFile, decrypt};
-        let (key_path, vault_path) = Self::paths()?;
-        let protector = WindowsDpapiKeyProtector;
-        let key = KeyFile::new(&key_path)
-            .load_or_create(&protector, "amare.gpui.password-vault.key.v1")
-            .map_err(|_| "Windows DPAPI 보안 키를 열 수 없습니다.".to_string())?;
+    fn read_entries(
+        key: &[u8; 32],
+        vault_path: &std::path::Path,
+    ) -> Result<Vec<PasswordEntry>, String> {
+        use amare_security::decrypt;
         if !vault_path.exists() {
-            self.entries.clear();
-            self.unlocked = true;
-            return Ok(());
+            return Ok(Vec::new());
         }
-        let bytes = std::fs::read(&vault_path)
+        let bytes = std::fs::read(vault_path)
             .map_err(|_| "보안 저장소 파일을 읽을 수 없습니다.".to_string())?;
         if bytes.len() > MAX_VAULT_BYTES
             || bytes.len() < VAULT_MAGIC.len()
@@ -117,12 +141,40 @@ impl PasswordVault {
         {
             return Err("보안 저장소 형식이 올바르지 않습니다.".into());
         }
-        let mut plain = decrypt(&key, &bytes[VAULT_MAGIC.len()..], VAULT_AAD)
+        let mut plain = decrypt(key, &bytes[VAULT_MAGIC.len()..], VAULT_AAD)
             .map_err(|_| "보안 저장소를 복호화할 수 없습니다.".to_string())?;
         let parsed: Vec<PasswordEntry> = serde_json::from_slice(&plain)
             .map_err(|_| "보안 저장소 데이터가 손상되었습니다.".to_string())?;
         plain.zeroize();
+        Ok(parsed)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn key_for(
+        &self,
+        key_path: &std::path::Path,
+        vault_path: &std::path::Path,
+    ) -> Result<[u8; 32], String> {
+        use amare_platform::WindowsDpapiKeyProtector;
+        use amare_security::KeyFile;
+        if vault_path.exists() && !key_path.exists() {
+            return Err("vault 키가 없어 기존 보안 저장소를 열 수 없습니다.".into());
+        }
+        KeyFile::new(key_path)
+            .load_or_create(
+                &WindowsDpapiKeyProtector,
+                "amare.gpui.password-vault.key.v1",
+            )
+            .map_err(|_| "Windows DPAPI 보안 키를 열 수 없습니다.".to_string())
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn unlock(&mut self) -> Result<(), String> {
+        let (key_path, vault_path) = Self::paths()?;
+        let key = self.key_for(&key_path, &vault_path)?;
+        let parsed = Self::read_entries(&key, &vault_path)?;
         self.entries = parsed;
+        self.deleted_ids.clear();
         self.unlocked = true;
         Ok(())
     }
@@ -134,14 +186,19 @@ impl PasswordVault {
 
     #[cfg(target_os = "windows")]
     pub fn save(&mut self) -> Result<(), String> {
-        use amare_platform::WindowsDpapiKeyProtector;
-        use amare_security::{KeyFile, encrypt};
+        use amare_security::encrypt;
         let (key_path, vault_path) = Self::paths()?;
-        let protector = WindowsDpapiKeyProtector;
-        let key = KeyFile::new(&key_path)
-            .load_or_create(&protector, "amare.gpui.password-vault.key.v1")
-            .map_err(|_| "Windows DPAPI 보안 키를 열 수 없습니다.".to_string())?;
-        let mut plain = serde_json::to_vec(&self.entries)
+        let key = self.key_for(&key_path, &vault_path)?;
+        let mut merged = Self::read_entries(&key, &vault_path)?;
+        merged.retain(|entry| !self.deleted_ids.contains(&entry.id));
+        for entry in &self.entries {
+            if let Some(existing) = merged.iter_mut().find(|item| item.id == entry.id) {
+                *existing = entry.clone();
+            } else {
+                merged.push(entry.clone());
+            }
+        }
+        let mut plain = serde_json::to_vec(&merged)
             .map_err(|_| "보안 저장소 직렬화에 실패했습니다.".to_string())?;
         let encrypted = encrypt(&key, &plain, VAULT_AAD)
             .map_err(|_| "보안 저장소 암호화에 실패했습니다.".to_string())?;
@@ -164,7 +221,10 @@ impl PasswordVault {
         }
         std::fs::rename(&temp, &vault_path)
             .map_err(|_| "보안 저장소 파일을 교체할 수 없습니다.".to_string())?;
+        self.entries = merged;
+        self.deleted_ids.clear();
         self.unlocked = true;
+        VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -222,7 +282,19 @@ impl PasswordVault {
                 return Ok(existing_id);
             }
         }
-        let id = self.entries.iter().map(|entry| entry.id).max().unwrap_or(0) + 1;
+        let id = self
+            .entries
+            .iter()
+            .map(|entry| entry.id)
+            .max()
+            .unwrap_or(0)
+            .max(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as u64,
+            )
+            + 1;
         self.entries.push(PasswordEntry {
             id,
             origin,
@@ -238,7 +310,11 @@ impl PasswordVault {
     pub fn delete(&mut self, id: u64) -> bool {
         let before = self.entries.len();
         self.entries.retain(|entry| entry.id != id);
-        self.entries.len() != before
+        let changed = self.entries.len() != before;
+        if changed {
+            self.deleted_ids.insert(id);
+        }
+        changed
     }
 }
 
@@ -287,6 +363,7 @@ mod tests {
     fn entry_upsert_requires_user_approval_shape_and_keeps_multiple_accounts() {
         let mut vault = PasswordVault {
             entries: Vec::new(),
+            deleted_ids: BTreeSet::new(),
             unlocked: true,
         };
         let first = vault

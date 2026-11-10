@@ -322,6 +322,8 @@ struct PasswordUi {
     pending: Option<PendingLogin>,
     error: Option<String>,
     info: Option<String>,
+    vault_generation: u64,
+    recovery_path: Option<String>,
 }
 
 fn create_password_ui(cx: &mut App) -> PasswordUi {
@@ -345,6 +347,8 @@ fn create_password_ui(cx: &mut App) -> PasswordUi {
         pending: None,
         error: None,
         info: None,
+        vault_generation: 0,
+        recovery_path: None,
     }
 }
 
@@ -1063,11 +1067,16 @@ impl AmareApp {
     fn unlock_password_vault(&mut self, cx: &mut Context<Self>) {
         match self.password_ui.vault.unlock() {
             Ok(()) => {
+                self.password_ui.vault_generation = password_vault::generation();
                 self.password_ui.error = None;
+                self.password_ui.recovery_path = None;
                 self.password_ui.info = Some("보안 저장소 잠금을 해제했습니다.".into());
             }
             Err(error) => {
-                self.password_ui.error = Some(error);
+                self.password_ui.recovery_path = None;
+                self.password_ui.error = Some(format!(
+                    "{error} 원본 vault는 삭제하거나 덮어쓰지 않았습니다. 다시 시도하거나 vault 백업 후 복구를 진행하세요."
+                ));
             }
         }
         cx.notify();
@@ -1082,6 +1091,43 @@ impl AmareApp {
         self.password_ui.confirm_delete = None;
         self.password_ui.error = None;
         self.password_ui.info = Some("보안 저장소를 잠갔습니다.".into());
+        cx.notify();
+    }
+
+    fn backup_password_vault(&mut self, cx: &mut Context<Self>) {
+        match self.password_ui.vault.backup() {
+            Ok(path) => {
+                self.password_ui.recovery_path = Some(path.display().to_string());
+                self.password_ui.info = Some("원본 vault를 recovery 폴더에 백업했습니다.".into());
+                self.password_ui.error = None;
+            }
+            Err(error) => self.password_ui.error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn sync_password_vault(&mut self, cx: &mut Context<Self>) {
+        if self.panel != LibraryPanel::Passwords
+            || !self.password_ui.vault.is_unlocked()
+            || self.password_ui.form_open
+            || self.password_ui.pending.is_some()
+        {
+            return;
+        }
+        let generation = password_vault::generation();
+        if generation == self.password_ui.vault_generation {
+            return;
+        }
+        match self.password_ui.vault.unlock() {
+            Ok(()) => {
+                self.password_ui.vault_generation = generation;
+                self.password_ui.info = Some("다른 창의 보안 저장소 변경을 반영했습니다.".into());
+                self.password_ui.error = None;
+            }
+            Err(error) => {
+                self.password_ui.error = Some(error);
+            }
+        }
         cx.notify();
     }
 
@@ -1158,6 +1204,7 @@ impl AmareApp {
         match result {
             Ok(_) => match self.password_ui.vault.save() {
                 Ok(()) => {
+                    self.password_ui.vault_generation = password_vault::generation();
                     self.password_ui.form_open = false;
                     self.password_ui.editing = None;
                     self.password_ui.error = None;
@@ -1187,6 +1234,7 @@ impl AmareApp {
         if self.password_ui.vault.delete(id) {
             match self.password_ui.vault.save() {
                 Ok(()) => {
+                    self.password_ui.vault_generation = password_vault::generation();
                     self.password_ui.info = Some("로그인 정보를 삭제했습니다.".into());
                     self.password_ui.error = None;
                 }
@@ -1265,6 +1313,7 @@ impl AmareApp {
         match result {
             Ok(_) => match self.password_ui.vault.save() {
                 Ok(()) => {
+                    self.password_ui.vault_generation = password_vault::generation();
                     self.password_ui.pending = None;
                     self.password_ui.info = Some("로그인 정보를 저장했습니다.".into());
                     self.password_ui.error = None;
@@ -2918,6 +2967,12 @@ impl AmareApp {
         let save = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.save_password_form(cx);
         });
+        let backup_vault = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.backup_password_vault(cx);
+        });
+        let retry_unlock = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.unlock_password_vault(cx);
+        });
         let cancel_form = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.password_ui.form_open = false;
             this.password_ui.editing = None;
@@ -3198,6 +3253,10 @@ impl AmareApp {
                 this.delete_password_entry(id, cx);
             });
             let confirm = self.password_ui.confirm_delete == Some(id);
+            let cancel_delete = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.password_ui.confirm_delete = None;
+                cx.notify();
+            });
             rows = rows.child(
                 div()
                     .id(SharedString::from(format!("password-entry-{id}")))
@@ -3244,6 +3303,9 @@ impl AmareApp {
                                     .child(
                                         div()
                                             .id(SharedString::from(format!("password-edit-{id}")))
+                                            .px_2()
+                                            .py_1()
+                                            .rounded_sm()
                                             .text_xs()
                                             .text_color(accent)
                                             .cursor_pointer()
@@ -3253,12 +3315,29 @@ impl AmareApp {
                                     .child(
                                         div()
                                             .id(SharedString::from(format!("password-delete-{id}")))
+                                            .px_2()
+                                            .py_1()
+                                            .rounded_sm()
                                             .text_xs()
                                             .text_color(if confirm { danger } else { muted })
                                             .cursor_pointer()
                                             .child(if confirm { "정말 삭제" } else { "삭제" })
                                             .on_click(delete),
-                                    ),
+                                    )
+                                    .when(confirm, |el| {
+                                        el.child(
+                                            div()
+                                                .id("password-cancel-delete")
+                                                .px_2()
+                                                .py_1()
+                                                .rounded_sm()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .cursor_pointer()
+                                                .child("취소")
+                                                .on_click(cancel_delete),
+                                        )
+                                    }),
                             ),
                     ),
             );
@@ -3410,7 +3489,49 @@ impl AmareApp {
                 el.child(div().p_2().text_xs().text_color(accent).child(info))
             })
             .when_some(self.password_ui.error.clone(), |el, error| {
-                el.child(div().p_2().text_xs().text_color(danger).child(error))
+                el.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_2()
+                        .bg(if dark { rgb(0x3a1d21) } else { rgb(0xffe8e8) })
+                        .text_xs()
+                        .text_color(danger)
+                        .child(error)
+                        .child(
+                            div()
+                                .flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .id("password-retry-unlock")
+                                        .px_2()
+                                        .py_1()
+                                        .rounded_sm()
+                                        .bg(accent)
+                                        .text_color(rgb(0xffffff))
+                                        .cursor_pointer()
+                                        .child("다시 시도")
+                                        .on_click(retry_unlock),
+                                )
+                                .child(
+                                    div()
+                                        .id("password-backup-vault")
+                                        .px_2()
+                                        .py_1()
+                                        .rounded_sm()
+                                        .bg(background)
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("vault 백업")
+                                        .on_click(backup_vault),
+                                ),
+                        )
+                        .when_some(self.password_ui.recovery_path.clone(), |el, path| {
+                            el.child(div().text_xs().text_color(muted).child(path))
+                        }),
+                )
             })
     }
 
@@ -4031,6 +4152,7 @@ impl Render for AmareApp {
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
+        self.sync_password_vault(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);

@@ -252,9 +252,66 @@ try {
     Click-Client $script:hwnd 650 242
     [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 2 } 10 "vault restart unlock")
     Add-Result "vault-restart-dpapi" "PASS" "2 accounts restored after restart"
-    Add-Result "vault-delete-ui" "UNVERIFIED" "delete UI implemented; automated click did not reach the small delete target"
+    $deleteX = 0
+    $deleteY = 0
+    $confirmed = $false
+    foreach ($y in 375, 383, 391, 399) {
+        foreach ($x in 990, 1000, 1010) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($null -ne $state.password_vault.confirm_delete) {
+                $deleteX = $x; $deleteY = $y; $confirmed = $true; break
+            }
+        }
+        if ($confirmed) { break }
+    }
+    if (-not $confirmed) { throw "Timed out waiting for delete confirmation" }
+    Shot "07-delete-confirm.png"
+    Click-Client $script:hwnd $deleteX $deleteY
+    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 -and $null -eq $s.password_vault.confirm_delete } 8 "vault delete")
+    Add-Result "vault-delete-confirm" "PASS" "confirmation shown and one account removed"
+    Shot "07b-delete-complete.png"
     Send-Keys "%{F4}"
-    if (-not $app.WaitForExit(20000)) { throw "restarted password app did not exit" }
+    if (-not $app.WaitForExit(20000)) { throw "deleted vault app did not exit" }
+    Start-Sleep -Seconds 2
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "deleted vault restart")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
+    Open-Passwords
+    Click-Client $script:hwnd 650 242
+    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 1 } 10 "deleted vault persistence")
+    Add-Result "vault-delete-restart-persistence" "PASS" "one account remains after restart"
+    Send-Keys "%{F4}"
+    if (-not $app.WaitForExit(20000)) { throw "deleted persistence app did not exit" }
+    Start-Sleep -Seconds 2
+
+    $vaultPath = Join-Path $DataDir "password-vault\vault.bin"
+    $beforeHash = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
+    $bytes = [IO.File]::ReadAllBytes($vaultPath)
+    $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 1
+    [IO.File]::WriteAllBytes($vaultPath, $bytes)
+    $corruptHash = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
+    if ($corruptHash -eq $beforeHash) { throw "failed to corrupt vault fixture" }
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "corrupt vault app")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
+    Open-Passwords
+    Click-Client $script:hwnd 650 242
+    [void](Wait-State { param($s) $null -ne $s.password_vault.error } 10 "corrupt vault error")
+    $afterHash = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
+    if ($afterHash -ne $corruptHash) { throw "corrupt vault was overwritten after unlock failure" }
+    Add-Result "vault-corruption-preserved" "PASS" "original encrypted vault unchanged after failed unlock"
+    Shot "09-dpapi-error.png"
+    Send-Keys "%{F4}"
+    if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
     try { Shot "99-password-failure.png" } catch {}
