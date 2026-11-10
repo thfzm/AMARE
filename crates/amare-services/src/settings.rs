@@ -130,9 +130,59 @@ static DEFINITIONS: LazyLock<Vec<SettingDefinition>> = LazyLock::new(|| {
         text(
             "home_page",
             SettingGroup::Browsing,
+            "https://example.com/",
+            8192,
+            "Home page and new-window target applied by the browser shell.",
+        ),
+        text_choice(
+            "ui_density",
+            SettingGroup::Appearance,
+            "comfortable",
+            &["comfortable", "compact"],
+            "Browser shell tab and settings density.",
+        ),
+        text(
+            "ui_font",
+            SettingGroup::Appearance,
+            "Segoe UI",
+            128,
+            "Browser shell font family.",
+        ),
+        integer(
+            "ui_font_size",
+            SettingGroup::Appearance,
+            16,
+            12,
+            20,
+            "Browser shell base font size.",
+        ),
+        integer(
+            "tab_width",
+            SettingGroup::Tabs,
+            120,
+            90,
+            180,
+            "Browser shell tab width in pixels.",
+        ),
+        text(
+            "new_tab_url",
+            SettingGroup::Browsing,
             "about:blank",
             8192,
-            "Home page target; browser shell applies this policy.",
+            "Target URL for a newly created tab.",
+        ),
+        boolean(
+            "save_session_on_exit",
+            SettingGroup::Browsing,
+            true,
+            "Persist the current window and tab session when the app exits.",
+        ),
+        text_choice(
+            "address_behavior",
+            SettingGroup::Search,
+            "smart",
+            &["smart", "search"],
+            "Address input resolution: URL-aware smart mode or always search.",
         ),
         text_choice(
             "engine",
@@ -159,17 +209,44 @@ static DEFINITIONS: LazyLock<Vec<SettingDefinition>> = LazyLock::new(|| {
             true,
             "Download location prompt policy.",
         ),
+        text(
+            "download_path",
+            SettingGroup::Downloads,
+            "",
+            1024,
+            "Browser shell download directory override; empty uses the user Downloads folder.",
+        ),
+        boolean(
+            "download_panel_auto_open",
+            SettingGroup::Downloads,
+            false,
+            "Open the downloads panel when a new download starts.",
+        ),
         boolean(
             "restore_session",
             SettingGroup::Tabs,
             true,
-            "Session restore policy.",
+            "Restore the saved browser session at startup.",
+        ),
+        boolean(
+            "save_history",
+            SettingGroup::Privacy,
+            true,
+            "Record page visits in local history.",
         ),
         boolean(
             "background_throttling",
             SettingGroup::Performance,
             true,
             "Background tab throttling policy.",
+        ),
+        integer(
+            "settings_schema_version",
+            SettingGroup::Performance,
+            1,
+            1,
+            1000,
+            "Internal settings schema marker used by the browser shell.",
         ),
         text_choice(
             "default_mode",
@@ -243,6 +320,23 @@ fn boolean(
         group,
         default: SettingValue::Boolean(default),
         rule: ValueRule::Boolean,
+        description,
+    }
+}
+
+fn integer(
+    key: &'static str,
+    group: SettingGroup,
+    default: i64,
+    min: i64,
+    max: i64,
+    description: &'static str,
+) -> SettingDefinition {
+    SettingDefinition {
+        key,
+        group,
+        default: SettingValue::Integer(default),
+        rule: ValueRule::IntegerRange { min, max },
         description,
     }
 }

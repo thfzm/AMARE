@@ -40,10 +40,18 @@ pub struct AddressInput {
 
 impl AddressInput {
     pub fn new(content: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
+        Self::new_with_placeholder(content, "Search or enter address", cx)
+    }
+
+    pub fn new_with_placeholder(
+        content: impl Into<SharedString>,
+        placeholder: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             content: content.into(),
-            placeholder: "Search or enter address".into(),
+            placeholder: placeholder.into(),
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,

@@ -400,13 +400,11 @@ fn settings_defaults_and_groups_are_resolved() {
     assert_eq!(theme.source, SettingSource::Default);
     assert_eq!(theme.value, SettingValue::Text("system".into()));
     assert_eq!(theme.group, SettingGroup::Appearance);
-    assert_eq!(
-        settings
-            .list_group(&context, SettingGroup::Appearance)
-            .unwrap()
-            .len(),
-        1
-    );
+    let appearance = settings
+        .list_group(&context, SettingGroup::Appearance)
+        .unwrap();
+    assert!(appearance.len() >= 1);
+    assert!(appearance.iter().any(|setting| setting.key == "theme"));
     assert_eq!(
         settings.list_all(&context).unwrap().len(),
         definitions().len()

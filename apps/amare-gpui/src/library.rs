@@ -1,10 +1,223 @@
 use amare_core::{Bookmark, HistoryEntry, NewBookmark, NewHistoryVisit, SettingValue};
-use amare_services::{ProfileContext, ProfileService};
+use amare_services::{ProfileContext, ProfileService, ResolvedSetting, SettingsService};
 use amare_store::{DownloadRecord, FolderScope};
-use std::{cell::RefCell, path::PathBuf, sync::Arc};
+use std::{
+    cell::RefCell,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 thread_local! {
     static LIBRARY: RefCell<Option<(Arc<ProfileService>, ProfileContext)>> = const { RefCell::new(None) };
+    static SETTINGS_CACHE: RefCell<Option<(u64, BrowserSettings)>> = const { RefCell::new(None) };
+}
+
+static SETTINGS_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrowserSettings {
+    pub theme: String,
+    pub ui_density: String,
+    pub ui_font: String,
+    pub ui_font_size: i64,
+    pub tab_width: i64,
+    pub restore_session: bool,
+    pub save_session_on_exit: bool,
+    pub home_page: String,
+    pub new_tab_url: String,
+    pub engine: String,
+    pub address_behavior: String,
+    pub download_path: String,
+    pub download_panel_auto_open: bool,
+    pub save_history: bool,
+}
+
+impl Default for BrowserSettings {
+    fn default() -> Self {
+        Self {
+            theme: "system".into(),
+            ui_density: "comfortable".into(),
+            ui_font: "Segoe UI".into(),
+            ui_font_size: 16,
+            tab_width: 120,
+            restore_session: true,
+            save_session_on_exit: true,
+            home_page: "https://example.com/".into(),
+            new_tab_url: "about:blank".into(),
+            engine: "duckduckgo".into(),
+            address_behavior: "smart".into(),
+            download_path: String::new(),
+            download_panel_auto_open: false,
+            save_history: true,
+        }
+    }
+}
+
+const SETTINGS_KEYS: &[&str] = &[
+    "theme",
+    "ui_density",
+    "ui_font",
+    "ui_font_size",
+    "tab_width",
+    "restore_session",
+    "save_session_on_exit",
+    "home_page",
+    "new_tab_url",
+    "engine",
+    "address_behavior",
+    "download_path",
+    "download_panel_auto_open",
+    "save_history",
+];
+
+fn text_setting(values: &[ResolvedSetting], key: &str, default: &str, choices: &[&str]) -> String {
+    values
+        .iter()
+        .find(|value| value.key == key)
+        .and_then(|value| match &value.value {
+            SettingValue::Text(text) if choices.is_empty() || choices.contains(&text.as_str()) => {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn bool_setting(values: &[ResolvedSetting], key: &str, default: bool) -> bool {
+    values
+        .iter()
+        .find(|value| value.key == key)
+        .and_then(|value| match &value.value {
+            SettingValue::Boolean(value) => Some(*value),
+            _ => None,
+        })
+        .unwrap_or(default)
+}
+
+fn int_setting(values: &[ResolvedSetting], key: &str, default: i64, min: i64, max: i64) -> i64 {
+    values
+        .iter()
+        .find(|value| value.key == key)
+        .and_then(|value| match &value.value {
+            SettingValue::Integer(value) if *value >= min && *value <= max => Some(*value),
+            _ => None,
+        })
+        .unwrap_or(default)
+}
+
+impl BrowserSettings {
+    fn from_resolved(values: &[ResolvedSetting]) -> Self {
+        let defaults = Self::default();
+        Self {
+            theme: text_setting(
+                values,
+                "theme",
+                &defaults.theme,
+                &["system", "light", "dark"],
+            ),
+            ui_density: text_setting(
+                values,
+                "ui_density",
+                &defaults.ui_density,
+                &["comfortable", "compact"],
+            ),
+            ui_font: text_setting(values, "ui_font", &defaults.ui_font, &[]),
+            ui_font_size: int_setting(values, "ui_font_size", defaults.ui_font_size, 12, 20),
+            tab_width: int_setting(values, "tab_width", defaults.tab_width, 90, 180),
+            restore_session: bool_setting(values, "restore_session", defaults.restore_session),
+            save_session_on_exit: bool_setting(
+                values,
+                "save_session_on_exit",
+                defaults.save_session_on_exit,
+            ),
+            home_page: text_setting(values, "home_page", &defaults.home_page, &[]),
+            new_tab_url: text_setting(values, "new_tab_url", &defaults.new_tab_url, &[]),
+            engine: text_setting(
+                values,
+                "engine",
+                &defaults.engine,
+                &["duckduckgo", "google", "bing"],
+            ),
+            address_behavior: text_setting(
+                values,
+                "address_behavior",
+                &defaults.address_behavior,
+                &["smart", "search"],
+            ),
+            download_path: text_setting(values, "download_path", &defaults.download_path, &[]),
+            download_panel_auto_open: bool_setting(
+                values,
+                "download_panel_auto_open",
+                defaults.download_panel_auto_open,
+            ),
+            save_history: bool_setting(values, "save_history", defaults.save_history),
+        }
+    }
+}
+
+pub fn browser_settings_cached() -> Result<(u64, BrowserSettings), String> {
+    let generation = SETTINGS_GENERATION.load(Ordering::Relaxed);
+    if let Some((cached_generation, settings)) = SETTINGS_CACHE.with(|cache| cache.borrow().clone())
+        && cached_generation == generation
+    {
+        return Ok((generation, settings));
+    }
+    let settings = browser_settings()?;
+    SETTINGS_CACHE.with(|cache| {
+        *cache.borrow_mut() = Some((generation, settings.clone()));
+    });
+    Ok((generation, settings))
+}
+
+pub fn browser_settings() -> Result<BrowserSettings, String> {
+    with_library(|service, context| {
+        let settings = SettingsService::new(service);
+        let values = settings
+            .list_all(context)
+            .map_err(|error| error.to_string())?;
+        Ok(BrowserSettings::from_resolved(&values))
+    })
+}
+
+pub fn set_browser_setting(key: &str, value: SettingValue) -> Result<BrowserSettings, String> {
+    let settings = with_library(|service, context| {
+        let settings = SettingsService::new(service);
+        settings
+            .set(context, key, value)
+            .map_err(|error| error.to_string())?;
+        let values = settings
+            .list_all(context)
+            .map_err(|error| error.to_string())?;
+        Ok(BrowserSettings::from_resolved(&values))
+    })?;
+    SETTINGS_GENERATION.fetch_add(1, Ordering::Relaxed);
+    SETTINGS_CACHE.with(|cache| *cache.borrow_mut() = None);
+    Ok(settings)
+}
+
+pub fn reset_browser_settings() -> Result<BrowserSettings, String> {
+    let settings = with_library(|service, context| {
+        let settings = SettingsService::new(service);
+        for key in SETTINGS_KEYS {
+            settings
+                .reset_key(context, key)
+                .map_err(|error| error.to_string())?;
+        }
+        let values = settings
+            .list_all(context)
+            .map_err(|error| error.to_string())?;
+        Ok(BrowserSettings::from_resolved(&values))
+    })?;
+    SETTINGS_GENERATION.fetch_add(1, Ordering::Relaxed);
+    SETTINGS_CACHE.with(|cache| *cache.borrow_mut() = None);
+    Ok(settings)
+}
+
+pub fn data_root_display() -> String {
+    data_root().display().to_string()
 }
 
 fn data_root() -> PathBuf {

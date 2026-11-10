@@ -65,6 +65,25 @@ thread_local! {
     static SHARED_ENVIRONMENT: RefCell<Option<Arc<WebViewEnvironment>>> = const { RefCell::new(None) };
 }
 
+#[cfg(target_os = "windows")]
+pub fn runtime_version() -> String {
+    use webview2_com::Microsoft::Web::WebView2::Win32::GetAvailableCoreWebView2BrowserVersionString;
+    use windows::{
+        Win32::System::Com::CoTaskMemFree,
+        core::{PCWSTR, PWSTR},
+    };
+    unsafe {
+        let mut version = PWSTR::null();
+        if GetAvailableCoreWebView2BrowserVersionString(PCWSTR::null(), &mut version).is_ok() {
+            let text = version.to_string().unwrap_or_default();
+            CoTaskMemFree(Some(version.0 as *const _));
+            return text;
+        }
+    }
+    "unknown".to_string()
+}
+
+#[cfg(target_os = "windows")]
 pub fn shared_environment() -> std::result::Result<Arc<WebViewEnvironment>, String> {
     SHARED_ENVIRONMENT.with(|cell| {
         if let Some(environment) = cell.borrow().as_ref() {
@@ -76,6 +95,7 @@ pub fn shared_environment() -> std::result::Result<Arc<WebViewEnvironment>, Stri
     })
 }
 
+#[cfg(target_os = "windows")]
 impl WebViewEnvironment {
     pub fn create() -> std::result::Result<Self, String> {
         unsafe {
@@ -136,11 +156,27 @@ struct DownloadState {
 static NEXT_DOWNLOAD_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[cfg(target_os = "windows")]
+static DOWNLOAD_DIRECTORY_OVERRIDE: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+pub fn set_download_directory_override(path: Option<std::path::PathBuf>) {
+    if let Ok(mut override_path) = DOWNLOAD_DIRECTORY_OVERRIDE.lock() {
+        *override_path = path;
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn download_directory() -> std::path::PathBuf {
     if let Ok(path) = std::env::var("AMARE_GPUI_DOWNLOAD_DIR") {
         let path = std::path::PathBuf::from(path);
         let _ = std::fs::create_dir_all(&path);
         return path;
+    }
+    if let Ok(override_path) = DOWNLOAD_DIRECTORY_OVERRIDE.lock()
+        && let Some(path) = override_path.as_ref()
+    {
+        let _ = std::fs::create_dir_all(path);
+        return path.clone();
     }
     if let Ok(profile) = std::env::var("USERPROFILE") {
         let path = std::path::PathBuf::from(profile).join("Downloads");

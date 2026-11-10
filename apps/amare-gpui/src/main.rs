@@ -4,11 +4,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use amare_core::{Bookmark, HistoryEntry};
+use amare_core::{Bookmark, HistoryEntry, SettingValue};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    StatefulInteractiveElement, Timer, Window, WindowBounds, WindowControlArea, WindowOptions,
-    actions, div, point, prelude::*, px, rgb, size,
+    StatefulInteractiveElement, Timer, Window, WindowAppearance, WindowBounds, WindowControlArea,
+    WindowOptions, actions, div, point, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,7 @@ actions!(
         ToggleBookmarksPanel,
         ToggleHistoryPanel,
         ToggleDownloadsPanel,
+        ToggleSettings,
     ]
 );
 
@@ -63,6 +64,104 @@ enum LibraryPanel {
     Bookmarks,
     History,
     Downloads,
+    Settings,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsCategory {
+    Appearance,
+    Startup,
+    Search,
+    Downloads,
+    Privacy,
+    Advanced,
+}
+
+impl SettingsCategory {
+    const ALL: [Self; 6] = [
+        Self::Appearance,
+        Self::Startup,
+        Self::Search,
+        Self::Downloads,
+        Self::Privacy,
+        Self::Advanced,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Appearance => "외관",
+            Self::Startup => "시작 및 세션",
+            Self::Search => "검색",
+            Self::Downloads => "다운로드",
+            Self::Privacy => "개인정보 및 보안",
+            Self::Advanced => "고급",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Appearance => "appearance",
+            Self::Startup => "startup",
+            Self::Search => "search",
+            Self::Downloads => "downloads",
+            Self::Privacy => "privacy",
+            Self::Advanced => "advanced",
+        }
+    }
+}
+
+struct SettingsInputs {
+    search: gpui::Entity<AddressInput>,
+    home_page: gpui::Entity<AddressInput>,
+    new_tab_url: gpui::Entity<AddressInput>,
+    download_path: gpui::Entity<AddressInput>,
+    font: gpui::Entity<AddressInput>,
+}
+
+fn create_settings_inputs(cx: &mut App, settings: &library::BrowserSettings) -> SettingsInputs {
+    SettingsInputs {
+        search: cx.new(|cx| AddressInput::new_with_placeholder("", "설정 검색", cx)),
+        home_page: cx.new(|cx| {
+            AddressInput::new_with_placeholder(settings.home_page.clone(), "시작 페이지 URL", cx)
+        }),
+        new_tab_url: cx.new(|cx| {
+            AddressInput::new_with_placeholder(settings.new_tab_url.clone(), "새 탭 URL", cx)
+        }),
+        download_path: cx.new(|cx| {
+            AddressInput::new_with_placeholder(
+                settings.download_path.clone(),
+                "비우면 사용자 Downloads 폴더",
+                cx,
+            )
+        }),
+        font: cx
+            .new(|cx| AddressInput::new_with_placeholder(settings.ui_font.clone(), "Segoe UI", cx)),
+    }
+}
+
+fn effective_dark(theme: &str, window: &Window) -> bool {
+    match theme {
+        "dark" => true,
+        "light" => false,
+        _ => matches!(
+            window.appearance(),
+            WindowAppearance::Dark | WindowAppearance::VibrantDark
+        ),
+    }
+}
+
+fn apply_platform_settings(settings: &library::BrowserSettings) {
+    #[cfg(target_os = "windows")]
+    {
+        let path = settings.download_path.trim();
+        webview::set_download_directory_override(if path.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(path))
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = settings;
 }
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
@@ -171,7 +270,6 @@ struct AmareApp {
     next_tab_id: u64,
     window_id: u64,
     activity_counter: u64,
-    new_tab_url: String,
     address_input: gpui::Entity<AddressInput>,
     search_input: gpui::Entity<AddressInput>,
     panel: LibraryPanel,
@@ -188,15 +286,28 @@ struct AmareApp {
     webview_env: Option<std::sync::Arc<webview::WebViewEnvironment>>,
     #[cfg(target_os = "windows")]
     webview_error: Option<String>,
-    dark: bool,
     status_poll_started: bool,
     last_session_save: Instant,
+    settings: library::BrowserSettings,
+    settings_generation: u64,
+    settings_category: SettingsCategory,
+    settings_search: gpui::Entity<AddressInput>,
+    settings_home_page: gpui::Entity<AddressInput>,
+    settings_new_tab: gpui::Entity<AddressInput>,
+    settings_download_path: gpui::Entity<AddressInput>,
+    settings_font: gpui::Entity<AddressInput>,
+    settings_confirm_reset: bool,
+    settings_error: Option<String>,
+    settings_last_text_apply: Instant,
+    runtime_version: String,
 }
 
 impl AmareApp {
     fn new(window: &mut Window, cx: &mut App) -> Self {
-        let start_url = std::env::var("AMARE_GPUI_START_URL")
-            .unwrap_or_else(|_| "https://example.com/".to_string());
+        let (_, settings) = library::browser_settings_cached()
+            .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
+        let start_url =
+            std::env::var("AMARE_GPUI_START_URL").unwrap_or_else(|_| settings.home_page.clone());
         Self::new_with_url(window, cx, start_url, true)
     }
 
@@ -208,8 +319,10 @@ impl AmareApp {
     ) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url =
-            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
+        let (settings_generation, settings) = library::browser_settings_cached()
+            .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
+        let settings_inputs = create_settings_inputs(cx, &settings);
+        let runtime_version = runtime_version();
 
         #[cfg(target_os = "windows")]
         let parent = window
@@ -276,7 +389,6 @@ impl AmareApp {
             next_tab_id,
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
             activity_counter: 1,
-            new_tab_url,
             address_input,
             search_input,
             panel: LibraryPanel::None,
@@ -293,10 +405,22 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error,
-            dark: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
+            settings,
+            settings_generation,
+            settings_category: SettingsCategory::Appearance,
+            settings_search: settings_inputs.search,
+            settings_home_page: settings_inputs.home_page,
+            settings_new_tab: settings_inputs.new_tab_url,
+            settings_download_path: settings_inputs.download_path,
+            settings_font: settings_inputs.font,
+            settings_confirm_reset: false,
+            settings_error: None,
+            settings_last_text_apply: Instant::now(),
+            runtime_version,
         };
+        apply_platform_settings(&app.settings);
 
         #[cfg(target_os = "windows")]
         if run_self_test && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1") {
@@ -319,8 +443,10 @@ impl AmareApp {
     fn new_with_seed(window: &mut Window, cx: &mut App, seed: TabState) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url =
-            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
+        let (settings_generation, settings) = library::browser_settings_cached()
+            .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
+        let settings_inputs = create_settings_inputs(cx, &settings);
+        let runtime_version = runtime_version();
         #[cfg(target_os = "windows")]
         let parent = window
             .window_handle()
@@ -339,7 +465,6 @@ impl AmareApp {
             next_tab_id: 2,
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
             activity_counter: 1,
-            new_tab_url,
             address_input: cx.new(|cx| AddressInput::new(address.clone(), cx)),
             search_input: cx.new(|cx| AddressInput::new("", cx)),
             panel: LibraryPanel::None,
@@ -356,10 +481,22 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error: None,
-            dark: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
+            settings,
+            settings_generation,
+            settings_category: SettingsCategory::Appearance,
+            settings_search: settings_inputs.search,
+            settings_home_page: settings_inputs.home_page,
+            settings_new_tab: settings_inputs.new_tab_url,
+            settings_download_path: settings_inputs.download_path,
+            settings_font: settings_inputs.font,
+            settings_confirm_reset: false,
+            settings_error: None,
+            settings_last_text_apply: Instant::now(),
+            runtime_version,
         };
+        apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
         if let (Some(parent), Some(webview)) = (app.parent, app.active_webview_mut()) {
             if webview.reparent(parent).is_ok() {
@@ -373,8 +510,10 @@ impl AmareApp {
     fn new_restored(window: &mut Window, cx: &mut App, snapshot: SessionWindowSnapshot) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
-        let new_tab_url =
-            std::env::var("AMARE_GPUI_NEW_TAB_URL").unwrap_or_else(|_| "about:blank".to_string());
+        let (settings_generation, settings) = library::browser_settings_cached()
+            .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
+        let settings_inputs = create_settings_inputs(cx, &settings);
+        let runtime_version = runtime_version();
         #[cfg(target_os = "windows")]
         let parent = window
             .window_handle()
@@ -445,7 +584,6 @@ impl AmareApp {
             next_tab_id: snapshot.tabs.len() as u64 + 1,
             window_id: NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed),
             activity_counter: snapshot.active as u64 + 1,
-            new_tab_url,
             address_input,
             search_input,
             panel: LibraryPanel::None,
@@ -462,10 +600,22 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error: None,
-            dark: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
+            settings,
+            settings_generation,
+            settings_category: SettingsCategory::Appearance,
+            settings_search: settings_inputs.search,
+            settings_home_page: settings_inputs.home_page,
+            settings_new_tab: settings_inputs.new_tab_url,
+            settings_download_path: settings_inputs.download_path,
+            settings_font: settings_inputs.font,
+            settings_confirm_reset: false,
+            settings_error: None,
+            settings_last_text_apply: Instant::now(),
+            runtime_version,
         };
+        apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
         if let Some(webview) = app.active_webview() {
             webview.set_active(true);
@@ -545,6 +695,7 @@ impl AmareApp {
             LibraryPanel::Bookmarks => "bookmarks",
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
+            LibraryPanel::Settings => "settings",
         };
         let downloads = self
             .downloads
@@ -573,6 +724,23 @@ impl AmareApp {
                 })
             })
             .collect::<Vec<_>>();
+        let settings = serde_json::json!({
+            "theme": self.settings.theme,
+            "ui_density": self.settings.ui_density,
+            "ui_font": self.settings.ui_font,
+            "ui_font_size": self.settings.ui_font_size,
+            "tab_width": self.settings.tab_width,
+            "restore_session": self.settings.restore_session,
+            "save_session_on_exit": self.settings.save_session_on_exit,
+            "home_page": self.settings.home_page,
+            "new_tab_url": self.settings.new_tab_url,
+            "engine": self.settings.engine,
+            "address_behavior": self.settings.address_behavior,
+            "download_path": self.settings.download_path,
+            "download_panel_auto_open": self.settings.download_panel_auto_open,
+            "save_history": self.settings.save_history
+        });
+        let settings_query = self.settings_search.read(cx).content();
         let payload = serde_json::json!({
             "address": address,
             "marked_range": marked,
@@ -587,6 +755,11 @@ impl AmareApp {
             "history": history,
             "downloads": downloads,
             "tabs": tabs,
+            "settings": settings,
+            "settings_category": self.settings_category.key(),
+            "settings_query": settings_query,
+            "settings_error": self.settings_error,
+            "settings_generation": self.settings_generation,
             "ime_context": ime_context,
             "pid": std::process::id()
         });
@@ -679,6 +852,169 @@ impl AmareApp {
             self.downloads = library::downloads().unwrap_or_default();
         }
         cx.notify();
+    }
+
+    fn open_settings(&mut self, cx: &mut Context<Self>) {
+        self.panel = if self.panel == LibraryPanel::Settings {
+            LibraryPanel::None
+        } else {
+            LibraryPanel::Settings
+        };
+        self.settings_category = SettingsCategory::Appearance;
+        self.settings_confirm_reset = false;
+        self.settings_search
+            .update(cx, |input, cx| input.set_content("", cx));
+        cx.notify();
+    }
+
+    fn update_setting(&mut self, key: &'static str, value: SettingValue, cx: &mut Context<Self>) {
+        match library::set_browser_setting(key, value) {
+            Ok(settings) => {
+                self.settings = settings;
+                if let Ok((generation, _)) = library::browser_settings_cached() {
+                    self.settings_generation = generation;
+                }
+                apply_platform_settings(&self.settings);
+                self.settings_error = None;
+                self.settings_last_text_apply = Instant::now();
+            }
+            Err(error) => self.settings_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn reset_settings(&mut self, cx: &mut Context<Self>) {
+        if !self.settings_confirm_reset {
+            self.settings_confirm_reset = true;
+            cx.notify();
+            return;
+        }
+        match library::reset_browser_settings() {
+            Ok(settings) => {
+                self.settings = settings;
+                if let Ok((generation, _)) = library::browser_settings_cached() {
+                    self.settings_generation = generation;
+                }
+                self.refresh_settings_inputs(cx);
+                apply_platform_settings(&self.settings);
+                self.settings_confirm_reset = false;
+                self.settings_error = None;
+            }
+            Err(error) => self.settings_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn refresh_settings_inputs(&mut self, cx: &mut Context<Self>) {
+        let settings = self.settings.clone();
+        self.settings_home_page.update(cx, |input, cx| {
+            if input.content() != settings.home_page {
+                input.set_content(settings.home_page.clone(), cx);
+            }
+        });
+        self.settings_new_tab.update(cx, |input, cx| {
+            if input.content() != settings.new_tab_url {
+                input.set_content(settings.new_tab_url.clone(), cx);
+            }
+        });
+        self.settings_download_path.update(cx, |input, cx| {
+            if input.content() != settings.download_path {
+                input.set_content(settings.download_path.clone(), cx);
+            }
+        });
+        self.settings_font.update(cx, |input, cx| {
+            if input.content() != settings.ui_font {
+                input.set_content(settings.ui_font.clone(), cx);
+            }
+        });
+    }
+
+    fn sync_settings(&mut self, cx: &mut Context<Self>) {
+        if let Ok((generation, settings)) = library::browser_settings_cached()
+            && generation != self.settings_generation
+        {
+            self.settings = settings;
+            self.settings_generation = generation;
+            self.refresh_settings_inputs(cx);
+            apply_platform_settings(&self.settings);
+        }
+    }
+
+    fn sync_settings_text(&mut self, force: bool, cx: &mut Context<Self>) {
+        if self.panel != LibraryPanel::Settings
+            || (!force && self.settings_last_text_apply.elapsed() < Duration::from_millis(350))
+        {
+            return;
+        }
+        self.settings_last_text_apply = Instant::now();
+        let home_page = self
+            .settings_home_page
+            .read(cx)
+            .content()
+            .trim()
+            .to_string();
+        let new_tab_url = self.settings_new_tab.read(cx).content().trim().to_string();
+        let download_path = self
+            .settings_download_path
+            .read(cx)
+            .content()
+            .trim()
+            .to_string();
+        let font = self.settings_font.read(cx).content().trim().to_string();
+        if home_page != self.settings.home_page {
+            self.update_setting(
+                "home_page",
+                SettingValue::Text(if home_page.is_empty() {
+                    "about:blank".into()
+                } else {
+                    home_page
+                }),
+                cx,
+            );
+        }
+        if new_tab_url != self.settings.new_tab_url {
+            self.update_setting(
+                "new_tab_url",
+                SettingValue::Text(if new_tab_url.is_empty() {
+                    "about:blank".into()
+                } else {
+                    new_tab_url
+                }),
+                cx,
+            );
+        }
+        if font != self.settings.ui_font {
+            self.update_setting(
+                "ui_font",
+                SettingValue::Text(if font.is_empty() {
+                    "Segoe UI".into()
+                } else {
+                    font
+                }),
+                cx,
+            );
+        }
+        if download_path != self.settings.download_path {
+            if download_path.is_empty() {
+                self.update_setting("download_path", SettingValue::Text(String::new()), cx);
+            } else if std::path::Path::new(&download_path).is_absolute()
+                && std::fs::create_dir_all(&download_path).is_ok()
+            {
+                self.update_setting("download_path", SettingValue::Text(download_path), cx);
+            } else {
+                self.settings_error =
+                    Some("다운로드 경로는 존재하거나 생성 가능한 절대 경로여야 합니다.".into());
+                cx.notify();
+            }
+        }
+    }
+
+    fn search_engine_url(&self, query: &str) -> String {
+        match self.settings.engine.as_str() {
+            "google" => format!("https://www.google.com/search?q={}", url_encode(query)),
+            "bing" => format!("https://www.bing.com/search?q={}", url_encode(query)),
+            _ => format!("https://duckduckgo.com/?q={}", url_encode(query)),
+        }
     }
 
     fn toggle_active_bookmark(&mut self, cx: &mut Context<Self>) {
@@ -780,8 +1116,19 @@ impl AmareApp {
         self.open_library_panel(LibraryPanel::Downloads, window, cx);
     }
 
+    fn toggle_settings_action(
+        &mut self,
+        _: &ToggleSettings,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings(cx);
+    }
+
     fn refresh_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
+        let mut history_changed = false;
+        #[cfg(not(target_os = "windows"))]
         let mut history_changed = false;
         for tab in &mut self.tabs {
             let Some(webview) = &tab.webview else {
@@ -797,7 +1144,11 @@ impl AmareApp {
                     title.into()
                 };
                 let key = history_key(&source);
-                if !key.is_empty() && tab.history_url != key && !tab.title.is_empty() {
+                if self.settings.save_history
+                    && !key.is_empty()
+                    && tab.history_url != key
+                    && !tab.title.is_empty()
+                {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
@@ -846,7 +1197,11 @@ impl AmareApp {
     }
 
     fn navigate(&mut self, cx: &mut Context<Self>) {
-        let url = normalize_url(&self.address_value(cx));
+        let input = self.address_value(cx);
+        let url = match normalize_url(&input, &self.settings) {
+            Some(url) => url,
+            None => self.search_engine_url(&input),
+        };
         let tab = self.active_tab_mut();
         let Some(tab) = tab else { return };
         tab.url = url.clone().into();
@@ -877,7 +1232,8 @@ impl AmareApp {
     }
 
     fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let url = self.new_tab_url.clone();
+        let url = std::env::var("AMARE_GPUI_NEW_TAB_URL")
+            .unwrap_or_else(|_| self.settings.new_tab_url.clone());
         self.new_tab_with_url(url, window, cx, true);
     }
 
@@ -942,7 +1298,7 @@ impl AmareApp {
 
     fn open_new_window(&mut self, cx: &mut Context<Self>) {
         let url = std::env::var("AMARE_GPUI_NEW_WINDOW_URL")
-            .unwrap_or_else(|_| "https://example.com/".to_string());
+            .unwrap_or_else(|_| self.settings.home_page.clone());
         let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
         let _ = cx.open_window(
             WindowOptions {
@@ -1045,6 +1401,11 @@ impl AmareApp {
     }
 
     fn submit_address(&mut self, _: &SubmitAddress, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel == LibraryPanel::Settings {
+            self.sync_settings_text(true, cx);
+            cx.notify();
+            return;
+        }
         self.navigate(cx);
         cx.notify();
     }
@@ -1219,8 +1580,615 @@ impl AmareApp {
         let _ = (window, cx);
     }
 
-    fn render_library_panel(&mut self, cx: &mut Context<Self>) -> gpui::Div {
-        let dark = self.dark;
+    fn setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        control: impl IntoElement,
+        dark: bool,
+    ) -> gpui::Div {
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        div()
+            .flex()
+            .justify_between()
+            .items_center()
+            .gap_4()
+            .px_4()
+            .py_3()
+            .border_b_1()
+            .border_color(border)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .child(div().text_sm().child(title.to_string()))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(description.to_string()),
+                    ),
+            )
+            .child(control)
+    }
+
+    fn toggle_setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        key: &'static str,
+        value: bool,
+        dark: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let accent = rgb(0x2f7df6);
+        let muted = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let listener = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.update_setting(key, SettingValue::Boolean(!value), cx);
+        });
+        let control = div()
+            .id(SharedString::from(format!("setting-toggle-{key}")))
+            .w(px(40.0))
+            .h(px(22.0))
+            .rounded_full()
+            .bg(if value { accent } else { muted })
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .px(px(3.0))
+            .child(
+                div()
+                    .size(px(16.0))
+                    .rounded_full()
+                    .bg(rgb(0xffffff))
+                    .when(value, |el| el.ml(px(18.0))),
+            )
+            .on_click(listener);
+        self.setting_row(title, description, control, dark)
+    }
+
+    fn choice_setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        key: &'static str,
+        current: &str,
+        choices: &'static [(&'static str, &'static str)],
+        dark: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let accent = rgb(0x2f7df6);
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let mut control = div()
+            .flex()
+            .flex_wrap()
+            .justify_end()
+            .gap_1()
+            .max_w(px(320.0));
+        for (value, label) in choices {
+            let selected = *value == current;
+            let listener = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.update_setting(key, SettingValue::Text((*value).to_string()), cx);
+            });
+            control = control.child(
+                div()
+                    .id(SharedString::from(format!("setting-choice-{key}-{value}")))
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(if selected { accent } else { border })
+                    .bg(if selected { accent } else { background })
+                    .text_color(if selected { rgb(0xffffff) } else { muted })
+                    .text_xs()
+                    .cursor_pointer()
+                    .child(*label)
+                    .on_click(listener),
+            );
+        }
+        self.setting_row(title, description, control, dark)
+    }
+
+    fn text_setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        input: gpui::Entity<AddressInput>,
+        dark: bool,
+    ) -> gpui::Div {
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let control = div()
+            .w(px(300.0))
+            .h(px(30.0))
+            .rounded_md()
+            .bg(background)
+            .border_1()
+            .border_color(border)
+            .child(input);
+        self.setting_row(title, description, control, dark)
+    }
+
+    fn info_setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        value: String,
+        dark: bool,
+    ) -> gpui::Div {
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        self.setting_row(
+            title,
+            description,
+            div()
+                .max_w(px(360.0))
+                .text_xs()
+                .text_color(muted)
+                .overflow_hidden()
+                .child(value),
+            dark,
+        )
+    }
+
+    fn settings_match(query: &str, text: &str) -> bool {
+        query.is_empty()
+            || query
+                .split_whitespace()
+                .all(|part| text.to_lowercase().contains(part))
+    }
+
+    fn render_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
+        let dark = effective_dark(&self.settings.theme, window);
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let accent = rgb(0x2f7df6);
+        let query = self
+            .settings_search
+            .read(cx)
+            .content()
+            .trim()
+            .to_lowercase();
+        let search_active = !query.is_empty();
+        let selected = self.settings_category;
+        let compact = self.settings.ui_density == "compact";
+        let narrow = f32::from(window.viewport_size().width) < 820.0;
+        let nav_width = if narrow { 0.0 } else { 176.0 };
+
+        let close = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.panel = LibraryPanel::None;
+            cx.notify();
+        });
+        let clear_search = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.settings_search
+                .update(cx, |input, cx| input.set_content("", cx));
+            cx.notify();
+        });
+
+        let mut nav = div().flex().flex_col().gap_1().p_2();
+        if narrow {
+            nav = nav.flex_row().flex_wrap();
+        }
+        for category in SettingsCategory::ALL {
+            let active = !search_active && selected == category;
+            let listener = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.settings_category = category;
+                this.settings_search
+                    .update(cx, |input, cx| input.set_content("", cx));
+                this.settings_confirm_reset = false;
+                cx.notify();
+            });
+            nav = nav.child(
+                div()
+                    .id(SharedString::from(format!(
+                        "settings-nav-{}",
+                        category.key()
+                    )))
+                    .px_3()
+                    .py(px(if compact { 6.0 } else { 9.0 }))
+                    .rounded_md()
+                    .bg(if active { accent } else { background })
+                    .text_color(if active { rgb(0xffffff) } else { muted })
+                    .text_sm()
+                    .cursor_pointer()
+                    .child(category.label())
+                    .on_click(listener),
+            );
+        }
+
+        let mut content = div()
+            .id("settings-content")
+            .flex()
+            .flex_col()
+            .flex_1()
+            .overflow_y_scroll()
+            .bg(surface);
+        let header = |label: &str| {
+            div()
+                .px_4()
+                .pt_4()
+                .pb_2()
+                .text_xs()
+                .text_color(muted)
+                .child(label.to_string())
+        };
+        if search_active || selected == SettingsCategory::Appearance {
+            content = content.child(header("외관"));
+            if Self::settings_match(&query, "테마 theme 라이트 다크 시스템") {
+                content = content.child(self.choice_setting_row(
+                    "테마",
+                    "라이트, 다크 또는 Windows 시스템 테마를 따릅니다.",
+                    "theme",
+                    &self.settings.theme,
+                    &[("system", "시스템"), ("light", "라이트"), ("dark", "다크")],
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "밀도 density compact comfortable") {
+                content = content.child(self.choice_setting_row(
+                    "UI 밀도",
+                    "탭과 설정 화면의 간격을 조절합니다.",
+                    "ui_density",
+                    &self.settings.ui_density,
+                    &[("comfortable", "여유"), ("compact", "촘촘")],
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "글꼴 font family") {
+                content = content.child(self.text_setting_row(
+                    "기본 글꼴",
+                    "브라우저 UI에 사용할 글꼴 패밀리입니다.",
+                    self.settings_font.clone(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "글꼴 크기 font size") {
+                content = content.child(self.choice_setting_row(
+                    "글꼴 크기",
+                    "브라우저 UI의 기준 글꼴 크기입니다.",
+                    "ui_font_size",
+                    &self.settings.ui_font_size.to_string(),
+                    &[("14", "14"), ("16", "16"), ("18", "18"), ("20", "20")],
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "탭 너비 tab width") {
+                content = content.child(self.choice_setting_row(
+                    "탭 너비",
+                    "탭 하나의 가로 폭입니다.",
+                    "tab_width",
+                    &self.settings.tab_width.to_string(),
+                    &[
+                        ("100", "100"),
+                        ("120", "120"),
+                        ("140", "140"),
+                        ("160", "160"),
+                    ],
+                    dark,
+                    cx,
+                ));
+            }
+        }
+        if search_active || selected == SettingsCategory::Startup {
+            content = content.child(header("시작 및 세션"));
+            if Self::settings_match(&query, "세션 복원 restore session") {
+                content = content.child(self.toggle_setting_row(
+                    "이전 세션 복원",
+                    "다음 실행에서 저장된 창과 탭을 복원합니다.",
+                    "restore_session",
+                    self.settings.restore_session,
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "종료 저장 save session exit") {
+                content = content.child(self.toggle_setting_row(
+                    "종료 시 세션 저장",
+                    "앱을 닫을 때 현재 창과 탭 구성을 저장합니다.",
+                    "save_session_on_exit",
+                    self.settings.save_session_on_exit,
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "시작 페이지 home page") {
+                content = content.child(self.text_setting_row(
+                    "시작 페이지",
+                    "복원 없이 시작할 때 여는 페이지입니다.",
+                    self.settings_home_page.clone(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "새 탭 페이지 new tab") {
+                content = content.child(self.text_setting_row(
+                    "새 탭 페이지",
+                    "새 탭을 만들 때 여는 페이지입니다.",
+                    self.settings_new_tab.clone(),
+                    dark,
+                ));
+            }
+        }
+        if search_active || selected == SettingsCategory::Search {
+            content = content.child(header("검색 및 주소 표시줄"));
+            if Self::settings_match(&query, "검색 엔진 search engine") {
+                content = content.child(self.choice_setting_row(
+                    "기본 검색 엔진",
+                    "주소 표시줄에서 검색할 때 사용할 엔진입니다.",
+                    "engine",
+                    &self.settings.engine,
+                    &[
+                        ("duckduckgo", "DuckDuckGo"),
+                        ("google", "Google"),
+                        ("bing", "Bing"),
+                    ],
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "주소 표시줄 동작 address behavior") {
+                content = content.child(self.choice_setting_row(
+                    "주소 표시줄 동작",
+                    "스마트 모드는 URL을 인식하고, 검색 모드는 비URL 입력을 검색합니다.",
+                    "address_behavior",
+                    &self.settings.address_behavior,
+                    &[("smart", "스마트"), ("search", "검색 우선")],
+                    dark,
+                    cx,
+                ));
+            }
+        }
+        if search_active || selected == SettingsCategory::Downloads {
+            content = content.child(header("다운로드"));
+            if Self::settings_match(&query, "다운로드 경로 download path") {
+                content = content.child(self.text_setting_row(
+                    "기본 다운로드 경로",
+                    "비우면 사용자 Downloads 폴더를 사용합니다. 절대 경로만 저장됩니다.",
+                    self.settings_download_path.clone(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "다운로드 패널 panel") {
+                content = content.child(self.toggle_setting_row(
+                    "다운로드 시작 시 패널 열기",
+                    "새 다운로드가 시작되면 다운로드 패널을 표시합니다.",
+                    "download_panel_auto_open",
+                    self.settings.download_panel_auto_open,
+                    dark,
+                    cx,
+                ));
+            }
+            content = content.child(self.info_setting_row(
+                "저장 위치 확인",
+                "WebView2의 저장 위치 확인 대화상자는 아직 연결하지 않았습니다.",
+                "UNVERIFIED".into(),
+                dark,
+            ));
+            content = content.child(self.info_setting_row(
+                "완료 알림",
+                "다운로드 완료 시스템 알림은 아직 구현하지 않았습니다.",
+                "UNVERIFIED".into(),
+                dark,
+            ));
+        }
+        if search_active || selected == SettingsCategory::Privacy {
+            content = content.child(header("개인정보 및 보안"));
+            if Self::settings_match(&query, "방문 기록 history 저장") {
+                content = content.child(self.toggle_setting_row(
+                    "방문 기록 저장",
+                    "로컬 SQLite에 방문 기록을 저장합니다.",
+                    "save_history",
+                    self.settings.save_history,
+                    dark,
+                    cx,
+                ));
+            }
+            content = content.child(self.info_setting_row(
+                "인증서 경고",
+                "안전하지 않은 인증서 경고를 무력화하는 설정은 제공하지 않습니다.",
+                "항상 경고".into(),
+                dark,
+            ));
+            if Self::settings_match(&query, "쿠키 사이트 데이터 cookie site data") {
+                content = content.child(self.info_setting_row(
+                    "쿠키 및 사이트 데이터",
+                    "관리 진입점은 아직 구현하지 않았습니다.",
+                    "UNVERIFIED".into(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "사이트 권한 permission") {
+                content = content.child(self.info_setting_row(
+                    "사이트 권한",
+                    "관리 진입점은 아직 구현하지 않았습니다.",
+                    "UNVERIFIED".into(),
+                    dark,
+                ));
+            }
+        }
+        if search_active || selected == SettingsCategory::Advanced {
+            content = content.child(header("고급"));
+            if Self::settings_match(&query, "버전 version 브라우저") {
+                content = content.child(self.info_setting_row(
+                    "AMARE 버전",
+                    "현재 GPUI 셸 버전입니다.",
+                    env!("CARGO_PKG_VERSION").to_string(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "webview2 런타임 runtime") {
+                content = content.child(self.info_setting_row(
+                    "WebView2 런타임",
+                    "설치된 WebView2 런타임 버전입니다.",
+                    self.runtime_version.clone(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "gpu 하드웨어 가속 hardware acceleration") {
+                content = content.child(self.info_setting_row(
+                    "하드웨어 가속",
+                    "WebView2 기본 GPU 정책을 사용하며 강제로 끄지 않습니다.",
+                    "WebView2 기본 정책".into(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "데이터 저장 위치 data path") {
+                content = content.child(self.info_setting_row(
+                    "데이터 저장 위치",
+                    "프로필 SQLite와 WebView2 데이터가 저장되는 위치입니다.",
+                    library::data_root_display(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "로그 진단 log diagnostic") {
+                let status = std::env::var("AMARE_GPUI_STATUS").unwrap_or_else(|_| {
+                    "상태 파일 미설정 · 설정 오류는 이 화면에 표시됩니다.".into()
+                });
+                content = content.child(self.info_setting_row(
+                    "로그 및 진단",
+                    "자동화 상태 JSON 경로와 오류 표시 상태입니다.",
+                    status,
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "초기화 reset 기본값") {
+                let reset = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.reset_settings(cx);
+                });
+                let label = if self.settings_confirm_reset {
+                    "정말 모든 설정 초기화"
+                } else {
+                    "모든 설정 초기화"
+                };
+                content = content.child(
+                    self.setting_row(
+                        "설정 초기화",
+                        "모든 브라우저 설정을 기본값으로 되돌립니다. 세션 데이터는 유지됩니다.",
+                        div()
+                            .id("settings-reset")
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(if self.settings_confirm_reset {
+                                rgb(0xd9534f)
+                            } else {
+                                background
+                            })
+                            .text_color(if self.settings_confirm_reset {
+                                rgb(0xffffff)
+                            } else {
+                                muted
+                            })
+                            .text_xs()
+                            .cursor_pointer()
+                            .child(label)
+                            .on_click(reset),
+                        dark,
+                    ),
+                );
+            }
+        }
+
+        let search_box = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_1()
+            .max_w(px(420.0))
+            .h(px(30.0))
+            .px_2()
+            .rounded_md()
+            .bg(background)
+            .border_1()
+            .border_color(border)
+            .child(self.settings_search.clone())
+            .child(
+                div()
+                    .id("settings-search-clear")
+                    .size(px(20.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_sm()
+                    .text_color(muted)
+                    .cursor_pointer()
+                    .child("×")
+                    .on_click(clear_search),
+            );
+
+        let body = if narrow {
+            div().flex().flex_col().flex_1().child(nav).child(content)
+        } else {
+            div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .child(
+                    div()
+                        .w(px(nav_width))
+                        .h_full()
+                        .border_r_1()
+                        .border_color(border)
+                        .child(nav),
+                )
+                .child(content)
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(surface)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .h(px(52.0))
+                    .px_4()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(div().text_lg().child("설정"))
+                    .child(search_box)
+                    .child(
+                        div()
+                            .id("settings-close")
+                            .size(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .child("×")
+                            .on_click(close),
+                    ),
+            )
+            .when_some(self.settings_error.clone(), |el, error| {
+                el.child(
+                    div()
+                        .px_4()
+                        .py_2()
+                        .bg(rgb(0x5c1f24))
+                        .text_color(rgb(0xffd7da))
+                        .text_xs()
+                        .child(error),
+                )
+            })
+            .child(body)
+    }
+
+    fn render_library_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
+        let dark = effective_dark(&self.settings.theme, window);
         let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
         let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
@@ -1603,6 +2571,8 @@ impl AmareApp {
         #[cfg(target_os = "windows")]
         {
             let mut snapshots = Vec::new();
+            let auto_open =
+                self.settings.download_panel_auto_open && self.panel == LibraryPanel::None;
             for tab in &self.tabs {
                 if let Some(webview) = &tab.webview {
                     snapshots.extend(webview.download_snapshots());
@@ -1632,6 +2602,9 @@ impl AmareApp {
                         &snapshot.error,
                     );
                     self.downloads = library::downloads().unwrap_or_default();
+                    if auto_open && existing.is_none() {
+                        self.panel = LibraryPanel::Downloads;
+                    }
                 }
             }
         }
@@ -1695,7 +2668,9 @@ impl AmareApp {
         SESSION_WINDOWS.with(|cell| {
             cell.borrow_mut().insert(self.window_id, snapshot);
         });
-        if self.last_session_save.elapsed() >= Duration::from_secs(2) {
+        if self.settings.save_session_on_exit
+            && self.last_session_save.elapsed() >= Duration::from_secs(2)
+        {
             persist_session();
             self.last_session_save = Instant::now();
         }
@@ -1703,7 +2678,16 @@ impl AmareApp {
 
     fn sync_webview_bounds(&self, window: &Window) {
         #[cfg(target_os = "windows")]
+        if self.panel == LibraryPanel::Settings {
+            if let Some(webview) = self.active_webview() {
+                webview.set_active(false);
+                webview.set_bounds(0, 0, 1, 1);
+            }
+            return;
+        }
+        #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
+            webview.set_active(true);
             let viewport = window.viewport_size();
             let scale = window.scale_factor();
             let panel = if self.panel == LibraryPanel::None {
@@ -1731,8 +2715,11 @@ impl Render for AmareApp {
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);
+        self.sync_settings(cx);
+        self.sync_settings_text(false, cx);
+        window.set_rem_size(px(self.settings.ui_font_size as f32));
         self.sync_webview_bounds(window);
-        let dark = self.dark;
+        let dark = effective_dark(&self.settings.theme, window);
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
         let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
         let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
@@ -1770,6 +2757,7 @@ impl Render for AmareApp {
             LibraryPanel::Bookmarks => "bookmarks",
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
+            LibraryPanel::Settings => "settings",
         };
         let downloads = self
             .downloads
@@ -1805,8 +2793,12 @@ impl Render for AmareApp {
                     .items_center()
                     .gap_1()
                     .px_2()
-                    .w(px(120.0))
-                    .h(px(34.0))
+                    .w(px(self.settings.tab_width as f32))
+                    .h(px(if self.settings.ui_density == "compact" {
+                        30.0
+                    } else {
+                        34.0
+                    }))
                     .rounded_md()
                     .bg(if active { surface } else { background })
                     .border_1()
@@ -1859,12 +2851,14 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::toggle_bookmarks_panel_action))
             .on_action(cx.listener(Self::toggle_history_panel_action))
             .on_action(cx.listener(Self::toggle_downloads_panel_action))
+            .on_action(cx.listener(Self::toggle_settings_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
             .flex_col()
             .size_full()
             .bg(background)
+            .font_family(self.settings.ui_font.clone())
             .text_color(if dark { rgb(0xf5f7fb) } else { rgb(0x161a22) })
             .child(
                 div()
@@ -2099,6 +3093,23 @@ impl Render for AmareApp {
                     )
                     .child(
                         div()
+                            .id("settings-panel")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("⚙")
+                            .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                                this.open_settings(cx);
+                            })),
+                    )
+                    .child(
+                        div()
                             .id("theme")
                             .flex_none()
                             .size(px(30.0))
@@ -2110,12 +3121,22 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .child(if dark { "☾" } else { "☀" })
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                this.dark = !this.dark;
-                                cx.notify();
+                                let next = if this.settings.theme == "dark" {
+                                    "light"
+                                } else {
+                                    "dark"
+                                };
+                                this.update_setting(
+                                    "theme",
+                                    SettingValue::Text(next.to_string()),
+                                    cx,
+                                );
                             })),
                     ),
             )
-            .child(
+            .child(if self.panel == LibraryPanel::Settings {
+                self.render_settings(window, cx)
+            } else {
                 div()
                     .flex()
                     .flex_row()
@@ -2140,18 +3161,24 @@ impl Render for AmareApp {
                             }),
                     )
                     .when(self.panel != LibraryPanel::None, |el| {
-                        el.child(self.render_library_panel(cx))
-                    }),
-            )
+                        el.child(self.render_library_panel(window, cx))
+                    })
+            })
     }
 }
 
 impl Drop for AmareApp {
     fn drop(&mut self) {
-        SESSION_WINDOWS.with(|cell| {
-            cell.borrow_mut().remove(&self.window_id);
+        let empty = SESSION_WINDOWS.with(|cell| {
+            let mut windows = cell.borrow_mut();
+            windows.remove(&self.window_id);
+            windows.is_empty()
         });
-        persist_session();
+        if self.settings.save_session_on_exit {
+            persist_session();
+        } else if empty {
+            let _ = library::save_session("[]");
+        }
     }
 }
 
@@ -2164,8 +3191,9 @@ fn persist_session() {
     }
 }
 
-fn load_session_windows() -> Vec<SessionWindowSnapshot> {
-    if std::env::var("AMARE_GPUI_RESTORE").ok().as_deref() == Some("0")
+fn load_session_windows(settings: &library::BrowserSettings) -> Vec<SessionWindowSnapshot> {
+    if !settings.restore_session
+        || std::env::var("AMARE_GPUI_RESTORE").ok().as_deref() == Some("0")
         || std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
     {
         return Vec::new();
@@ -2178,18 +3206,32 @@ fn load_session_windows() -> Vec<SessionWindowSnapshot> {
     }
 }
 
-fn normalize_url(input: &str) -> String {
+fn normalize_url(input: &str, settings: &library::BrowserSettings) -> Option<String> {
     let value = input.trim();
     if value.is_empty() {
-        return "about:blank".into();
+        return Some("about:blank".into());
     }
     if value.contains("://") || value.starts_with("about:") {
-        return value.into();
+        return Some(value.into());
+    }
+    if settings.address_behavior == "search" {
+        return None;
     }
     if value.contains('.') && !value.contains(' ') {
-        return format!("https://{value}");
+        return Some(format!("https://{value}"));
     }
-    format!("https://www.google.com/search?q={}", url_encode(value))
+    None
+}
+
+fn runtime_version() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        webview::runtime_version()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "N/A (non-Windows build)".to_string()
+    }
 }
 
 fn url_encode(value: &str) -> String {
@@ -2236,6 +3278,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-b", ToggleBookmarksPanel, None),
             KeyBinding::new("ctrl-shift-h", ToggleHistoryPanel, None),
             KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
+            KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
@@ -2261,7 +3304,9 @@ fn main() {
             }
         })
         .detach();
-        let restored = load_session_windows();
+        let (_, startup_settings) = library::browser_settings_cached()
+            .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
+        let restored = load_session_windows(&startup_settings);
         if restored.is_empty() {
             let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
             cx.open_window(
