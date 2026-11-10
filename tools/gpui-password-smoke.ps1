@@ -141,8 +141,16 @@ try {
     [void](Wait-State { param($s) $null -ne $s.password_vault.reveal } 6 "password reveal")
     Shot "06-password-reveal.png"
 
-    Click-Client $script:hwnd 966 336
-    [void](Wait-State { param($s) $s.password_vault.form_open } 6 "edit form")
+    $edit = $false
+    foreach ($y in 330, 336, 342) {
+        foreach ($x in 950, 960, 970, 980) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($state.password_vault.form_open) { $edit = $true; break }
+        }
+        if ($edit) { break }
+    }
+    if (-not $edit) { throw "Timed out waiting for edit form" }
     Shot "05-account-edit.png"
     Click-Client $script:hwnd 995 207
 
