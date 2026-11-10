@@ -4496,7 +4496,13 @@ impl Render for AmareApp {
             .child(if self.panel == LibraryPanel::Settings {
                 self.render_settings(window, cx)
             } else if self.panel == LibraryPanel::Passwords {
-                self.render_password_panel(window, cx)
+                div()
+                    .flex()
+                    .flex_row()
+                    .size_full()
+                    .bg(surface)
+                    .child(div().flex_1())
+                    .child(self.render_password_panel(window, cx))
             } else {
                 div()
                     .flex()
