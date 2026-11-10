@@ -170,7 +170,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-library-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-downloads"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.54.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.55.0"
           New-Item -ItemType Directory -Force -Path $shots, $downloads | Out-Null
           $downloadFile = Join-Path (Resolve-Path "apps/amare-gpui/test-page").Path "download-test.bin"
           [IO.File]::WriteAllBytes($downloadFile, (New-Object byte[] (5 * 1024 * 1024)))
@@ -194,7 +194,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-download-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-download-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-download-files"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.54.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.55.0"
           & "tools/gpui-download-smoke.ps1" -Exe $exe -Status $status -DataDir $data -DownloadDir $downloads -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI download smoke failed with exit code $LASTEXITCODE" }
 
@@ -205,9 +205,20 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.54.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.55.0"
           & "tools/gpui-settings-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI settings smoke failed with exit code $LASTEXITCODE" }
+
+      - name: GPUI session restore and failure test
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-session-status.json"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-session-data"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.55.0"
+          & "tools/gpui-session-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -Port 8772
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI session smoke failed with exit code $LASTEXITCODE" }
 
       - name: Address bar actual input test
         shell: pwsh
@@ -291,10 +302,11 @@ jobs:
             ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-library-status.json
             ${{ runner.temp }}/amare-gpui-download-status.json
-            artifacts/windows/screenshots/0.54.0/gpui-download-results.json
-            artifacts/windows/screenshots/0.54.0/*.png
-            artifacts/windows/screenshots/0.54.0/gpui-library-results.json
-            artifacts/windows/screenshots/0.54.0/gpui-settings-results.json
+            artifacts/windows/screenshots/0.55.0/gpui-download-results.json
+            artifacts/windows/screenshots/0.55.0/*.png
+            artifacts/windows/screenshots/0.55.0/gpui-library-results.json
+            artifacts/windows/screenshots/0.55.0/gpui-settings-results.json
+            artifacts/windows/screenshots/0.55.0/gpui-session-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
             ${{ runner.temp }}/amare-gpui-ime.log

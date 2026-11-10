@@ -325,6 +325,77 @@ pub fn save_session(json: &str) -> Result<(), String> {
     })
 }
 
+#[derive(Clone, Debug)]
+pub struct SessionSummary {
+    pub windows: usize,
+    pub tabs: usize,
+    pub saved_at_ms: i64,
+}
+
+pub fn session_summary() -> Result<Option<SessionSummary>, String> {
+    let Some(json) = load_session()? else {
+        return Ok(None);
+    };
+    let value: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    let windows = value.as_array().map(|items| items.len()).unwrap_or(0);
+    let tabs = value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|window| {
+                    window
+                        .get("tabs")
+                        .and_then(|tabs| tabs.as_array())
+                        .map(|tabs| tabs.len())
+                        .unwrap_or(0)
+                })
+                .sum()
+        })
+        .unwrap_or(0);
+    let saved_at_ms = value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|window| window.get("saved_at_ms").and_then(|value| value.as_i64()))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    Ok(Some(SessionSummary {
+        windows,
+        tabs,
+        saved_at_ms,
+    }))
+}
+
+pub fn save_corrupt_session(json: &str) -> Result<(), String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile
+            .settings()
+            .set(
+                "gpui.session.corrupt",
+                "browser",
+                SettingValue::Json(json.to_string()),
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
+pub fn clear_session() -> Result<(), String> {
+    with_library(|service, context| {
+        let profile = service.profile_store(context).map_err(|e| e.to_string())?;
+        profile
+            .settings()
+            .delete("gpui.session")
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
 pub fn load_session() -> Result<Option<String>, String> {
     with_library(|service, context| {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;

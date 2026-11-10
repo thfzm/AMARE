@@ -807,6 +807,22 @@ impl WebViewHost {
         }
     }
 
+    pub fn scroll_position(&self) -> Option<(i64, i64)> {
+        let result = self
+            .execute_script("[Math.round(window.scrollX), Math.round(window.scrollY)]")
+            .ok()?;
+        let values: Vec<i64> = serde_json::from_str(&result).ok()?;
+        if values.len() == 2 {
+            Some((values[0], values[1]))
+        } else {
+            None
+        }
+    }
+
+    pub fn scroll_to(&self, x: i64, y: i64) {
+        let _ = self.execute_script(&format!("window.scrollTo({x}, {y})"));
+    }
+
     pub fn focus(&self) {
         unsafe {
             if self

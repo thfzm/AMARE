@@ -166,13 +166,17 @@ fn apply_platform_settings(settings: &library::BrowserSettings) {
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct SessionTabSnapshot {
     url: String,
     title: String,
+    #[serde(default)]
+    scroll_x: i64,
+    #[serde(default)]
+    scroll_y: i64,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct SessionWindowSnapshot {
     window_id: u64,
     x: f32,
@@ -182,10 +186,22 @@ struct SessionWindowSnapshot {
     maximized: bool,
     active: usize,
     tabs: Vec<SessionTabSnapshot>,
+    #[serde(default)]
+    saved_at_ms: i64,
 }
 
 thread_local! {
     static SESSION_WINDOWS: RefCell<BTreeMap<u64, SessionWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
+    static SESSION_CLOSED_WINDOWS: RefCell<BTreeMap<u64, SessionWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
+    static STARTUP_SESSION_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone)]
+struct RestoreProgress {
+    total: usize,
+    finished: usize,
+    failed: usize,
+    visible_until: Instant,
 }
 
 #[derive(Clone)]
@@ -260,6 +276,11 @@ struct TabState {
     favicon: Option<SharedString>,
     last_active: u64,
     history_url: String,
+    scroll_x: i64,
+    scroll_y: i64,
+    restored: bool,
+    #[cfg(target_os = "windows")]
+    pending_scroll: Option<(i64, i64)>,
     #[cfg(target_os = "windows")]
     webview: Option<webview::WebViewHost>,
 }
@@ -300,6 +321,9 @@ struct AmareApp {
     settings_error: Option<String>,
     settings_last_text_apply: Instant,
     runtime_version: String,
+    restore_progress: Option<RestoreProgress>,
+    session_summary: Option<library::SessionSummary>,
+    session_error: Option<String>,
 }
 
 impl AmareApp {
@@ -374,6 +398,11 @@ impl AmareApp {
             favicon: None,
             last_active: 1,
             history_url: String::new(),
+            scroll_x: 0,
+            scroll_y: 0,
+            restored: false,
+            #[cfg(target_os = "windows")]
+            pending_scroll: None,
             #[cfg(target_os = "windows")]
             webview: first_webview,
         }];
@@ -419,6 +448,9 @@ impl AmareApp {
             settings_error: None,
             settings_last_text_apply: Instant::now(),
             runtime_version,
+            restore_progress: None,
+            session_summary: library::session_summary().ok().flatten(),
+            session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
         };
         apply_platform_settings(&app.settings);
 
@@ -495,6 +527,9 @@ impl AmareApp {
             settings_error: None,
             settings_last_text_apply: Instant::now(),
             runtime_version,
+            restore_progress: None,
+            session_summary: library::session_summary().ok().flatten(),
+            session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -534,17 +569,35 @@ impl AmareApp {
             };
             #[cfg(not(target_os = "windows"))]
             let webview = ();
+            #[cfg(target_os = "windows")]
+            let restore_error = if webview.is_none() {
+                Some("WebView2 controller unavailable for restored tab".into())
+            } else {
+                None
+            };
+            #[cfg(not(target_os = "windows"))]
+            let restore_error: Option<SharedString> = None;
+            let pending_scroll = if restored.scroll_x != 0 || restored.scroll_y != 0 {
+                Some((restored.scroll_x, restored.scroll_y))
+            } else {
+                None
+            };
             let tab = TabState {
                 id: index as u64 + 1,
                 title: restored.title.clone().into(),
                 url: restored.url.clone().into(),
                 loading: true,
-                error: None,
+                error: restore_error,
                 can_go_back: false,
                 can_go_forward: false,
                 favicon: None,
                 last_active: index as u64 + 1,
                 history_url: String::new(),
+                scroll_x: restored.scroll_x,
+                scroll_y: restored.scroll_y,
+                restored: true,
+                #[cfg(target_os = "windows")]
+                pending_scroll,
                 #[cfg(target_os = "windows")]
                 webview,
             };
@@ -567,6 +620,11 @@ impl AmareApp {
                 favicon: None,
                 last_active: 1,
                 history_url: String::new(),
+                scroll_x: 0,
+                scroll_y: 0,
+                restored: false,
+                #[cfg(target_os = "windows")]
+                pending_scroll: None,
                 #[cfg(target_os = "windows")]
                 webview: None,
             });
@@ -614,8 +672,17 @@ impl AmareApp {
             settings_error: None,
             settings_last_text_apply: Instant::now(),
             runtime_version,
+            restore_progress: None,
+            session_summary: library::session_summary().ok().flatten(),
+            session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
         };
         apply_platform_settings(&app.settings);
+        app.restore_progress = Some(RestoreProgress {
+            total: app.tabs.len(),
+            finished: 0,
+            failed: app.tabs.iter().filter(|tab| tab.error.is_some()).count(),
+            visible_until: Instant::now() + Duration::from_secs(8),
+        });
         #[cfg(target_os = "windows")]
         if let Some(webview) = app.active_webview() {
             webview.set_active(true);
@@ -720,7 +787,10 @@ impl AmareApp {
                     "error": tab.error,
                     "can_go_back": tab.can_go_back,
                     "can_go_forward": tab.can_go_forward,
-                    "last_active": tab.last_active
+                    "last_active": tab.last_active,
+                    "scroll_x": tab.scroll_x,
+                    "scroll_y": tab.scroll_y,
+                    "restored": tab.restored
                 })
             })
             .collect::<Vec<_>>();
@@ -760,6 +830,17 @@ impl AmareApp {
             "settings_query": settings_query,
             "settings_error": self.settings_error,
             "settings_generation": self.settings_generation,
+            "session_summary": self.session_summary.as_ref().map(|summary| serde_json::json!({
+                "windows": summary.windows,
+                "tabs": summary.tabs,
+                "saved_at_ms": summary.saved_at_ms
+            })),
+            "session_error": self.session_error,
+            "restore_progress": self.restore_progress.as_ref().map(|progress| serde_json::json!({
+                "total": progress.total,
+                "finished": progress.finished,
+                "failed": progress.failed
+            })),
             "ime_context": ime_context,
             "pid": std::process::id()
         });
@@ -862,8 +943,25 @@ impl AmareApp {
         };
         self.settings_category = SettingsCategory::Appearance;
         self.settings_confirm_reset = false;
+        self.settings_summary_refresh();
         self.settings_search
             .update(cx, |input, cx| input.set_content("", cx));
+        cx.notify();
+    }
+
+    fn settings_summary_refresh(&mut self) {
+        self.session_summary = library::session_summary().ok().flatten();
+    }
+
+    fn start_new_session(&mut self, cx: &mut Context<Self>) {
+        match library::clear_session() {
+            Ok(()) => {
+                self.session_summary = None;
+                self.session_error = None;
+                self.update_setting("restore_session", SettingValue::Boolean(false), cx);
+            }
+            Err(error) => self.settings_error = Some(error),
+        }
         cx.notify();
     }
 
@@ -1130,8 +1228,17 @@ impl AmareApp {
         let mut history_changed = false;
         #[cfg(not(target_os = "windows"))]
         let mut history_changed = false;
+        let mut restore_finished = 0usize;
+        let mut restore_failed = 0usize;
         for tab in &mut self.tabs {
+            let was_loading = tab.loading;
             let Some(webview) = &tab.webview else {
+                if tab.restored && tab.loading {
+                    tab.loading = false;
+                    tab.error = Some("WebView2 controller unavailable".into());
+                    restore_finished += 1;
+                    restore_failed += 1;
+                }
                 continue;
             };
             let source = webview.source();
@@ -1164,6 +1271,30 @@ impl AmareApp {
             let (loading, error) = webview.signals();
             tab.loading = loading;
             tab.error = error.map(Into::into);
+            if tab.restored && was_loading && !tab.loading {
+                restore_finished += 1;
+                if tab.error.is_some() {
+                    restore_failed += 1;
+                }
+            }
+            #[cfg(target_os = "windows")]
+            if tab.restored && !tab.loading {
+                if let Some((x, y)) = tab.pending_scroll.take() {
+                    webview.scroll_to(x, y);
+                    tab.scroll_x = x;
+                    tab.scroll_y = y;
+                } else if let Some((x, y)) = webview.scroll_position() {
+                    tab.scroll_x = x;
+                    tab.scroll_y = y;
+                }
+            }
+        }
+        if restore_finished > 0 {
+            if let Some(progress) = &mut self.restore_progress {
+                progress.finished = (progress.finished + restore_finished).min(progress.total);
+                progress.failed += restore_failed;
+                progress.visible_until = Instant::now() + Duration::from_secs(6);
+            }
         }
         if history_changed {
             self.history = library::history(&self.history_query).unwrap_or_default();
@@ -1260,6 +1391,11 @@ impl AmareApp {
             favicon: None,
             last_active: self.activity_counter,
             history_url: String::new(),
+            scroll_x: 0,
+            scroll_y: 0,
+            restored: false,
+            #[cfg(target_os = "windows")]
+            pending_scroll: None,
             #[cfg(target_os = "windows")]
             webview,
         });
@@ -1964,6 +2100,71 @@ impl AmareApp {
                     self.settings_new_tab.clone(),
                     dark,
                 ));
+            }
+            if Self::settings_match(&query, "최근 세션 recent session 정보") {
+                let summary = self
+                    .session_summary
+                    .as_ref()
+                    .map(|summary| {
+                        format!(
+                            "{}개 창 · {}개 탭 · 저장 시각 {} ms",
+                            summary.windows, summary.tabs, summary.saved_at_ms
+                        )
+                    })
+                    .unwrap_or_else(|| "저장된 세션이 없습니다.".to_string());
+                content = content.child(self.info_setting_row(
+                    "최근 세션",
+                    "SQLite에 저장된 마지막 창·탭 구성입니다.",
+                    summary,
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "복원 상태 restore progress failure") {
+                let status = self
+                    .restore_progress
+                    .as_ref()
+                    .map(|progress| {
+                        format!(
+                            "{}/{} 완료 · {} 실패",
+                            progress.finished, progress.total, progress.failed
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        if let Some(error) = &self.session_error {
+                            error.clone()
+                        } else {
+                            "현재 복원 작업 없음".to_string()
+                        }
+                    });
+                content = content.child(self.info_setting_row(
+                    "복원 상태",
+                    "이 창에서 진행 중이거나 마지막으로 완료된 복원 상태입니다.",
+                    status,
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "새 세션 new session 시작") {
+                let new_session = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.start_new_session(cx);
+                });
+                content = content.child(
+                    self.setting_row(
+                        "새 세션으로 시작",
+                        "저장된 세션을 지우고 다음 실행에서 새 탭으로 시작합니다.",
+                        div()
+                            .id("settings-new-session")
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(background)
+                            .text_color(muted)
+                            .text_xs()
+                            .cursor_pointer()
+                            .child("저장된 세션 지우기")
+                            .on_click(new_session),
+                        dark,
+                    ),
+                );
             }
         }
         if search_active || selected == SettingsCategory::Search {
@@ -2701,7 +2902,26 @@ impl AmareApp {
     }
 
     fn update_session(&mut self, window: &Window) {
+        let due = self.last_session_save.elapsed() >= Duration::from_secs(2);
+        if due {
+            #[cfg(target_os = "windows")]
+            for tab in &mut self.tabs {
+                if tab.loading || tab.error.is_some() {
+                    continue;
+                }
+                if let Some(webview) = &tab.webview {
+                    if let Some((x, y)) = webview.scroll_position() {
+                        tab.scroll_x = x;
+                        tab.scroll_y = y;
+                    }
+                }
+            }
+        }
         let bounds = window.bounds();
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         let snapshot = SessionWindowSnapshot {
             window_id: self.window_id,
             x: f32::from(bounds.origin.x),
@@ -2716,18 +2936,83 @@ impl AmareApp {
                 .map(|tab| SessionTabSnapshot {
                     url: tab.url.to_string(),
                     title: tab.title.to_string(),
+                    scroll_x: tab.scroll_x,
+                    scroll_y: tab.scroll_y,
                 })
                 .collect(),
+            saved_at_ms: now_ms,
         };
-        SESSION_WINDOWS.with(|cell| {
-            cell.borrow_mut().insert(self.window_id, snapshot);
+        let changed = SESSION_WINDOWS.with(|cell| {
+            let mut windows = cell.borrow_mut();
+            let changed = windows.get(&self.window_id) != Some(&snapshot);
+            windows.insert(self.window_id, snapshot);
+            changed
         });
         if self.settings.save_session_on_exit
-            && self.last_session_save.elapsed() >= Duration::from_secs(2)
+            && (due || (changed && self.last_session_save.elapsed() >= Duration::from_millis(500)))
         {
-            persist_session();
+            persist_session(false);
+            SESSION_CLOSED_WINDOWS.with(|cell| cell.borrow_mut().clear());
             self.last_session_save = Instant::now();
         }
+    }
+
+    fn session_banner_active(&self) -> bool {
+        if self.session_error.is_some() {
+            return true;
+        }
+        self.restore_progress
+            .as_ref()
+            .map(|progress| {
+                progress.finished < progress.total || Instant::now() < progress.visible_until
+            })
+            .unwrap_or(false)
+    }
+
+    fn render_session_banner(&self, dark: bool) -> impl IntoElement {
+        let (text, background, foreground) = if let Some(error) = &self.session_error {
+            (
+                format!("세션 복원 실패 · {error}"),
+                rgb(0x5c1f24),
+                rgb(0xffd7da),
+            )
+        } else if let Some(progress) = &self.restore_progress {
+            if progress.finished < progress.total {
+                (
+                    format!("세션 복원 중 · {}/{} 탭", progress.finished, progress.total),
+                    if dark { rgb(0x1d3b5c) } else { rgb(0xdce9ff) },
+                    if dark { rgb(0xd7e8ff) } else { rgb(0x174a8b) },
+                )
+            } else if progress.failed > 0 {
+                (
+                    format!(
+                        "세션 복원 완료 · {}개 탭 실패, {}개 탭 복원",
+                        progress.failed,
+                        progress.total.saturating_sub(progress.failed)
+                    ),
+                    rgb(0x5c1f24),
+                    rgb(0xffd7da),
+                )
+            } else {
+                (
+                    format!("세션 복원 완료 · {}개 탭", progress.total),
+                    if dark { rgb(0x163d2b) } else { rgb(0xdff5e8) },
+                    if dark { rgb(0xc8f0d8) } else { rgb(0x17633a) },
+                )
+            }
+        } else {
+            (String::new(), rgb(0x000000), rgb(0xffffff))
+        };
+        div()
+            .id("session-restore-banner")
+            .flex()
+            .items_center()
+            .h(px(30.0))
+            .px_4()
+            .bg(background)
+            .text_color(foreground)
+            .text_xs()
+            .child(text)
     }
 
     fn sync_webview_bounds(&self, window: &Window) {
@@ -2752,7 +3037,12 @@ impl AmareApp {
             let width =
                 ((f32::from(viewport.width) * scale).round().max(1.0) as i32 - panel).max(1);
             let height = (f32::from(viewport.height) * scale).round().max(1.0) as i32;
-            let toolbar = (TOOLBAR_HEIGHT * scale).round() as i32;
+            let banner = if self.session_banner_active() {
+                30.0
+            } else {
+                0.0
+            };
+            let toolbar = ((TOOLBAR_HEIGHT + banner) * scale).round() as i32;
             webview.set_bounds(0, toolbar, width, (height - toolbar).max(1));
         }
     }
@@ -2861,12 +3151,30 @@ impl Render for AmareApp {
                     .text_color(if active { accent } else { muted })
                     .child(
                         div()
-                            .max_w(px(70.0))
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .max_w(px(74.0))
                             .overflow_hidden()
                             .text_ellipsis()
+                            .child(if tab.restored {
+                                div()
+                                    .text_xs()
+                                    .text_color(accent)
+                                    .child("↻")
+                                    .into_any_element()
+                            } else {
+                                div().into_any_element()
+                            })
                             .child(tab.title.clone()),
                     )
-                    .child(if tab.loading { "◌" } else { "" })
+                    .child(if tab.error.is_some() {
+                        "!"
+                    } else if tab.loading {
+                        "◌"
+                    } else {
+                        ""
+                    })
                     .on_drag(drag_info, move |info: &TabDragInfo, _, _, cx| {
                         #[cfg(target_os = "windows")]
                         start_drop_watch(source_window_id, info.id);
@@ -3188,6 +3496,9 @@ impl Render for AmareApp {
                             })),
                     ),
             )
+            .when(self.session_banner_active(), |el| {
+                el.child(self.render_session_banner(dark))
+            })
             .child(if self.panel == LibraryPanel::Settings {
                 self.render_settings(window, cx)
             } else {
@@ -3223,40 +3534,62 @@ impl Render for AmareApp {
 
 impl Drop for AmareApp {
     fn drop(&mut self) {
-        let empty = SESSION_WINDOWS.with(|cell| {
-            let mut windows = cell.borrow_mut();
-            windows.remove(&self.window_id);
+        let empty = SESSION_WINDOWS.with(|windows| {
+            let mut windows = windows.borrow_mut();
+            if let Some(snapshot) = windows.remove(&self.window_id) {
+                SESSION_CLOSED_WINDOWS.with(|closed| {
+                    closed.borrow_mut().insert(snapshot.window_id, snapshot);
+                });
+            }
             windows.is_empty()
         });
-        if self.settings.save_session_on_exit {
-            persist_session();
-        } else if empty {
-            let _ = library::save_session("[]");
+        if empty {
+            if self.settings.save_session_on_exit {
+                persist_session(true);
+            } else {
+                let _ = library::save_session("[]");
+            }
         }
     }
 }
 
-fn persist_session() {
-    let payload: Option<String> = SESSION_WINDOWS.with(|cell| {
-        serde_json::to_string(&cell.borrow().values().cloned().collect::<Vec<_>>()).ok()
-    });
+fn persist_session(include_closed: bool) {
+    let mut snapshots =
+        SESSION_WINDOWS.with(|cell| cell.borrow().values().cloned().collect::<Vec<_>>());
+    if include_closed {
+        SESSION_CLOSED_WINDOWS.with(|cell| snapshots.extend(cell.borrow().values().cloned()));
+    }
+    let payload = serde_json::to_string(&snapshots).ok();
     if let Some(payload) = payload {
         let _ = library::save_session(&payload);
     }
 }
 
-fn load_session_windows(settings: &library::BrowserSettings) -> Vec<SessionWindowSnapshot> {
+fn load_session_windows(
+    settings: &library::BrowserSettings,
+) -> (Vec<SessionWindowSnapshot>, Option<String>) {
     if !settings.restore_session
         || std::env::var("AMARE_GPUI_RESTORE").ok().as_deref() == Some("0")
         || std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
     {
-        return Vec::new();
+        return (Vec::new(), None);
     }
     match library::load_session() {
-        Ok(Some(json)) => {
-            serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json).unwrap_or_default()
-        }
-        _ => Vec::new(),
+        Ok(Some(json)) => match serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json) {
+            Ok(windows) => (windows, None),
+            Err(error) => {
+                let _ = library::save_corrupt_session(&json);
+                (
+                    Vec::new(),
+                    Some(format!("저장된 세션 데이터가 손상되었습니다 ({error})")),
+                )
+            }
+        },
+        Ok(None) => (Vec::new(), None),
+        Err(error) => (
+            Vec::new(),
+            Some(format!("세션을 읽지 못했습니다 ({error})")),
+        ),
     }
 }
 
@@ -3360,7 +3693,8 @@ fn main() {
         .detach();
         let (_, startup_settings) = library::browser_settings_cached()
             .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
-        let restored = load_session_windows(&startup_settings);
+        let (restored, session_error) = load_session_windows(&startup_settings);
+        STARTUP_SESSION_ERROR.with(|error| *error.borrow_mut() = session_error);
         if restored.is_empty() {
             let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
             cx.open_window(

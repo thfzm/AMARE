@@ -21,6 +21,8 @@ public static class AmareSettings {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -132,8 +134,20 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
-    [void][AmareSettings]::ShowWindow($script:hwnd, 3)
-    Start-Sleep -Seconds 1
+    Click-Client $script:hwnd 908 22
+    if (-not [AmareSettings]::IsIconic($script:hwnd)) { throw "minimize click did not minimize window" }
+    Add-Result "titlebar-minimize-click" "PASS" "window minimized"
+    [void][AmareSettings]::ShowWindow($script:hwnd, 9)
+    Start-Sleep -Milliseconds 700
+    Click-Client $script:hwnd 952 22
+    if (-not [AmareSettings]::IsZoomed($script:hwnd)) { throw "maximize click did not maximize window" }
+    Add-Result "titlebar-maximize-click" "PASS" "window maximized"
+    Click-Client $script:hwnd 952 22
+    if ([AmareSettings]::IsZoomed($script:hwnd)) { throw "restore click did not restore window" }
+    Add-Result "titlebar-restore-click" "PASS" "window restored"
+    Click-Client $script:hwnd 952 22
+    if (-not [AmareSettings]::IsZoomed($script:hwnd)) { throw "second maximize click failed" }
+    Start-Sleep -Milliseconds 500
     Shot "01-initial-browser.png"
 
     Open-Settings
@@ -208,9 +222,14 @@ try {
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
-    try { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue } catch {}
-    if (-not $app.WaitForExit(20000)) { throw "settings app did not stop" }
-    Add-Result "multi-window-forced-exit" "UNVERIFIED" "forced termination used to preserve multi-window session; graceful multi-window exit not asserted"
+    foreach ($window in (Get-BrowserWindows)) {
+        [void][AmareSettings]::SetForegroundWindow($window)
+        Start-Sleep -Milliseconds 120
+        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+        Start-Sleep -Milliseconds 120
+    }
+    if (-not $app.WaitForExit(25000)) { throw "settings app did not exit after closing both windows" }
+    Add-Result "multi-window-graceful-exit" "PASS" "both windows closed in sequence"
     Start-Sleep -Seconds 2
 
     $app = Start-Process $Exe -PassThru
@@ -233,14 +252,9 @@ try {
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 800
 
-    foreach ($window in (Get-BrowserWindows)) {
-        if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
-        [void][AmareSettings]::SetForegroundWindow($window)
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-        Start-Sleep -Milliseconds 800
-    }
-    if (-not $app.WaitForExit(25000)) { throw "restored settings app did not exit" }
+    Click-Client $script:hwnd 997 22
+    if (-not $app.WaitForExit(25000)) { throw "close click did not exit reset app" }
+    Add-Result "titlebar-close-click" "PASS" "window closed via close button"
     Start-Sleep -Seconds 2
 
     $env:AMARE_GPUI_RESTORE = "0"
