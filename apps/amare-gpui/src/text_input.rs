@@ -3,8 +3,8 @@ use std::ops::Range;
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
     EntityInputHandler, FocusHandle, Focusable, GlobalElementId, PaintQuad, Pixels, Point,
-    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WindowAppearance,
-    actions, div, fill, hsla, point, prelude::*, px, relative, rgba, size,
+    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill, hsla,
+    point, prelude::*, px, relative, rgba, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -479,11 +479,7 @@ impl Element for AddressTextElement {
         let cursor = input.cursor_offset();
         let style = window.text_style();
         let (display_text, text_color) = if content.is_empty() {
-            let color = match window.appearance() {
-                WindowAppearance::Dark | WindowAppearance::VibrantDark => hsla(0., 0., 1., 0.45),
-                _ => hsla(0., 0., 0., 0.35),
-            };
-            (input.placeholder.clone(), color)
+            (input.placeholder.clone(), hsla(0., 0., 0.5, 1.))
         } else {
             (content, style.color)
         };
