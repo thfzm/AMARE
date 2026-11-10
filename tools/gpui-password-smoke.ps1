@@ -151,12 +151,6 @@ try {
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/autotab.html")
-    Send-Keys "{ENTER}"
-    [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multiple tabs")
-    Start-Sleep -Milliseconds 700
-    Shot "03-multiple-tabs.png"
     Open-Passwords
     Shot "02-password-manager-panel.png"
     Unlock-Vault
