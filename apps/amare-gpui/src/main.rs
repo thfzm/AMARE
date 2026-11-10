@@ -1900,11 +1900,11 @@ impl AmareApp {
                 ));
             }
             if Self::settings_match(&query, "글꼴 크기 font size") {
-                content = content.child(self.choice_setting_row(
+                content = content.child(self.int_choice_setting_row(
                     "글꼴 크기",
                     "브라우저 UI의 기준 글꼴 크기입니다.",
                     "ui_font_size",
-                    &self.settings.ui_font_size.to_string(),
+                    self.settings.ui_font_size,
                     &[("14", "14"), ("16", "16"), ("18", "18"), ("20", "20")],
                     dark,
                     cx,
