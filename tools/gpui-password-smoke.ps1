@@ -231,6 +231,20 @@ try {
 
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "password app did not exit" }
+    Start-Sleep -Seconds 2
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "vault restart app")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
+    Open-Passwords
+    Click-Client $script:hwnd 650 242
+    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 2 } 10 "vault restart unlock")
+    Add-Result "vault-restart-dpapi" "PASS" "2 accounts restored after restart"
+    Send-Keys "%{F4}"
+    if (-not $app.WaitForExit(20000)) { throw "restarted password app did not exit" }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
     try { Shot "99-password-failure.png" } catch {}
