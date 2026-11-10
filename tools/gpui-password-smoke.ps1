@@ -141,7 +141,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.password_vault.reveal } 6 "password reveal")
     Shot "06-password-reveal.png"
 
-    Click-Client $script:hwnd 950 314
+    Click-Client $script:hwnd 966 336
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "edit form")
     Shot "05-account-edit.png"
     Click-Client $script:hwnd 995 207
