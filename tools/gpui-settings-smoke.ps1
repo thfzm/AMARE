@@ -150,7 +150,7 @@ try {
     Select-Category "appearance" 167
     Click-Client $script:hwnd 1000 212
     [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 8 "dark theme setting")
-    Click-Client $script:hwnd 968 468
+    Click-Client $script:hwnd 968 500
     [void](Wait-State { param($s) $s.settings.tab_width -eq 140 } 8 "tab width setting")
     Click-Client $script:hwnd 964 426
     [void](Wait-State { param($s) $s.settings.ui_font_size -eq 18 } 8 "font size setting")
