@@ -2015,18 +2015,22 @@ impl AmareApp {
                     cx,
                 ));
             }
-            content = content.child(self.info_setting_row(
-                "저장 위치 확인",
-                "WebView2의 저장 위치 확인 대화상자는 아직 연결하지 않았습니다.",
-                "UNVERIFIED".into(),
-                dark,
-            ));
-            content = content.child(self.info_setting_row(
-                "완료 알림",
-                "다운로드 완료 시스템 알림은 아직 구현하지 않았습니다.",
-                "UNVERIFIED".into(),
-                dark,
-            ));
+            if Self::settings_match(&query, "저장 위치 확인 save as") {
+                content = content.child(self.info_setting_row(
+                    "저장 위치 확인",
+                    "WebView2의 저장 위치 확인 대화상자는 아직 연결하지 않았습니다.",
+                    "UNVERIFIED".into(),
+                    dark,
+                ));
+            }
+            if Self::settings_match(&query, "완료 알림 notification") {
+                content = content.child(self.info_setting_row(
+                    "완료 알림",
+                    "다운로드 완료 시스템 알림은 아직 구현하지 않았습니다.",
+                    "UNVERIFIED".into(),
+                    dark,
+                ));
+            }
         }
         if search_active || selected == SettingsCategory::Privacy {
             content = content.child(header("개인정보 및 보안"));
@@ -2040,12 +2044,14 @@ impl AmareApp {
                     cx,
                 ));
             }
-            content = content.child(self.info_setting_row(
-                "인증서 경고",
-                "안전하지 않은 인증서 경고를 무력화하는 설정은 제공하지 않습니다.",
-                "항상 경고".into(),
-                dark,
-            ));
+            if Self::settings_match(&query, "인증서 경고 certificate") {
+                content = content.child(self.info_setting_row(
+                    "인증서 경고",
+                    "안전하지 않은 인증서 경고를 무력화하는 설정은 제공하지 않습니다.",
+                    "항상 경고".into(),
+                    dark,
+                ));
+            }
             if Self::settings_match(&query, "쿠키 사이트 데이터 cookie site data") {
                 content = content.child(self.info_setting_row(
                     "쿠키 및 사이트 데이터",
