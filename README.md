@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.53.0 GPUI Session Restore & Downloads** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 SQLite settings 기반 탭·활성 탭·창 크기/위치/최대화 세션 복원, WebView2 다운로드 목록 연속성, 북마크/방문 기록, custom titlebar, 아이콘과 실제 스크린샷을 CI 검증했습니다. 다중 창 복원, DOM/scroll/history 복원, 세션 설정/진행/실패 UI, 창 간 탭 이동/분리, context menu, DPI/multi-monitor, 장시간 IME/Handle stress는 **UNVERIFIED**이며, Windows 11/local CA/signing도 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.54.0 GPUI Browser Settings & Environment** 단계입니다. Windows는 기존 WinUI 3 앱을 유지하면서 GPUI 0.2.2 + WebView2에서 테마/밀도/글꼴/탭 너비, 시작·세션, 검색 엔진·주소 동작, 다운로드 경로/패널, 방문 기록, 고급 진단과 설정 초기화를 SQLite 단일 settings 경로로 관리하고 실제 재시작 유지와 다중 창 복원을 CI 검증했습니다. DOM/scroll/history 복원, 쿠키·사이트 권한 관리 UI, 다운로드 pause/resume/cancel 자동화, DPI/multi-monitor, Windows 11/local CA/signing은 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -149,6 +149,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.51.0: **GPUI SQLite bookmark/history add/search/delete/persistence PASS, 8 actual screenshots PASS, tab/popup/new-window regression PASS, GUI 42/42/143 PASS**; cross-window move/detach/context menu/DPI/multi-monitor/IME·Handle stress UNVERIFIED
 - Windows 0.52.0: **WebView2 download progress/complete/failure UI PASS, custom titlebar tab integration + window controls, exe icon resource, actual screenshots/desktop captures PASS, bookmark/history regression PASS**; download pause/resume/cancel automation, all titlebar controls/DPI/taskbar-AltTab icon details, cross-window move/detach, context menu/IME stress UNVERIFIED
 - Windows 0.53.0: **GPUI SQLite session restore for tab count/order/title/URL/active tab/window geometry PASS in one-window restart**, `15-session-restored.png` and `16-downloads-after-restart.png`, library **18/0/0**, download **5/0/1**, input **26/0/3**, tab **20/0/6**; multi-window/DOM-scroll-history/session setting-progress-failure UI, download pause/resume/cancel automation, WebView2 restart cleanup UNVERIFIED
+- Windows 0.54.0: **GPUI SQLite settings UI PASS** — theme/density/font/tab width, startup/session, search engine/address behavior, download path/panel, history, advanced diagnostics/reset, settings search, restart persistence, two-window restore/forced-exit session; settings **18/0/2**, library **18/0/0**, download **7/0/1**, tab **20/0/6**, actual 0.54 screenshots; DOM/page-state restore, cookies/site permissions UI, graceful multi-window exit, DPI/multi-monitor/signing UNVERIFIED
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
