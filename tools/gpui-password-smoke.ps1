@@ -70,6 +70,24 @@ function Type-Into([IntPtr]$hwnd, [int]$x, [int]$y, [string]$text) {
     [System.Windows.Forms.SendKeys]::SendWait($text)
     Start-Sleep -Milliseconds 300
 }
+function Fill-VaultField([string]$field, [string]$text, [int[]]$ys) {
+    foreach ($y in $ys) {
+        Click-Client $script:hwnd 800 $y
+        Send-Keys "^a"
+        [System.Windows.Forms.SendKeys]::SendWait($text)
+        Start-Sleep -Milliseconds 250
+        $state = Read-State
+        $value = switch ($field) {
+            "origin" { $state.password_vault.form_origin }
+            "username" { $state.password_vault.form_username }
+            "password" { [string]$state.password_vault.form_password_len }
+            default { "" }
+        }
+        $expected = if ($field -eq "password") { [string]$text.Length } else { $text }
+        if ($value -eq $expected) { return $true }
+    }
+    return $false
+}
 function Shot([string]$name) {
     $rect = New-Object AmarePassword+RECT
     [void][AmarePassword]::GetWindowRect($script:hwnd, [ref]$rect)
@@ -158,17 +176,17 @@ try {
     Click-Client $script:hwnd 990 159
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "add form")
     Shot "04-account-add.png"
-    Type-Into $script:hwnd 800 274 "http://127.0.0.1:8767"
-    Type-Into $script:hwnd 800 332 "alice"
-    Type-Into $script:hwnd 800 392 $passwordA
+    if (-not (Fill-VaultField "origin" "http://127.0.0.1:8767" @(266,274,282))) { throw "origin field not focused" }
+    if (-not (Fill-VaultField "username" "alice" @(318,326,334,342))) { throw "username field not focused" }
+    if (-not (Fill-VaultField "password" $passwordA @(374,382,390,398))) { throw "password field not focused" }
     Click-Client $script:hwnd 994 431
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 } 8 "first account saved")
 
     Click-Client $script:hwnd 990 159
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "second add form")
-    Type-Into $script:hwnd 800 274 "http://127.0.0.1:8767"
-    Type-Into $script:hwnd 800 332 "bob"
-    Type-Into $script:hwnd 800 392 $passwordB
+    if (-not (Fill-VaultField "origin" "http://127.0.0.1:8767" @(266,274,282))) { throw "origin field not focused (second)" }
+    if (-not (Fill-VaultField "username" "bob" @(318,326,334,342))) { throw "username field not focused (second)" }
+    if (-not (Fill-VaultField "password" $passwordB @(374,382,390,398))) { throw "password field not focused (second)" }
     Click-Client $script:hwnd 994 431
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 2 } 8 "second account saved")
     Shot "03-saved-accounts.png"

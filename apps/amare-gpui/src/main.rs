@@ -902,6 +902,9 @@ impl AmareApp {
             })
             .collect::<Vec<_>>();
         let password_query = self.password_ui.search.read(cx).content();
+        let password_form_origin = self.password_ui.origin.read(cx).content();
+        let password_form_username = self.password_ui.username.read(cx).content();
+        let password_form_length = self.password_ui.password.read(cx).content().len();
         let password_current_origin = self
             .active_tab()
             .and_then(|tab| password_vault::normalize_origin(&tab.url).ok());
@@ -946,6 +949,9 @@ impl AmareApp {
                 "pending": pending_login,
                 "current_origin": password_current_origin,
                 "site_matches": password_site_matches,
+                "form_origin": password_form_origin,
+                "form_username": password_form_username,
+                "form_password_len": password_form_length,
                 "error": self.password_ui.error
             },
             "session_summary": self.session_summary.as_ref().map(|summary| serde_json::json!({
