@@ -252,9 +252,17 @@ try {
     Click-Client $script:hwnd 650 242
     [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 2 } 10 "vault restart unlock")
     Add-Result "vault-restart-dpapi" "PASS" "2 accounts restored after restart"
-    Click-Client $script:hwnd 997 383
-    Click-Client $script:hwnd 997 383
-    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 } 8 "vault delete")
+    $deleted = $false
+    foreach ($y in 375, 380, 385, 390) {
+        foreach ($x in 990, 1000, 1010) {
+            Click-Client $script:hwnd $x $y
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if (@($state.password_vault.entries).Count -eq 1) { $deleted = $true; break }
+        }
+        if ($deleted) { break }
+    }
+    if (-not $deleted) { throw "Timed out waiting for vault delete" }
     Add-Result "vault-delete" "PASS" "one account removed and vault re-saved"
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "restarted password app did not exit" }
