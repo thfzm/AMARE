@@ -210,9 +210,10 @@ impl AddressInput {
     fn on_mouse_down(
         &mut self,
         event: &gpui::MouseDownEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        window.focus(&self.focus_handle);
         self.is_selecting = true;
         if event.modifiers.shift {
             self.select_to(self.index_for_mouse_position(event.position), cx);
