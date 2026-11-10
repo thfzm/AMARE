@@ -203,9 +203,16 @@ try {
 
     $plaintextFound = $false
     foreach ($file in Get-ChildItem $DataDir -Recurse -File) {
-        $bytes = [IO.File]::ReadAllBytes($file.FullName)
-        $text = [Text.Encoding]::UTF8.GetString($bytes)
-        if ($text.Contains($passwordA) -or $text.Contains($passwordB)) { $plaintextFound = $true; break }
+        $stream = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            $memory = New-Object IO.MemoryStream
+            $stream.CopyTo($memory)
+            $text = [Text.Encoding]::UTF8.GetString($memory.ToArray())
+            if ($text.Contains($passwordA) -or $text.Contains($passwordB)) { $plaintextFound = $true; break }
+        } finally {
+            $stream.Dispose()
+        }
+        if ($plaintextFound) { break }
     }
     if ($plaintextFound) { throw "plaintext password found in data directory" }
     if ((Get-Content $Status -Raw).Contains($passwordA) -or (Get-Content $Status -Raw).Contains($passwordB)) { throw "password found in status file" }
