@@ -1695,6 +1695,54 @@ impl AmareApp {
         self.setting_row(title, description, control, dark)
     }
 
+    fn int_choice_setting_row(
+        &self,
+        title: &str,
+        description: &str,
+        key: &'static str,
+        current: i64,
+        choices: &'static [(&'static str, &'static str)],
+        dark: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let accent = rgb(0x2f7df6);
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let current = current.to_string();
+        let mut control = div()
+            .flex()
+            .flex_wrap()
+            .justify_end()
+            .gap_1()
+            .max_w(px(320.0));
+        for (value, label) in choices {
+            let selected = *value == current;
+            let parsed = value.parse::<i64>().unwrap_or_default();
+            let listener = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.update_setting(key, SettingValue::Integer(parsed), cx);
+            });
+            control = control.child(
+                div()
+                    .id(SharedString::from(format!(
+                        "setting-int-choice-{key}-{value}"
+                    )))
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(if selected { accent } else { border })
+                    .bg(if selected { accent } else { background })
+                    .text_color(if selected { rgb(0xffffff) } else { muted })
+                    .text_xs()
+                    .cursor_pointer()
+                    .child(*label)
+                    .on_click(listener),
+            );
+        }
+        self.setting_row(title, description, control, dark)
+    }
+
     fn text_setting_row(
         &self,
         title: &str,
@@ -1863,11 +1911,11 @@ impl AmareApp {
                 ));
             }
             if Self::settings_match(&query, "탭 너비 tab width") {
-                content = content.child(self.choice_setting_row(
+                content = content.child(self.int_choice_setting_row(
                     "탭 너비",
                     "탭 하나의 가로 폭입니다.",
                     "tab_width",
-                    &self.settings.tab_width.to_string(),
+                    self.settings.tab_width,
                     &[
                         ("100", "100"),
                         ("120", "120"),
