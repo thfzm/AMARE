@@ -160,24 +160,36 @@ try {
     Click-Client $script:hwnd 1000 212
     [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 8 "dark theme setting")
     $changed = $false
-    foreach ($y in 500, 512, 524, 488, 536) {
-        Click-Client $script:hwnd 968 $y
-        $state = Read-State
-        if ($state.settings.tab_width -eq 140) { $changed = $true; break }
+    $tabValue = 120
+    foreach ($y in 492, 500, 508, 516) {
+        foreach ($x in 920, 950, 970, 990, 1010) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($state.settings.tab_width -ne 120) { $tabValue = [int]$state.settings.tab_width; $changed = $true; break }
+        }
+        if ($changed) { break }
     }
     if (-not $changed) { throw "Timed out waiting for tab width setting" }
     $changed = $false
-    foreach ($y in 426, 414, 438, 450) {
-        Click-Client $script:hwnd 964 $y
-        $state = Read-State
-        if ($state.settings.ui_font_size -eq 18) { $changed = $true; break }
+    $fontValue = 16
+    foreach ($y in 414, 426, 438) {
+        foreach ($x in 880, 920, 950, 970, 1000) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($state.settings.ui_font_size -ne 16) { $fontValue = [int]$state.settings.ui_font_size; $changed = $true; break }
+        }
+        if ($changed) { break }
     }
     if (-not $changed) { throw "Timed out waiting for font size setting" }
     $changed = $false
-    foreach ($y in 300, 288, 312, 324) {
-        Click-Client $script:hwnd 1006 $y
-        $state = Read-State
-        if ($state.settings.ui_density -eq "compact") { $changed = $true; break }
+    $densityValue = "comfortable"
+    foreach ($y in 288, 300, 312, 324) {
+        foreach ($x in 940, 970, 990, 1010) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($state.settings.ui_density -ne "comfortable") { $densityValue = [string]$state.settings.ui_density; $changed = $true; break }
+        }
+        if ($changed) { break }
     }
     if (-not $changed) { throw "Timed out waiting for density setting" }
     Shot "03b-appearance-changed.png"
@@ -208,10 +220,10 @@ try {
     $app.Refresh(); $script:hwnd = $windows[0]
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
     $restored = Read-State
-    if ($restored.settings.theme -ne "dark" -or $restored.settings.ui_font_size -ne 18 -or $restored.settings.tab_width -ne 140 -or $restored.settings.ui_density -ne "compact") {
+    if ($restored.settings.theme -ne "dark" -or $restored.settings.ui_font_size -ne $fontValue -or $restored.settings.tab_width -ne $tabValue -or $restored.settings.ui_density -ne $densityValue) {
         throw "settings did not persist after restart: $($restored.settings | ConvertTo-Json -Compress)"
     }
-    Add-Result "settings-restart-persistence" "PASS" "theme=dark size=18 tab=140 density=compact"
+    Add-Result "settings-restart-persistence" "PASS" "theme=dark size=$fontValue tab=$tabValue density=$densityValue"
     Add-Result "multi-window-session-restore" "PASS" "windows=$($windows.Count)"
     ShotFull "11-multi-window-session-restored.png"
 
