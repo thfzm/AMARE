@@ -403,7 +403,7 @@ fn settings_defaults_and_groups_are_resolved() {
     let appearance = settings
         .list_group(&context, SettingGroup::Appearance)
         .unwrap();
-    assert!(appearance.len() >= 1);
+    assert!(!appearance.is_empty());
     assert!(appearance.iter().any(|setting| setting.key == "theme"));
     assert_eq!(
         settings.list_all(&context).unwrap().len(),
