@@ -105,6 +105,16 @@ function Open-Passwords {
     }
     [void](Wait-State { param($s) $s.panel -eq "passwords" } 8 "password panel")
 }
+function Unlock-Vault {
+    foreach ($y in 230, 242, 250, 236) {
+        foreach ($x in 640, 760, 900) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($null -ne $state -and $state.password_vault.unlocked) { return }
+        }
+    }
+    throw "Timed out waiting for vault unlock"
+}
 function Close-Passwords {
     $state = Read-State
     if ($null -ne $state -and $state.panel -eq "passwords") {
@@ -149,8 +159,7 @@ try {
     Shot "03-multiple-tabs.png"
     Open-Passwords
     Shot "02-password-manager-panel.png"
-    Click-Client $script:hwnd 650 242
-    [void](Wait-State { param($s) $s.password_vault.unlocked } 8 "vault unlock")
+    Unlock-Vault
 
     Click-Client $script:hwnd 990 159
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "add form")
@@ -293,8 +302,8 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
-    Click-Client $script:hwnd 650 242
-    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 2 } 10 "vault restart unlock")
+    Unlock-Vault
+    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 2 } 10 "vault restart unlock")
     Add-Result "vault-restart-dpapi" "PASS" "2 accounts restored after restart"
     $deleteX = 0
     $deleteY = 0
@@ -331,8 +340,8 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
-    Click-Client $script:hwnd 650 242
-    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 1 } 10 "deleted vault persistence")
+    Unlock-Vault
+    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 } 10 "deleted vault persistence")
     Add-Result "vault-delete-restart-persistence" "PASS" "one account remains after restart"
     $lastConfirmed = $false
     $lastY = 0
@@ -357,8 +366,8 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
-    Click-Client $script:hwnd 650 242
-    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 0 } 10 "empty vault persistence")
+    Unlock-Vault
+    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 0 } 10 "empty vault persistence")
     Add-Result "vault-empty-restart-persistence" "PASS" "empty vault remains empty after restart"
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "empty persistence app did not exit" }
@@ -379,8 +388,16 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
-    Click-Client $script:hwnd 650 242
-    [void](Wait-State { param($s) $null -ne $s.password_vault.error } 10 "corrupt vault error")
+    $corruptError = $false
+    foreach ($y in 230, 242, 250) {
+        foreach ($x in 640, 760, 900) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($null -ne $state.password_vault.error) { $corruptError = $true; break }
+        }
+        if ($corruptError) { break }
+    }
+    if (-not $corruptError) { throw "Timed out waiting for corrupt vault error" }
     $afterHash = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
     if ($afterHash -ne $corruptHash) { throw "corrupt vault was overwritten after unlock failure" }
     Add-Result "vault-corruption-preserved" "PASS" "original encrypted vault unchanged after failed unlock"
