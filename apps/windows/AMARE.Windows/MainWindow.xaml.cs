@@ -1901,7 +1901,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.56.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.57.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");

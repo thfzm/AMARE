@@ -392,6 +392,7 @@ struct AmareApp {
     session_summary: Option<library::SessionSummary>,
     session_error: Option<String>,
     password_ui: PasswordUi,
+    confirm_clear_site_data: bool,
 }
 
 impl AmareApp {
@@ -520,6 +521,7 @@ impl AmareApp {
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
+            confirm_clear_site_data: false,
         };
         apply_platform_settings(&app.settings);
 
@@ -600,6 +602,7 @@ impl AmareApp {
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
+            confirm_clear_site_data: false,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -746,6 +749,7 @@ impl AmareApp {
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
+            confirm_clear_site_data: false,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -1094,6 +1098,38 @@ impl AmareApp {
         cx.notify();
     }
 
+    fn clear_site_data(&mut self, cx: &mut Context<Self>) {
+        if !self.confirm_clear_site_data {
+            self.confirm_clear_site_data = true;
+            cx.notify();
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let result = self
+                .active_webview()
+                .ok_or_else(|| "WebView2 controller unavailable".to_string())
+                .and_then(|webview| webview.clear_site_data());
+            match result {
+                Ok(()) => {
+                    self.settings_error = None;
+                    self.password_ui.info = Some(
+                        "모든 사이트의 쿠키/사이트 데이터를 삭제했습니다. 열린 로그인 세션이 종료될 수 있습니다."
+                            .into(),
+                    );
+                }
+                Err(error) => self.settings_error = Some(error),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.settings_error =
+                Some("이 플랫폼에서는 WebView2 사이트 데이터 삭제를 지원하지 않습니다.".into());
+        }
+        self.confirm_clear_site_data = false;
+        cx.notify();
+    }
+
     fn backup_password_vault(&mut self, cx: &mut Context<Self>) {
         match self.password_ui.vault.backup() {
             Ok(path) => {
@@ -1247,6 +1283,11 @@ impl AmareApp {
     }
 
     fn fill_password_entry(&mut self, id: u64, cx: &mut Context<Self>) {
+        if !self.settings.password_autofill_enabled {
+            self.password_ui.error = Some("설정에서 비밀번호 자동 완성이 꺼져 있습니다.".into());
+            cx.notify();
+            return;
+        }
         #[cfg(target_os = "windows")]
         {
             let Some(tab_url) = self.active_tab().map(|tab| tab.url.to_string()) else {
@@ -1335,6 +1376,14 @@ impl AmareApp {
         #[cfg(target_os = "windows")]
         {
             let mut captures = Vec::new();
+            if !self.settings.password_save_prompt_enabled {
+                for tab in &self.tabs {
+                    if let Some(webview) = &tab.webview {
+                        let _ = webview.drain_login_captures();
+                    }
+                }
+                return;
+            }
             for tab in &self.tabs {
                 if let Some(webview) = &tab.webview {
                     captures.extend(webview.drain_login_captures());
@@ -2695,6 +2744,26 @@ impl AmareApp {
                     cx,
                 ));
             }
+            if Self::settings_match(&query, "비밀번호 자동 완성 autofill password") {
+                content = content.child(self.toggle_setting_row(
+                    "비밀번호 자동 완성",
+                    "사용자가 선택한 exact-origin 계정만 로그인 폼에 입력합니다.",
+                    "password_autofill_enabled",
+                    self.settings.password_autofill_enabled,
+                    dark,
+                    cx,
+                ));
+            }
+            if Self::settings_match(&query, "비밀번호 저장 제안 save prompt") {
+                content = content.child(self.toggle_setting_row(
+                    "로그인 정보 저장 제안",
+                    "로그인 submit 후 저장/업데이트 제안을 표시합니다.",
+                    "password_save_prompt_enabled",
+                    self.settings.password_save_prompt_enabled,
+                    dark,
+                    cx,
+                ));
+            }
             if Self::settings_match(&query, "인증서 경고 certificate") {
                 content = content.child(self.info_setting_row(
                     "인증서 경고",
@@ -2823,10 +2892,40 @@ impl AmareApp {
                 "UNVERIFIED".into(),
                 dark,
             ));
-            content = content.child(self.info_setting_row(
+            let clear_site = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.clear_site_data(cx);
+            });
+            content = content.child(self.setting_row(
                 "쿠키 및 사이트 데이터",
-                "사이트별 삭제 UI는 아직 구현하지 않았습니다. WebView2 ClearBrowsingData API 조사가 필요합니다.",
-                "UNVERIFIED".into(),
+                "WebView2 공식 ClearBrowsingData(ALL_SITE)로 현재 프로필의 모든 사이트 데이터를 삭제합니다. 사이트별 삭제는 API 제약으로 제공하지 않습니다.",
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("clear-site-data")
+                            .px_3()
+                            .py_1()
+                            .rounded_md()
+                            .bg(if self.confirm_clear_site_data {
+                                rgb(0xd9534f)
+                            } else {
+                                background
+                            })
+                            .text_color(if self.confirm_clear_site_data {
+                                rgb(0xffffff)
+                            } else {
+                                muted
+                            })
+                            .text_xs()
+                            .cursor_pointer()
+                            .child(if self.confirm_clear_site_data {
+                                "정말 모든 사이트 데이터 삭제"
+                            } else {
+                                "모든 사이트 데이터 삭제"
+                            })
+                            .on_click(clear_site),
+                    ),
                 dark,
             ));
         }

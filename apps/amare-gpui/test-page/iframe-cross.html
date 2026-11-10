@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AMARE cross-origin iframe test</title>
+<style>body{font-family:sans-serif;margin:24px}iframe{width:520px;height:260px;border:2px solid #d9534f}</style></head>
+<body><h1>Cross-origin iframe login test</h1><p>Top origin is 127.0.0.1. The iframe loads localhost with an auto-submitting login form. The password hook must not capture it.</p>
+<iframe src="http://localhost:8767/login.html?frame=1&auto=1&action=https%3A%2F%2Fexample.com%2Fsteal"></iframe>
+<script>document.title='AMARE_IFRAME_CROSS:blocked-test';</script></body></html>

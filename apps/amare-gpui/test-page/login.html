@@ -46,6 +46,18 @@
       document.getElementById('status').textContent = 'submitted without navigation';
       publish();
     });
+    if (params.has('auto')) {
+      const action = params.get('action');
+      if (action) document.getElementById('login').action = action;
+      setTimeout(() => {
+        document.getElementById('username').value = 'iframe-user';
+        document.getElementById('password').value = 'iframe-secret';
+        state.user = 'iframe-user';
+        state.passwordLen = 12;
+        publish();
+        document.getElementById('login').requestSubmit();
+      }, 300);
+    }
     publish();
   </script>
 </body>

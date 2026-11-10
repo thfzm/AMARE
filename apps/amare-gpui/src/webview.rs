@@ -10,14 +10,16 @@ use std::sync::mpsc;
 #[cfg(target_os = "windows")]
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
-    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    DownloadStartingEventHandler, ExecuteScriptCompletedHandler,
+    ClearBrowsingDataCompletedHandler, CreateCoreWebView2ControllerCompletedHandler,
+    CreateCoreWebView2EnvironmentCompletedHandler, DownloadStartingEventHandler,
+    ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
-        COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
-        COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2_4, ICoreWebView2_13, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
-        ICoreWebView2Environment, ICoreWebView2Profile6,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE, COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED,
+        COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS, COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED,
+        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
+        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2_4, ICoreWebView2_13,
+        ICoreWebView2Controller, ICoreWebView2DownloadOperation, ICoreWebView2Environment,
+        ICoreWebView2Profile2, ICoreWebView2Profile6,
     },
     NavigationCompletedEventHandler, NavigationStartingEventHandler,
     NewWindowRequestedEventHandler, WebMessageReceivedEventHandler, take_pwstr, wait_with_pump,
@@ -278,6 +280,7 @@ const LOGIN_HOOK_SCRIPT: &str = r#"
       window.chrome.webview.postMessage(JSON.stringify({
         type: 'amare-login-submit',
         source: location.href,
+        action: form.action || location.href,
         username: user ? String(user.value) : '',
         password: String(password.value)
       }));
@@ -506,6 +509,10 @@ impl WebViewHost {
                         return Ok(());
                     }
                     let source = value.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                    let action = value
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(source);
                     let username = value.get("username").and_then(|v| v.as_str()).unwrap_or("");
                     let password = value.get("password").and_then(|v| v.as_str()).unwrap_or("");
                     if !source.starts_with("http://") && !source.starts_with("https://") {
@@ -516,7 +523,9 @@ impl WebViewHost {
                         return Ok(());
                     }
                     let event_source = take_pwstr(event_source);
-                    if !crate::password_vault::same_origin(&event_source, source) {
+                    if !crate::password_vault::same_origin(&event_source, source)
+                        || !crate::password_vault::same_origin(&action, source)
+                    {
                         return Ok(());
                     }
                     if let Ok(mut captures) = message_login_captures.lock() {
@@ -841,6 +850,34 @@ impl WebViewHost {
             .lock()
             .map(|mut captures| captures.drain(..).collect())
             .unwrap_or_default()
+    }
+
+    pub fn clear_site_data(&self) -> Result<(), String> {
+        let profile = unsafe {
+            self.webview
+                .cast::<ICoreWebView2_13>()
+                .and_then(|webview| webview.Profile())
+                .map_err(|_| "WebView2 profile unavailable".to_string())?
+        };
+        let profile = profile
+            .cast::<ICoreWebView2Profile2>()
+            .map_err(|_| "WebView2 profile data API unavailable".to_string())?;
+        let (tx, rx) = mpsc::channel();
+        ClearBrowsingDataCompletedHandler::wait_for_async_operation(
+            Box::new(move |handler| unsafe {
+                profile
+                    .ClearBrowsingData(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE, &handler)
+                    .map_err(webview2_com::Error::WindowsError)
+            }),
+            Box::new(move |error| {
+                error?;
+                let _ = tx.send(());
+                Ok(())
+            }),
+        )
+        .map_err(|error| format!("ClearBrowsingData: {error:?}"))?;
+        rx.recv()
+            .map_err(|_| "ClearBrowsingData channel closed".to_string())
     }
 
     pub fn fill_login(&self, origin: &str, username: &str, password: &str) -> bool {

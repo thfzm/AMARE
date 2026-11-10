@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AMARE same-origin iframe test</title>
+<style>body{font-family:sans-serif;margin:24px}iframe{width:520px;height:260px;border:2px solid #d9534f}</style></head>
+<body><h1>Same-origin iframe login test</h1><p>The iframe is same-origin but not a top-level frame. The password hook must not capture it.</p>
+<iframe src="/login.html?frame=1&auto=1"></iframe>
+<script>document.title='AMARE_IFRAME_SAME:blocked-test';</script></body></html>

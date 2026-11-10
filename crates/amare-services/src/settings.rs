@@ -235,6 +235,18 @@ static DEFINITIONS: LazyLock<Vec<SettingDefinition>> = LazyLock::new(|| {
             "Record page visits in local history.",
         ),
         boolean(
+            "password_autofill_enabled",
+            SettingGroup::Privacy,
+            true,
+            "Allow exact-origin password autofill after user selection.",
+        ),
+        boolean(
+            "password_save_prompt_enabled",
+            SettingGroup::Privacy,
+            true,
+            "Show a password save proposal after an observed login submit.",
+        ),
+        boolean(
             "background_throttling",
             SettingGroup::Performance,
             true,

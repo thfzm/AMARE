@@ -33,6 +33,8 @@ pub struct BrowserSettings {
     pub download_path: String,
     pub download_panel_auto_open: bool,
     pub save_history: bool,
+    pub password_autofill_enabled: bool,
+    pub password_save_prompt_enabled: bool,
 }
 
 impl Default for BrowserSettings {
@@ -52,6 +54,8 @@ impl Default for BrowserSettings {
             download_path: String::new(),
             download_panel_auto_open: false,
             save_history: true,
+            password_autofill_enabled: true,
+            password_save_prompt_enabled: true,
         }
     }
 }
@@ -71,6 +75,8 @@ const SETTINGS_KEYS: &[&str] = &[
     "download_path",
     "download_panel_auto_open",
     "save_history",
+    "password_autofill_enabled",
+    "password_save_prompt_enabled",
 ];
 
 fn text_setting(values: &[ResolvedSetting], key: &str, default: &str, choices: &[&str]) -> String {
@@ -154,6 +160,16 @@ impl BrowserSettings {
                 defaults.download_panel_auto_open,
             ),
             save_history: bool_setting(values, "save_history", defaults.save_history),
+            password_autofill_enabled: bool_setting(
+                values,
+                "password_autofill_enabled",
+                defaults.password_autofill_enabled,
+            ),
+            password_save_prompt_enabled: bool_setting(
+                values,
+                "password_save_prompt_enabled",
+                defaults.password_save_prompt_enabled,
+            ),
         }
     }
 }

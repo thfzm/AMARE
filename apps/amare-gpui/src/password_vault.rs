@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use url::Url;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 const VAULT_MAGIC: &[u8; 9] = b"AMAREVLT1";
 const VAULT_AAD: &[u8] = b"amare.gpui.password-vault.v1";

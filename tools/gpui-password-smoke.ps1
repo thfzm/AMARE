@@ -21,6 +21,8 @@ public static class AmarePassword {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 }
 '@
 
@@ -81,6 +83,16 @@ function Shot([string]$name) {
     if ((Get-Item $path).Length -lt 1000) { throw "screenshot empty: $path" }
     Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
 }
+function ShotFull([string]$name) {
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+    $path = Join-Path $ScreenshotDir $name
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+    Add-Result $name "PASS" "$path ($($bounds.Width) x $($bounds.Height), $((Get-Item $path).Length) bytes)"
+}
 function Get-PageState {
     $state = Read-State
     if ($null -eq $state -or -not $state.title.StartsWith("AMARE_TEST:")) { return $null }
@@ -123,6 +135,34 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Shot "01-initial-browser.png"
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
+    Start-Sleep -Milliseconds 700
+    Shot "02-normal-page.png"
+    Send-Keys "^t"
+    [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 8 "multiple tabs")
+    Shot "03-multiple-tabs.png"
+    Send-Keys "^w"
+    [void](Wait-State { param($s) @($s.tabs).Count -eq 1 } 8 "single tab restored")
+    Start-Sleep -Milliseconds 400
+
+    $mainRect = New-Object AmarePassword+RECT
+    [void][AmarePassword]::GetWindowRect($script:hwnd, [ref]$mainRect)
+    Send-Keys "^n"
+    Start-Sleep -Seconds 2
+    $second = [AmarePassword]::GetForegroundWindow()
+    [void][AmarePassword]::SetWindowPos($script:hwnd, [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
+    [void][AmarePassword]::SetWindowPos($second, [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
+    Start-Sleep -Seconds 1
+    ShotFull "04-multi-window.png"
+    [void][AmarePassword]::SetForegroundWindow($second)
+    Send-Keys "%{F4}"
+    Start-Sleep -Seconds 1
+    [void][AmarePassword]::SetWindowPos($script:hwnd, [IntPtr]::Zero, $mainRect.Left, $mainRect.Top, ($mainRect.Right - $mainRect.Left), ($mainRect.Bottom - $mainRect.Top), 0x0004)
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    Start-Sleep -Seconds 1
 
     Open-Passwords
     Shot "02-password-manager-panel.png"
@@ -200,8 +240,29 @@ try {
     Add-Result "login-save-approval" "PASS" "pending cleared after explicit save"
 
     Close-Passwords
+    function Navigate-NoCapture([string]$url, [string]$label, [string]$shot) {
+        Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        [System.Windows.Forms.SendKeys]::SendWait($url)
+        Send-Keys "{ENTER}"
+        [void](Wait-State { param($s) $s.source -like "$url*" } 25 "$label page")
+        Start-Sleep -Seconds 3
+        $state = Read-State
+        if ($null -ne $state.password_vault.pending) {
+            throw "$label unexpectedly produced a credential capture"
+        }
+        Shot $shot
+        Add-Result $label "PASS" "no credential capture; pending=null"
+    }
+    Navigate-NoCapture "http://127.0.0.1:8767/iframe-cross.html" "iframe-cross-origin-no-capture" "06-iframe-cross-origin.png"
+    Navigate-NoCapture "http://127.0.0.1:8767/iframe-same.html" "iframe-same-origin-no-capture" "06b-iframe-same-origin.png"
+    Navigate-NoCapture "http://127.0.0.1:8767/nested-iframe.html" "nested-iframe-no-capture" "06c-iframe-nested.png"
+    Navigate-NoCapture "http://127.0.0.1:8767/action-cross.html" "action-cross-origin-rejected" "06d-action-cross-origin.png"
+    Navigate-NoCapture "http://127.0.0.1:8767/action-change.html" "action-change-rejected" "06e-action-change.png"
     Click-Client $script:hwnd 966 66
     [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings panel")
+    Click-Client $script:hwnd 82 335
+    [void](Wait-State { param($s) $s.settings_category -eq "privacy" } 8 "privacy category")
+    Shot "11b-privacy-settings.png"
     Click-Client $script:hwnd 82 419
     [void](Wait-State { param($s) $s.settings_category -eq "permissions" } 8 "permissions category")
     Shot "10-site-permissions.png"
@@ -290,8 +351,34 @@ try {
     Click-Client $script:hwnd 650 242
     [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 1 } 10 "deleted vault persistence")
     Add-Result "vault-delete-restart-persistence" "PASS" "one account remains after restart"
+    $lastConfirmed = $false
+    $lastY = 0
+    foreach ($y in 330, 338, 346) {
+        Click-Client $script:hwnd 997 $y
+        $state = Read-State
+        if ($null -ne $state.password_vault.confirm_delete) { $lastY = $y; $lastConfirmed = $true; break }
+    }
+    if (-not $lastConfirmed) { throw "Timed out waiting for last-account delete confirmation" }
+    Click-Client $script:hwnd 925 $lastY
+    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 0 -and $null -eq $s.password_vault.confirm_delete } 8 "last account delete")
+    Add-Result "vault-last-account-empty" "PASS" "empty vault and empty-state UI"
+    Shot "07c-vault-empty.png"
     Send-Keys "%{F4}"
-    if (-not $app.WaitForExit(20000)) { throw "deleted persistence app did not exit" }
+    if (-not $app.WaitForExit(20000)) { throw "empty vault app did not exit" }
+    Start-Sleep -Seconds 2
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "empty vault restart")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
+    Open-Passwords
+    Click-Client $script:hwnd 650 242
+    [void](Wait-State { param($s) $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 0 } 10 "empty vault persistence")
+    Add-Result "vault-empty-restart-persistence" "PASS" "empty vault remains empty after restart"
+    Send-Keys "%{F4}"
+    if (-not $app.WaitForExit(20000)) { throw "empty persistence app did not exit" }
     Start-Sleep -Seconds 2
 
     $vaultPath = Join-Path $DataDir "password-vault\vault.bin"
