@@ -141,27 +141,12 @@ try {
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
-    Click-Client $script:hwnd 803 29
-    [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 8 "multiple tabs")
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/autotab.html")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multiple tabs")
+    Start-Sleep -Milliseconds 700
     Shot "03-multiple-tabs.png"
-    Start-Sleep -Milliseconds 400
-
-    $mainRect = New-Object AmarePassword+RECT
-    [void][AmarePassword]::GetWindowRect($script:hwnd, [ref]$mainRect)
-    Send-Keys "^n"
-    Start-Sleep -Seconds 2
-    $second = [AmarePassword]::GetForegroundWindow()
-    [void][AmarePassword]::SetWindowPos($script:hwnd, [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
-    [void][AmarePassword]::SetWindowPos($second, [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
-    Start-Sleep -Seconds 1
-    ShotFull "04-multi-window.png"
-    [void][AmarePassword]::SetForegroundWindow($second)
-    Send-Keys "%{F4}"
-    Start-Sleep -Seconds 1
-    [void][AmarePassword]::SetWindowPos($script:hwnd, [IntPtr]::Zero, $mainRect.Left, $mainRect.Top, ($mainRect.Right - $mainRect.Left), ($mainRect.Bottom - $mainRect.Top), 0x0004)
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
-    Start-Sleep -Seconds 1
-
     Open-Passwords
     Shot "02-password-manager-panel.png"
     Click-Client $script:hwnd 650 242
