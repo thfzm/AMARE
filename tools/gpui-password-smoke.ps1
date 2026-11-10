@@ -73,6 +73,7 @@ function Type-Into([IntPtr]$hwnd, [int]$x, [int]$y, [string]$text) {
 function Fill-VaultField([string]$field, [string]$text, [int[]]$ys) {
     foreach ($y in $ys) {
         Click-Client $script:hwnd 800 $y
+        Click-Client $script:hwnd 800 $y
         Send-Keys "^a"
         [System.Windows.Forms.SendKeys]::SendWait($text)
         Start-Sleep -Milliseconds 800
