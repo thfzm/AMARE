@@ -57,6 +57,14 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 180 }
+function Wait-WindowState([scriptblock]$condition, [int]$seconds, [string]$label) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if (& $condition) { return $true }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $label"
+}
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareSettings+POINT
     [void][AmareSettings]::ClientToScreen($hwnd, [ref]$point)
@@ -135,18 +143,18 @@ try {
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
     Click-Client $script:hwnd 878 22
-    if (-not [AmareSettings]::IsIconic($script:hwnd)) { throw "minimize click did not minimize window" }
+    [void](Wait-WindowState { [AmareSettings]::IsIconic($script:hwnd) } 4 "window minimize")
     Add-Result "titlebar-minimize-click" "PASS" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 700
     Click-Client $script:hwnd 920 22
-    if (-not [AmareSettings]::IsZoomed($script:hwnd)) { throw "maximize click did not maximize window" }
+    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 4 "window maximize")
     Add-Result "titlebar-maximize-click" "PASS" "window maximized"
     Click-Client $script:hwnd 952 22
-    if ([AmareSettings]::IsZoomed($script:hwnd)) { throw "restore click did not restore window" }
+    [void](Wait-WindowState { -not [AmareSettings]::IsZoomed($script:hwnd) } 4 "window restore")
     Add-Result "titlebar-restore-click" "PASS" "window restored"
     Click-Client $script:hwnd 952 22
-    if (-not [AmareSettings]::IsZoomed($script:hwnd)) { throw "second maximize click failed" }
+    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 4 "second window maximize")
     Start-Sleep -Milliseconds 500
     Shot "01-initial-browser.png"
 
