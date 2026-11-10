@@ -224,8 +224,8 @@ try {
     Click-Client $script:hwnd 300 114
     Send-Keys "^a"; Send-Keys "reset"; Start-Sleep -Milliseconds 500
     [void](Wait-State { param($s) $s.settings_query -eq "reset" } 6 "settings reset search")
-    Click-Client $script:hwnd 980 212
-    Click-Client $script:hwnd 980 212
+    Click-Client $script:hwnd 960 480
+    Click-Client $script:hwnd 960 480
     [void](Wait-State { param($s) $s.settings.theme -eq "system" -and $s.settings.ui_font_size -eq 16 -and $s.settings.ui_density -eq "comfortable" } 10 "settings reset")
     Add-Result "settings-reset" "PASS" "defaults restored"
     Shot "13-settings-after-reset.png"
