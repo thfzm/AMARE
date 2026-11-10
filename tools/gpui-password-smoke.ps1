@@ -158,18 +158,18 @@ try {
     Click-Client $script:hwnd 990 159
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "add form")
     Shot "04-account-add.png"
-    Type-Into $script:hwnd 800 258 "http://127.0.0.1:8767"
-    Type-Into $script:hwnd 800 316 "alice"
-    Type-Into $script:hwnd 800 374 $passwordA
-    Click-Client $script:hwnd 990 412
+    Type-Into $script:hwnd 800 274 "http://127.0.0.1:8767"
+    Type-Into $script:hwnd 800 332 "alice"
+    Type-Into $script:hwnd 800 392 $passwordA
+    Click-Client $script:hwnd 994 431
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 } 8 "first account saved")
 
     Click-Client $script:hwnd 990 159
     [void](Wait-State { param($s) $s.password_vault.form_open } 6 "second add form")
-    Type-Into $script:hwnd 800 258 "http://127.0.0.1:8767"
-    Type-Into $script:hwnd 800 316 "bob"
-    Type-Into $script:hwnd 800 374 $passwordB
-    Click-Client $script:hwnd 990 412
+    Type-Into $script:hwnd 800 274 "http://127.0.0.1:8767"
+    Type-Into $script:hwnd 800 332 "bob"
+    Type-Into $script:hwnd 800 392 $passwordB
+    Click-Client $script:hwnd 994 431
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 2 } 8 "second account saved")
     Shot "03-saved-accounts.png"
 
