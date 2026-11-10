@@ -21,6 +21,7 @@ public static class AmareSettings {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -149,9 +150,9 @@ try {
     Select-Category "appearance" 167
     Click-Client $script:hwnd 1000 212
     [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 8 "dark theme setting")
-    Click-Client $script:hwnd 964 404
+    Click-Client $script:hwnd 964 426
     [void](Wait-State { param($s) $s.settings.ui_font_size -eq 18 } 8 "font size setting")
-    Click-Client $script:hwnd 968 468
+    Click-Client $script:hwnd 968 484
     [void](Wait-State { param($s) $s.settings.tab_width -eq 140 } 8 "tab width setting")
     Click-Client $script:hwnd 1006 276
     [void](Wait-State { param($s) $s.settings.ui_density -eq "compact" } 8 "density setting")
@@ -163,8 +164,10 @@ try {
 
     Send-Keys "^n"
     $windows = Wait-WindowCount 2 12 "second browser window"
-    Start-Sleep -Seconds 4
-    Add-Result "multi-window-created" "PASS" "windows=$($windows.Count)"
+    [void][AmareSettings]::SetWindowPos($windows[0], [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
+    [void][AmareSettings]::SetWindowPos($windows[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
+    Start-Sleep -Seconds 5
+    Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
     foreach ($window in $windows) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
@@ -196,14 +199,6 @@ try {
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 800
 
-    Open-Settings
-    Select-Category "advanced" 344
-    Click-Client $script:hwnd 980 532
-    Click-Client $script:hwnd 980 532
-    [void](Wait-State { param($s) $s.settings.theme -eq "system" -and $s.settings.ui_font_size -eq 16 -and $s.settings.ui_density -eq "comfortable" } 10 "settings reset")
-    Add-Result "settings-reset" "PASS" "defaults restored"
-    Shot "13-settings-after-reset.png"
-
     foreach ($window in (Get-AppWindows)) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
         [void][AmareSettings]::SetForegroundWindow($window)
@@ -212,6 +207,21 @@ try {
         Start-Sleep -Milliseconds 800
     }
     if (-not $app.WaitForExit(25000)) { throw "restored settings app did not exit" }
+    Start-Sleep -Seconds 2
+
+    $env:AMARE_GPUI_RESTORE = "0"
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "reset test app")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+    Open-Settings
+    Select-Category "advanced" 344
+    Click-Client $script:hwnd 980 532
+    Click-Client $script:hwnd 980 532
+    [void](Wait-State { param($s) $s.settings.theme -eq "system" -and $s.settings.ui_font_size -eq 16 -and $s.settings.ui_density -eq "comfortable" } 10 "settings reset")
+    Add-Result "settings-reset" "PASS" "defaults restored"
+    Shot "13-settings-after-reset.png"
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt 0) {
