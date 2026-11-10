@@ -171,6 +171,17 @@ try {
     }
     if (-not $changed) { throw "Timed out waiting for tab width setting" }
     $changed = $false
+    $densityValue = "comfortable"
+    foreach ($y in 264, 276, 288, 300) {
+        foreach ($x in 940, 970, 990, 1010) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($state.settings.ui_density -ne "comfortable") { $densityValue = [string]$state.settings.ui_density; $changed = $true; break }
+        }
+        if ($changed) { break }
+    }
+    if (-not $changed) { throw "Timed out waiting for density setting" }
+    $changed = $false
     $fontValue = 16
     foreach ($y in 414, 426, 438) {
         foreach ($x in 880, 920, 950, 970, 1000) {
@@ -181,17 +192,6 @@ try {
         if ($changed) { break }
     }
     if (-not $changed) { throw "Timed out waiting for font size setting" }
-    $changed = $false
-    $densityValue = "comfortable"
-    foreach ($y in 288, 300, 312, 324) {
-        foreach ($x in 940, 970, 990, 1010) {
-            Click-Client $script:hwnd $x $y
-            $state = Read-State
-            if ($state.settings.ui_density -ne "comfortable") { $densityValue = [string]$state.settings.ui_density; $changed = $true; break }
-        }
-        if ($changed) { break }
-    }
-    if (-not $changed) { throw "Timed out waiting for density setting" }
     Shot "03b-appearance-changed.png"
 
     Send-Keys "^,"
