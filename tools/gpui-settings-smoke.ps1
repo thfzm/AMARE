@@ -159,12 +159,27 @@ try {
     Select-Category "appearance" 167
     Click-Client $script:hwnd 1000 212
     [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 8 "dark theme setting")
-    Click-Client $script:hwnd 968 500
-    [void](Wait-State { param($s) $s.settings.tab_width -eq 140 } 8 "tab width setting")
-    Click-Client $script:hwnd 964 426
-    [void](Wait-State { param($s) $s.settings.ui_font_size -eq 18 } 8 "font size setting")
-    Click-Client $script:hwnd 1006 300
-    [void](Wait-State { param($s) $s.settings.ui_density -eq "compact" } 8 "density setting")
+    $changed = $false
+    foreach ($y in 500, 512, 524, 488, 536) {
+        Click-Client $script:hwnd 968 $y
+        $state = Read-State
+        if ($state.settings.tab_width -eq 140) { $changed = $true; break }
+    }
+    if (-not $changed) { throw "Timed out waiting for tab width setting" }
+    $changed = $false
+    foreach ($y in 426, 414, 438, 450) {
+        Click-Client $script:hwnd 964 $y
+        $state = Read-State
+        if ($state.settings.ui_font_size -eq 18) { $changed = $true; break }
+    }
+    if (-not $changed) { throw "Timed out waiting for font size setting" }
+    $changed = $false
+    foreach ($y in 300, 288, 312, 324) {
+        Click-Client $script:hwnd 1006 $y
+        $state = Read-State
+        if ($state.settings.ui_density -eq "compact") { $changed = $true; break }
+    }
+    if (-not $changed) { throw "Timed out waiting for density setting" }
     Shot "03b-appearance-changed.png"
 
     Send-Keys "^,"
