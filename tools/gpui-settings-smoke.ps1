@@ -177,7 +177,7 @@ try {
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
-    Stop-Process -Id $app.Id -Force
+    try { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue } catch {}
     if (-not $app.WaitForExit(20000)) { throw "settings app did not stop" }
     Add-Result "multi-window-forced-exit" "UNVERIFIED" "forced termination used to preserve multi-window session; graceful multi-window exit not asserted"
     Start-Sleep -Seconds 2
