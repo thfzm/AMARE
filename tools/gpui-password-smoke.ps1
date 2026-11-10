@@ -255,7 +255,7 @@ try {
     $deleteX = 0
     $deleteY = 0
     $confirmed = $false
-    foreach ($y in 375, 383, 391, 399) {
+    foreach ($y in 420, 428, 436, 444) {
         foreach ($x in 990, 1000, 1010) {
             Click-Client $script:hwnd $x $y
             $state = Read-State
