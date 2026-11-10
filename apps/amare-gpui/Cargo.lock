@@ -83,6 +83,8 @@ name = "amare-gpui"
 version = "0.54.0"
 dependencies = [
  "amare-core",
+ "amare-platform",
+ "amare-security",
  "amare-services",
  "amare-store",
  "anyhow",
@@ -91,9 +93,21 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-segmentation",
+ "url",
  "webview2-com",
  "windows 0.62.2",
  "winres",
+ "zeroize",
+]
+
+[[package]]
+name = "amare-platform"
+version = "0.1.0"
+dependencies = [
+ "amare-security",
+ "thiserror 2.0.21",
+ "windows-sys 0.59.0",
+ "zeroize",
 ]
 
 [[package]]

@@ -9,18 +9,18 @@ use std::sync::mpsc;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
-    AcceleratorKeyPressedEventHandler, CreateCoreWebView2ControllerCompletedHandler,
-    CreateCoreWebView2EnvironmentCompletedHandler, DownloadStartingEventHandler,
-    ExecuteScriptCompletedHandler,
+    AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
+    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    DownloadStartingEventHandler, ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
         COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
         COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2_4, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
-        ICoreWebView2Environment,
+        ICoreWebView2_4, ICoreWebView2_13, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
+        ICoreWebView2Environment, ICoreWebView2Profile6,
     },
     NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    NewWindowRequestedEventHandler, take_pwstr, wait_with_pump,
+    NewWindowRequestedEventHandler, WebMessageReceivedEventHandler, take_pwstr, wait_with_pump,
 };
 #[cfg(target_os = "windows")]
 use windows::{
@@ -263,6 +263,46 @@ fn unique_download_path(preferred: Option<&str>) -> std::path::PathBuf {
 }
 
 #[cfg(target_os = "windows")]
+const LOGIN_HOOK_SCRIPT: &str = r#"
+(() => {
+  if (window.top !== window || window.__amareLoginHook) return;
+  if (!/^https?:$/.test(location.protocol)) return;
+  window.__amareLoginHook = true;
+  document.addEventListener('submit', (event) => {
+    try {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      const password = form.querySelector('input[type="password"]');
+      if (!password || !password.value) return;
+      const user = form.querySelector('input[autocomplete="username"], input[type="email"], input[name*="user" i], input[id*="user" i], input[type="text"]');
+      window.chrome.webview.postMessage(JSON.stringify({
+        type: 'amare-login-submit',
+        source: location.href,
+        username: user ? String(user.value) : '',
+        password: String(password.value)
+      }));
+    } catch (_) {}
+  }, true);
+})();
+"#;
+
+#[cfg(target_os = "windows")]
+#[derive(Clone)]
+pub struct LoginCapture {
+    pub source: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for LoginCapture {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.password.zeroize();
+    }
+}
+
+#[cfg(target_os = "windows")]
 pub struct WebViewHost {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
@@ -273,8 +313,10 @@ pub struct WebViewHost {
     navigation_completed_token: i64,
     new_window_token: i64,
     download_token: i64,
+    web_message_token: i64,
     popup_requests: Arc<Mutex<Vec<String>>>,
     downloads: Arc<Mutex<Vec<DownloadState>>>,
+    login_captures: Arc<Mutex<Vec<LoginCapture>>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -320,6 +362,14 @@ impl WebViewHost {
             let webview = controller
                 .CoreWebView2()
                 .map_err(|error| format!("WebView2 core: {error:?}"))?;
+            if let Ok(webview_13) = webview.cast::<ICoreWebView2_13>() {
+                if let Ok(profile) = webview_13.Profile() {
+                    if let Ok(profile6) = profile.cast::<ICoreWebView2Profile6>() {
+                        let _ = profile6.SetIsPasswordAutosaveEnabled(false);
+                        let _ = profile6.SetIsGeneralAutofillEnabled(false);
+                    }
+                }
+            }
             let signals = Arc::new(Mutex::new(TabSignals::default()));
 
             let starting_signals = signals.clone();
@@ -439,6 +489,64 @@ impl WebViewHost {
                 .add_DownloadStarting(&download_handler, &mut download_token)
                 .map_err(|error| format!("download handler: {error:?}"))?;
 
+            let login_captures = Arc::new(Mutex::new(Vec::new()));
+            let message_login_captures = login_captures.clone();
+            let message_handler =
+                WebMessageReceivedEventHandler::create(Box::new(move |_webview, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut message = windows::core::PWSTR::null();
+                    if args.TryGetWebMessageAsString(&mut message).is_err() {
+                        return Ok(());
+                    }
+                    let message = take_pwstr(message);
+                    let Ok(value) = serde_json::from_str::<serde_json::Value>(&message) else {
+                        return Ok(());
+                    };
+                    if value.get("type").and_then(|v| v.as_str()) != Some("amare-login-submit") {
+                        return Ok(());
+                    }
+                    let source = value.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                    let username = value.get("username").and_then(|v| v.as_str()).unwrap_or("");
+                    let password = value.get("password").and_then(|v| v.as_str()).unwrap_or("");
+                    if !source.starts_with("http://") && !source.starts_with("https://") {
+                        return Ok(());
+                    }
+                    let mut event_source = windows::core::PWSTR::null();
+                    if args.Source(&mut event_source).is_err() {
+                        return Ok(());
+                    }
+                    let event_source = take_pwstr(event_source);
+                    if !crate::password_vault::same_origin(&event_source, source) {
+                        return Ok(());
+                    }
+                    if let Ok(mut captures) = message_login_captures.lock() {
+                        captures.push(LoginCapture {
+                            source: source.to_string(),
+                            username: username.chars().take(512).collect(),
+                            password: password.to_string(),
+                        });
+                    }
+                    Ok(())
+                }));
+            let mut web_message_token = 0;
+            webview
+                .add_WebMessageReceived(&message_handler, &mut web_message_token)
+                .map_err(|error| format!("web message handler: {error:?}"))?;
+
+            let script = HSTRING::from(LOGIN_HOOK_SCRIPT);
+            let script_webview = webview.clone();
+            let _ = AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+                Box::new(move |handler| unsafe {
+                    script_webview
+                        .AddScriptToExecuteOnDocumentCreated(&script, &handler)
+                        .map_err(webview2_com::Error::WindowsError)
+                }),
+                Box::new(|error, _| {
+                    error?;
+                    Ok(())
+                }),
+            );
+
             let accelerator_token = {
                 let accelerator_parent = parent_handle.clone();
                 let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
@@ -523,8 +631,10 @@ impl WebViewHost {
                 navigation_completed_token,
                 new_window_token,
                 download_token,
+                web_message_token,
                 popup_requests,
                 downloads,
+                login_captures,
             })
         }
     }
@@ -726,6 +836,33 @@ impl WebViewHost {
         }
     }
 
+    pub fn drain_login_captures(&self) -> Vec<LoginCapture> {
+        self.login_captures
+            .lock()
+            .map(|mut captures| captures.drain(..).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn fill_login(&self, origin: &str, username: &str, password: &str) -> bool {
+        let Ok(source_origin) = crate::password_vault::normalize_origin(&self.source()) else {
+            return false;
+        };
+        let Ok(expected_origin) = crate::password_vault::normalize_origin(origin) else {
+            return false;
+        };
+        if source_origin != expected_origin {
+            return false;
+        }
+        let username = serde_json::to_string(username).unwrap_or_else(|_| "\"\"".into());
+        let password = serde_json::to_string(password).unwrap_or_else(|_| "\"\"".into());
+        let script = format!(
+            "(() => {{ const p=document.querySelector('input[type=\"password\"]'); if(!p) return false; const u=document.querySelector('input[autocomplete=\"username\"], input[type=\"email\"], input[name*=\"user\" i], input[id*=\"user\" i], input[type=\"text\"]'); if(u) {{ u.value={username}; u.dispatchEvent(new Event('input',{{bubbles:true}})); }} p.value={password}; p.dispatchEvent(new Event('input',{{bubbles:true}})); return true; }})()"
+        );
+        self.execute_script(&script)
+            .map(|result| result.contains("true"))
+            .unwrap_or(false)
+    }
+
     pub fn drain_popup_requests(&self) -> Vec<String> {
         self.popup_requests
             .lock()
@@ -893,6 +1030,9 @@ impl Drop for WebViewHost {
             let _ = self
                 .webview
                 .remove_NewWindowRequested(self.new_window_token);
+            let _ = self
+                .webview
+                .remove_WebMessageReceived(self.web_message_token);
             if let Ok(download_webview) = self.webview.cast::<ICoreWebView2_4>() {
                 let _ = download_webview.remove_DownloadStarting(self.download_token);
             }

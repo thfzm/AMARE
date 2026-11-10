@@ -12,6 +12,7 @@ use gpui::{
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -23,6 +24,7 @@ use windows::Win32::{
 };
 
 mod library;
+mod password_vault;
 mod text_input;
 mod webview;
 
@@ -50,6 +52,7 @@ actions!(
         ToggleHistoryPanel,
         ToggleDownloadsPanel,
         ToggleSettings,
+        TogglePasswords,
     ]
 );
 
@@ -57,6 +60,7 @@ const TOOLBAR_HEIGHT: f32 = 88.0;
 const TAB_START_X: f32 = 12.0;
 const TAB_SLOT: f32 = 124.0;
 const PANEL_WIDTH: f32 = 360.0;
+const PASSWORD_PANEL_WIDTH: f32 = 470.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibraryPanel {
@@ -65,6 +69,7 @@ enum LibraryPanel {
     History,
     Downloads,
     Settings,
+    Passwords,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -75,16 +80,18 @@ enum SettingsCategory {
     Downloads,
     Privacy,
     Advanced,
+    Permissions,
 }
 
 impl SettingsCategory {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Appearance,
         Self::Startup,
         Self::Search,
         Self::Downloads,
         Self::Privacy,
         Self::Advanced,
+        Self::Permissions,
     ];
 
     fn label(self) -> &'static str {
@@ -95,6 +102,7 @@ impl SettingsCategory {
             Self::Downloads => "다운로드",
             Self::Privacy => "개인정보 및 보안",
             Self::Advanced => "고급",
+            Self::Permissions => "사이트 권한",
         }
     }
 
@@ -106,6 +114,7 @@ impl SettingsCategory {
             Self::Downloads => "downloads",
             Self::Privacy => "privacy",
             Self::Advanced => "advanced",
+            Self::Permissions => "permissions",
         }
     }
 }
@@ -285,6 +294,60 @@ struct TabState {
     webview: Option<webview::WebViewHost>,
 }
 
+struct PendingLogin {
+    source: String,
+    origin: String,
+    username: String,
+    password: String,
+}
+
+impl Drop for PendingLogin {
+    fn drop(&mut self) {
+        self.password.zeroize();
+    }
+}
+
+struct PasswordUi {
+    vault: password_vault::PasswordVault,
+    query: String,
+    search: gpui::Entity<AddressInput>,
+    origin: gpui::Entity<AddressInput>,
+    username: gpui::Entity<AddressInput>,
+    password: gpui::Entity<AddressInput>,
+    password_masked: bool,
+    form_open: bool,
+    editing: Option<u64>,
+    reveal: Option<u64>,
+    confirm_delete: Option<u64>,
+    pending: Option<PendingLogin>,
+    error: Option<String>,
+    info: Option<String>,
+}
+
+fn create_password_ui(cx: &mut App) -> PasswordUi {
+    PasswordUi {
+        vault: password_vault::PasswordVault::new(),
+        query: String::new(),
+        search: cx
+            .new(|cx| AddressInput::new_with_placeholder("", "사이트 또는 사용자 이름 검색", cx)),
+        origin: cx.new(|cx| AddressInput::new_with_placeholder("", "https://example.com", cx)),
+        username: cx.new(|cx| AddressInput::new_with_placeholder("", "사용자 이름", cx)),
+        password: cx.new(|cx| {
+            let mut input = AddressInput::new_with_placeholder("", "비밀번호", cx);
+            input.set_masked(true, cx);
+            input
+        }),
+        password_masked: true,
+        form_open: false,
+        editing: None,
+        reveal: None,
+        confirm_delete: None,
+        pending: None,
+        error: None,
+        info: None,
+    }
+}
+
 struct AmareApp {
     tabs: Vec<TabState>,
     active: usize,
@@ -324,6 +387,7 @@ struct AmareApp {
     restore_progress: Option<RestoreProgress>,
     session_summary: Option<library::SessionSummary>,
     session_error: Option<String>,
+    password_ui: PasswordUi,
 }
 
 impl AmareApp {
@@ -451,6 +515,7 @@ impl AmareApp {
             restore_progress: None,
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
+            password_ui: create_password_ui(cx),
         };
         apply_platform_settings(&app.settings);
 
@@ -530,6 +595,7 @@ impl AmareApp {
             restore_progress: None,
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
+            password_ui: create_password_ui(cx),
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -675,6 +741,7 @@ impl AmareApp {
             restore_progress: None,
             session_summary: library::session_summary().ok().flatten(),
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
+            password_ui: create_password_ui(cx),
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -763,6 +830,7 @@ impl AmareApp {
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
             LibraryPanel::Settings => "settings",
+            LibraryPanel::Passwords => "passwords",
         };
         let downloads = self
             .downloads
@@ -811,6 +879,35 @@ impl AmareApp {
             "save_history": self.settings.save_history
         });
         let settings_query = self.settings_search.read(cx).content();
+        let password_entries = self
+            .password_ui
+            .vault
+            .entries()
+            .iter()
+            .map(|entry| {
+                serde_json::json!({
+                    "id": entry.id,
+                    "origin": entry.origin,
+                    "username": entry.username,
+                    "title": entry.title
+                })
+            })
+            .collect::<Vec<_>>();
+        let password_query = self.password_ui.search.read(cx).content();
+        let password_current_origin = self
+            .active_tab()
+            .and_then(|tab| password_vault::normalize_origin(&tab.url).ok());
+        let password_site_matches = password_current_origin
+            .as_deref()
+            .map(|origin| self.password_ui.vault.entries_for_origin(origin).len())
+            .unwrap_or(0);
+        let pending_login = self.password_ui.pending.as_ref().map(|pending| {
+            serde_json::json!({
+                "origin": pending.origin,
+                "username": pending.username,
+                "source": pending.source
+            })
+        });
         let payload = serde_json::json!({
             "address": address,
             "marked_range": marked,
@@ -830,6 +927,19 @@ impl AmareApp {
             "settings_query": settings_query,
             "settings_error": self.settings_error,
             "settings_generation": self.settings_generation,
+            "password_vault": {
+                "unlocked": self.password_ui.vault.is_unlocked(),
+                "entries": password_entries,
+                "query": password_query,
+                "form_open": self.password_ui.form_open,
+                "editing": self.password_ui.editing,
+                "reveal": self.password_ui.reveal,
+                "confirm_delete": self.password_ui.confirm_delete,
+                "pending": pending_login,
+                "current_origin": password_current_origin,
+                "site_matches": password_site_matches,
+                "error": self.password_ui.error
+            },
             "session_summary": self.session_summary.as_ref().map(|summary| serde_json::json!({
                 "windows": summary.windows,
                 "tabs": summary.tabs,
@@ -933,6 +1043,288 @@ impl AmareApp {
             self.downloads = library::downloads().unwrap_or_default();
         }
         cx.notify();
+    }
+
+    fn open_passwords(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.panel = if self.panel == LibraryPanel::Passwords {
+            LibraryPanel::None
+        } else {
+            LibraryPanel::Passwords
+        };
+        self.password_ui.confirm_delete = None;
+        self.password_ui.error = None;
+        if self.password_ui.vault.is_unlocked() {
+            let handle = self.password_ui.search.read(cx).focus_handle(cx);
+            window.focus(&handle);
+        }
+        cx.notify();
+    }
+
+    fn unlock_password_vault(&mut self, cx: &mut Context<Self>) {
+        match self.password_ui.vault.unlock() {
+            Ok(()) => {
+                self.password_ui.error = None;
+                self.password_ui.info = Some("보안 저장소 잠금을 해제했습니다.".into());
+            }
+            Err(error) => {
+                self.password_ui.error = Some(error);
+            }
+        }
+        cx.notify();
+    }
+
+    fn lock_password_vault(&mut self, cx: &mut Context<Self>) {
+        self.password_ui.vault.lock();
+        self.password_ui.pending = None;
+        self.password_ui.form_open = false;
+        self.password_ui.editing = None;
+        self.password_ui.reveal = None;
+        self.password_ui.confirm_delete = None;
+        self.password_ui.error = None;
+        self.password_ui.info = Some("보안 저장소를 잠갔습니다.".into());
+        cx.notify();
+    }
+
+    fn begin_password_add(&mut self, cx: &mut Context<Self>) {
+        self.password_ui.form_open = true;
+        self.password_ui.editing = None;
+        self.password_ui.confirm_delete = None;
+        let origin = self
+            .active_tab()
+            .and_then(|tab| password_vault::normalize_origin(&tab.url).ok())
+            .unwrap_or_default();
+        self.password_ui
+            .origin
+            .update(cx, |input, cx| input.set_content(origin, cx));
+        self.password_ui
+            .username
+            .update(cx, |input, cx| input.set_content("", cx));
+        self.password_ui
+            .password
+            .update(cx, |input, cx| input.set_content("", cx));
+        self.password_ui.password.update(cx, |input, cx| {
+            input.set_masked(self.password_ui.password_masked, cx)
+        });
+        cx.notify();
+    }
+
+    fn begin_password_edit(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(entry) = self
+            .password_ui
+            .vault
+            .entries()
+            .iter()
+            .find(|entry| entry.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        self.password_ui.form_open = true;
+        self.password_ui.editing = Some(id);
+        self.password_ui.confirm_delete = None;
+        self.password_ui
+            .origin
+            .update(cx, |input, cx| input.set_content(entry.origin.clone(), cx));
+        self.password_ui.username.update(cx, |input, cx| {
+            input.set_content(entry.username.clone(), cx)
+        });
+        self.password_ui.password.update(cx, |input, cx| {
+            input.set_content(entry.password.clone(), cx)
+        });
+        cx.notify();
+    }
+
+    fn save_password_form(&mut self, cx: &mut Context<Self>) {
+        if !self.password_ui.vault.is_unlocked() {
+            self.password_ui.error = Some("보안 저장소가 잠겨 있습니다.".into());
+            cx.notify();
+            return;
+        }
+        let origin = self.password_ui.origin.read(cx).content();
+        let username = self.password_ui.username.read(cx).content();
+        let mut password = self.password_ui.password.read(cx).content();
+        let title = self
+            .active_tab()
+            .map(|tab| tab.title.to_string())
+            .unwrap_or_default();
+        let result = self.password_ui.vault.upsert(
+            self.password_ui.editing,
+            &origin,
+            &username,
+            &password,
+            &title,
+        );
+        password.zeroize();
+        match result {
+            Ok(_) => match self.password_ui.vault.save() {
+                Ok(()) => {
+                    self.password_ui.form_open = false;
+                    self.password_ui.editing = None;
+                    self.password_ui.error = None;
+                    self.password_ui.info = Some("로그인 정보를 저장했습니다.".into());
+                    self.password_ui
+                        .password
+                        .update(cx, |input, cx| input.set_content("", cx));
+                }
+                Err(error) => self.password_ui.error = Some(error),
+            },
+            Err(error) => self.password_ui.error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn delete_password_entry(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.password_ui.confirm_delete != Some(id) {
+            self.password_ui.confirm_delete = Some(id);
+            cx.notify();
+            return;
+        }
+        if !self.password_ui.vault.is_unlocked() {
+            self.password_ui.error = Some("보안 저장소가 잠겨 있습니다.".into());
+            cx.notify();
+            return;
+        }
+        if self.password_ui.vault.delete(id) {
+            match self.password_ui.vault.save() {
+                Ok(()) => {
+                    self.password_ui.info = Some("로그인 정보를 삭제했습니다.".into());
+                    self.password_ui.error = None;
+                }
+                Err(error) => self.password_ui.error = Some(error),
+            }
+        }
+        self.password_ui.confirm_delete = None;
+        self.password_ui.reveal = None;
+        cx.notify();
+    }
+
+    fn fill_password_entry(&mut self, id: u64, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        {
+            let Some(tab_url) = self.active_tab().map(|tab| tab.url.to_string()) else {
+                return;
+            };
+            let Some(entry) = self
+                .password_ui
+                .vault
+                .entries()
+                .iter()
+                .find(|entry| entry.id == id)
+                .cloned()
+            else {
+                return;
+            };
+            if !password_vault::same_origin(&tab_url, &entry.origin) {
+                self.password_ui.error = Some("현재 사이트 origin과 일치하지 않습니다.".into());
+                cx.notify();
+                return;
+            }
+            let filled = self
+                .active_webview()
+                .map(|webview| webview.fill_login(&entry.origin, &entry.username, &entry.password))
+                .unwrap_or(false);
+            if filled {
+                self.password_ui.info = Some(
+                    "현재 사이트의 로그인 폼에 입력했습니다. 자동 제출은 하지 않았습니다.".into(),
+                );
+                self.password_ui.error = None;
+            } else {
+                self.password_ui.error =
+                    Some("로그인 폼을 찾지 못했거나 origin 검증에 실패했습니다.".into());
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = id;
+            self.password_ui.error = Some("이 플랫폼에서는 자동 완성을 지원하지 않습니다.".into());
+        }
+        cx.notify();
+    }
+
+    fn save_pending_login(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.password_ui.pending.as_ref() else {
+            return;
+        };
+        if !self.password_ui.vault.is_unlocked() {
+            self.password_ui.error = Some("저장하려면 보안 저장소 잠금을 해제해야 합니다.".into());
+            cx.notify();
+            return;
+        }
+        let origin = pending.origin.clone();
+        let username = pending.username.clone();
+        let mut password = pending.password.clone();
+        let title = self
+            .active_tab()
+            .map(|tab| tab.title.to_string())
+            .unwrap_or_default();
+        let result = self
+            .password_ui
+            .vault
+            .upsert(None, &origin, &username, &password, &title);
+        password.zeroize();
+        match result {
+            Ok(_) => match self.password_ui.vault.save() {
+                Ok(()) => {
+                    self.password_ui.pending = None;
+                    self.password_ui.info = Some("로그인 정보를 저장했습니다.".into());
+                    self.password_ui.error = None;
+                }
+                Err(error) => self.password_ui.error = Some(error),
+            },
+            Err(error) => self.password_ui.error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn skip_pending_login(&mut self, cx: &mut Context<Self>) {
+        self.password_ui.pending = None;
+        self.password_ui.info = Some("로그인 정보 저장을 건너뛰었습니다.".into());
+        cx.notify();
+    }
+
+    fn poll_login_captures(&mut self, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        {
+            let mut captures = Vec::new();
+            for tab in &self.tabs {
+                if let Some(webview) = &tab.webview {
+                    captures.extend(webview.drain_login_captures());
+                }
+            }
+            for capture in captures {
+                let Some(origin) = password_vault::normalize_origin(&capture.source).ok() else {
+                    continue;
+                };
+                let Some(tab) = self
+                    .tabs
+                    .iter()
+                    .find(|tab| password_vault::same_origin(&tab.url, &origin))
+                else {
+                    continue;
+                };
+                let same_page = password_vault::same_origin(&tab.url, &capture.source);
+                if !same_page {
+                    continue;
+                }
+                let pending = PendingLogin {
+                    source: capture.source.clone(),
+                    origin,
+                    username: capture.username.clone(),
+                    password: capture.password.clone(),
+                };
+                if let Some(old) = self.password_ui.pending.replace(pending) {
+                    drop(old);
+                }
+                self.panel = LibraryPanel::Passwords;
+                self.password_ui.error = None;
+                self.password_ui.info =
+                    Some("로그인 제출을 감지했습니다. 저장 여부를 확인해 주세요.".into());
+                cx.notify();
+                break;
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = cx;
     }
 
     fn open_settings(&mut self, cx: &mut Context<Self>) {
@@ -1221,6 +1613,15 @@ impl AmareApp {
         cx: &mut Context<Self>,
     ) {
         self.open_settings(cx);
+    }
+
+    fn toggle_passwords_action(
+        &mut self,
+        _: &TogglePasswords,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_passwords(window, cx);
     }
 
     fn refresh_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2353,6 +2754,34 @@ impl AmareApp {
             }
         }
 
+        if search_active || selected == SettingsCategory::Permissions {
+            content = content.child(header("사이트 권한"));
+            content = content.child(self.info_setting_row(
+                "카메라 및 마이크",
+                "WebView2의 사이트별 permission 프롬프트를 따릅니다. AMARE 저장/조회 UI는 아직 없습니다.",
+                "WebView2 기본 프롬프트".into(),
+                dark,
+            ));
+            content = content.child(self.info_setting_row(
+                "알림",
+                "사이트 알림은 WebView2 권한 상태를 사용하며 AMARE가 별도로 저장하지 않습니다.",
+                "UNVERIFIED".into(),
+                dark,
+            ));
+            content = content.child(self.info_setting_row(
+                "위치",
+                "위치 권한은 WebView2 기본 프롬프트를 사용합니다.",
+                "UNVERIFIED".into(),
+                dark,
+            ));
+            content = content.child(self.info_setting_row(
+                "쿠키 및 사이트 데이터",
+                "사이트별 삭제 UI는 아직 구현하지 않았습니다. WebView2 ClearBrowsingData API 조사가 필요합니다.",
+                "UNVERIFIED".into(),
+                dark,
+            ));
+        }
+
         let search_box = div()
             .flex()
             .items_center()
@@ -2440,6 +2869,549 @@ impl AmareApp {
                 )
             })
             .child(body)
+    }
+
+    fn render_password_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
+        let dark = effective_dark(&self.settings.theme, window);
+        let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
+        let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
+        let muted = if dark { rgb(0xa3a8b8) } else { rgb(0x5d6474) };
+        let border = if dark { rgb(0x303543) } else { rgb(0xdde1ea) };
+        let accent = rgb(0x2f7df6);
+        let danger = rgb(0xd9534f);
+        let unlocked = self.password_ui.vault.is_unlocked();
+        let query = self.password_ui.search.read(cx).content().to_lowercase();
+        let entries = self.password_ui.vault.entries().to_vec();
+        let current_origin = self
+            .active_tab()
+            .and_then(|tab| password_vault::normalize_origin(&tab.url).ok());
+        let site_entries = current_origin
+            .as_deref()
+            .map(|origin| self.password_ui.vault.entries_for_origin(origin))
+            .unwrap_or_default();
+        let filtered = entries
+            .iter()
+            .filter(|entry| {
+                query.is_empty()
+                    || entry.origin.to_lowercase().contains(&query)
+                    || entry.username.to_lowercase().contains(&query)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let editing = self.password_ui.editing;
+        let form_open = self.password_ui.form_open;
+        let password_masked = self.password_ui.password_masked;
+
+        let close = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.panel = LibraryPanel::None;
+            cx.notify();
+        });
+        let unlock = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.unlock_password_vault(cx);
+        });
+        let lock = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.lock_password_vault(cx);
+        });
+        let add = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.begin_password_add(cx);
+        });
+        let save = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.save_password_form(cx);
+        });
+        let cancel_form = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.password_ui.form_open = false;
+            this.password_ui.editing = None;
+            this.password_ui.error = None;
+            cx.notify();
+        });
+        let toggle_password_mask = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+            this.password_ui.password_masked = !this.password_ui.password_masked;
+            let masked = this.password_ui.password_masked;
+            this.password_ui
+                .password
+                .update(cx, |input, cx| input.set_masked(masked, cx));
+            cx.notify();
+        });
+
+        let field = |label: &str, input: gpui::Entity<AddressInput>| {
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().text_xs().text_color(muted).child(label.to_string()))
+                .child(
+                    div()
+                        .h(px(30.0))
+                        .rounded_md()
+                        .bg(background)
+                        .border_1()
+                        .border_color(border)
+                        .child(input),
+                )
+        };
+
+        let pending = self.password_ui.pending.as_ref().map(|pending| {
+            let save_pending = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.save_pending_login(cx);
+            });
+            let skip_pending = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.skip_pending_login(cx);
+            });
+            (
+                pending.origin.clone(),
+                pending.username.clone(),
+                save_pending,
+                skip_pending,
+            )
+        });
+        let pending_card = pending.map(|(origin, username, save_pending, skip_pending)| {
+            div()
+                .id("password-save-proposal")
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p_3()
+                .rounded_md()
+                .bg(if dark { rgb(0x17304f) } else { rgb(0xe8f1ff) })
+                .border_1()
+                .border_color(accent)
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(accent)
+                        .child("로그인 정보 저장 제안"),
+                )
+                .child(div().text_xs().text_color(muted).child(origin))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(format!("사용자: {username}")),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .id("password-save-pending")
+                                .px_3()
+                                .py_1()
+                                .rounded_md()
+                                .bg(accent)
+                                .text_color(rgb(0xffffff))
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("저장")
+                                .on_click(save_pending),
+                        )
+                        .child(
+                            div()
+                                .id("password-skip-pending")
+                                .px_3()
+                                .py_1()
+                                .rounded_md()
+                                .bg(background)
+                                .text_color(muted)
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("저장하지 않기")
+                                .on_click(skip_pending),
+                        ),
+                )
+        });
+
+        let form =
+            if form_open && unlocked {
+                Some(
+                    div()
+                        .id("password-form")
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_3()
+                        .border_b_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .flex()
+                                .justify_between()
+                                .items_center()
+                                .child(div().text_sm().text_color(accent).child(
+                                    if editing.is_some() {
+                                        "로그인 정보 수정"
+                                    } else {
+                                        "로그인 정보 추가"
+                                    },
+                                ))
+                                .child(
+                                    div()
+                                        .id("password-form-cancel")
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("취소")
+                                        .on_click(cancel_form),
+                                ),
+                        )
+                        .child(field("사이트 origin", self.password_ui.origin.clone()))
+                        .child(field("사용자 이름", self.password_ui.username.clone()))
+                        .child(field("비밀번호", self.password_ui.password.clone()))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .id("password-toggle-mask")
+                                        .text_xs()
+                                        .text_color(accent)
+                                        .cursor_pointer()
+                                        .child(if password_masked {
+                                            "비밀번호 표시"
+                                        } else {
+                                            "비밀번호 숨기기"
+                                        })
+                                        .on_click(toggle_password_mask),
+                                )
+                                .child(
+                                    div()
+                                        .id("password-save-form")
+                                        .px_3()
+                                        .py_1()
+                                        .rounded_md()
+                                        .bg(accent)
+                                        .text_color(rgb(0xffffff))
+                                        .text_xs()
+                                        .cursor_pointer()
+                                        .child("저장")
+                                        .on_click(save),
+                                ),
+                        ),
+                )
+            } else {
+                None
+            };
+
+        let site_section = if unlocked {
+            let origin = current_origin
+                .clone()
+                .unwrap_or_else(|| "http/https 사이트가 아닙니다.".into());
+            let mut rows = div().flex().flex_col().gap_2();
+            if site_entries.is_empty() {
+                rows = rows.child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child("이 사이트 origin에 저장된 계정이 없습니다."),
+                );
+            }
+            for entry in site_entries {
+                let id = entry.id;
+                let username = entry.username.clone();
+                let fill = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                    this.fill_password_entry(id, cx);
+                });
+                rows = rows.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .bg(background)
+                        .child(div().text_xs().child(username))
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("password-fill-{id}")))
+                                .px_2()
+                                .py_1()
+                                .rounded_sm()
+                                .bg(accent)
+                                .text_color(rgb(0xffffff))
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("채우기")
+                                .on_click(fill),
+                        ),
+                );
+            }
+            Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .p_3()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(accent)
+                                    .child("현재 사이트 자동 완성"),
+                            )
+                            .child(div().text_xs().text_color(muted).child(origin)),
+                    )
+                    .child(rows),
+            )
+        } else {
+            None
+        };
+
+        let mut rows = div().flex().flex_col();
+        if filtered.is_empty() {
+            rows = rows.child(div().p_4().text_sm().text_color(muted).child(if unlocked {
+                "저장된 로그인 정보가 없습니다."
+            } else {
+                "보안 저장소가 잠겨 있습니다."
+            }));
+        }
+        for entry in filtered {
+            let id = entry.id;
+            let origin = entry.origin.clone();
+            let username = entry.username.clone();
+            let revealed = self.password_ui.reveal == Some(id);
+            let password_text = if revealed {
+                entry.password.clone()
+            } else {
+                entry.masked_password()
+            };
+            let toggle_reveal = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.password_ui.reveal = if this.password_ui.reveal == Some(id) {
+                    None
+                } else {
+                    Some(id)
+                };
+                cx.notify();
+            });
+            let edit = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.begin_password_edit(id, cx);
+            });
+            let delete = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
+                this.delete_password_entry(id, cx);
+            });
+            let confirm = self.password_ui.confirm_delete == Some(id);
+            rows = rows.child(
+                div()
+                    .id(SharedString::from(format!("password-entry-{id}")))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .p_3()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(accent)
+                                    .overflow_hidden()
+                                    .child(origin),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("password-reveal-{id}")))
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .cursor_pointer()
+                                    .child(if revealed { "숨기기" } else { "표시" })
+                                    .on_click(toggle_reveal),
+                            ),
+                    )
+                    .child(div().text_sm().child(username))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .gap_2()
+                            .child(div().text_xs().text_color(muted).child(password_text))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!("password-edit-{id}")))
+                                            .text_xs()
+                                            .text_color(accent)
+                                            .cursor_pointer()
+                                            .child("수정")
+                                            .on_click(edit),
+                                    )
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!("password-delete-{id}")))
+                                            .text_xs()
+                                            .text_color(if confirm { danger } else { muted })
+                                            .cursor_pointer()
+                                            .child(if confirm { "정말 삭제" } else { "삭제" })
+                                            .on_click(delete),
+                                    ),
+                            ),
+                    ),
+            );
+        }
+
+        let locked_section = if unlocked {
+            None
+        } else {
+            Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .p_4()
+                    .child(
+                        div()
+                            .text_sm()
+                            .child("Windows DPAPI로 보호된 로컬 보안 저장소"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("비밀번호는 SQLite에 저장하지 않으며, 잠금 해제 전에는 복호화하지 않습니다."),
+                    )
+                    .child(
+                        div()
+                            .id("password-unlock")
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(accent)
+                            .text_color(rgb(0xffffff))
+                            .text_sm()
+                            .cursor_pointer()
+                            .child("잠금 해제")
+                            .on_click(unlock),
+                    ),
+            )
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .w(px(PASSWORD_PANEL_WIDTH))
+            .h_full()
+            .bg(surface)
+            .border_l_1()
+            .border_color(border)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .h(px(44.0))
+                    .px_3()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(div().text_sm().text_color(accent).child("비밀번호 관리자"))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(if unlocked { accent } else { muted })
+                                    .child(if unlocked {
+                                        "잠금 해제됨"
+                                    } else {
+                                        "잠김"
+                                    }),
+                            )
+                            .when(unlocked, |el| {
+                                el.child(
+                                    div()
+                                        .id("password-lock")
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .cursor_pointer()
+                                        .child("잠금")
+                                        .on_click(lock),
+                                )
+                            })
+                            .child(
+                                div()
+                                    .id("password-close")
+                                    .size(px(24.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_sm()
+                                    .hover(|style| style.bg(border))
+                                    .cursor_pointer()
+                                    .child("×")
+                                    .on_click(close),
+                            ),
+                    ),
+            )
+            .when_some(locked_section, |el, section| el.child(section))
+            .when(unlocked, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .p_3()
+                        .border_b_1()
+                        .border_color(border)
+                        .child(
+                            div()
+                                .flex_1()
+                                .h(px(30.0))
+                                .rounded_md()
+                                .bg(background)
+                                .border_1()
+                                .border_color(border)
+                                .child(self.password_ui.search.clone()),
+                        )
+                        .child(
+                            div()
+                                .id("password-add")
+                                .px_3()
+                                .py_1()
+                                .rounded_md()
+                                .bg(accent)
+                                .text_color(rgb(0xffffff))
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("+ 추가")
+                                .on_click(add),
+                        ),
+                )
+            })
+            .when_some(pending_card, |el, card| el.child(card))
+            .when_some(form, |el, form| el.child(form))
+            .when_some(site_section, |el, section| el.child(section))
+            .child(
+                div()
+                    .id("password-list")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .child(rows),
+            )
+            .when_some(self.password_ui.info.clone(), |el, info| {
+                el.child(div().p_2().text_xs().text_color(accent).child(info))
+            })
+            .when_some(self.password_ui.error.clone(), |el, error| {
+                el.child(div().p_2().text_xs().text_color(danger).child(error))
+            })
     }
 
     fn render_library_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
@@ -3031,6 +4003,8 @@ impl AmareApp {
             let scale = window.scale_factor();
             let panel = if self.panel == LibraryPanel::None {
                 0
+            } else if self.panel == LibraryPanel::Passwords {
+                (PASSWORD_PANEL_WIDTH * scale).round() as i32
             } else {
                 (PANEL_WIDTH * scale).round() as i32
             };
@@ -3056,6 +4030,7 @@ impl Render for AmareApp {
         }
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
+        self.poll_login_captures(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);
@@ -3102,6 +4077,7 @@ impl Render for AmareApp {
             LibraryPanel::History => "history",
             LibraryPanel::Downloads => "downloads",
             LibraryPanel::Settings => "settings",
+            LibraryPanel::Passwords => "passwords",
         };
         let downloads = self
             .downloads
@@ -3214,6 +4190,7 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::toggle_history_panel_action))
             .on_action(cx.listener(Self::toggle_downloads_panel_action))
             .on_action(cx.listener(Self::toggle_settings_action))
+            .on_action(cx.listener(Self::toggle_passwords_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
@@ -3372,6 +4349,23 @@ impl Render for AmareApp {
                     )
                     .child(
                         div()
+                            .id("passwords-panel")
+                            .flex_none()
+                            .size(px(30.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .hover(|style| style.bg(border))
+                            .cursor_pointer()
+                            .text_sm()
+                            .child("🔑")
+                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.open_passwords(window, cx);
+                            })),
+                    )
+                    .child(
+                        div()
                             .id("address")
                             .flex()
                             .items_center()
@@ -3501,6 +4495,8 @@ impl Render for AmareApp {
             })
             .child(if self.panel == LibraryPanel::Settings {
                 self.render_settings(window, cx)
+            } else if self.panel == LibraryPanel::Passwords {
+                self.render_password_panel(window, cx)
             } else {
                 div()
                     .flex()
@@ -3666,6 +4662,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-h", ToggleHistoryPanel, None),
             KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
             KeyBinding::new("ctrl-,", ToggleSettings, None),
+            KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),

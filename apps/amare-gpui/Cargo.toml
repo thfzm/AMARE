@@ -17,6 +17,10 @@ unicode-segmentation = "1"
 amare-core = { path = "../../crates/amare-core" }
 amare-services = { path = "../../crates/amare-services" }
 amare-store = { path = "../../crates/amare-store" }
+amare-security = { path = "../../crates/amare-security" }
+amare-platform = { path = "../../crates/amare-platform" }
+url = "2"
+zeroize = "1"
 
 [build-dependencies]
 winres = "0.1"

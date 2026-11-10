@@ -220,6 +220,10 @@ pub fn data_root_display() -> String {
     data_root().display().to_string()
 }
 
+pub fn data_root_path() -> PathBuf {
+    data_root()
+}
+
 fn data_root() -> PathBuf {
     if let Ok(path) = std::env::var("AMARE_GPUI_DATA_DIR") {
         return PathBuf::from(path);

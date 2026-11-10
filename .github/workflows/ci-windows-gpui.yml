@@ -36,6 +36,11 @@ jobs:
         run: |
           cargo build --manifest-path apps/amare-gpui/Cargo.toml --release
 
+      - name: Password vault unit tests
+        shell: pwsh
+        timeout-minutes: 8
+        run: cargo test --manifest-path apps/amare-gpui/Cargo.toml --bin amare-gpui password_vault::tests -- --nocapture
+
       - name: Smoke launch GPUI application
         shell: pwsh
         timeout-minutes: 6
@@ -220,6 +225,22 @@ jobs:
           & "tools/gpui-session-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -Port 8772
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI session smoke failed with exit code $LASTEXITCODE" }
 
+      - name: GPUI password vault test
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $server = Start-Process python -ArgumentList @("-m", "http.server", "8767", "--bind", "127.0.0.1", "--directory", "apps/amare-gpui/test-page") -PassThru
+          try {
+            $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+            $status = Join-Path $env:RUNNER_TEMP "amare-gpui-password-status.json"
+            $data = Join-Path $env:RUNNER_TEMP "amare-gpui-password-data"
+            $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.55.0"
+            & "tools/gpui-password-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -LoginUrl "http://127.0.0.1:8767/login.html?tab=PW"
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI password smoke failed with exit code $LASTEXITCODE" }
+          } finally {
+            if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+          }
+
       - name: Address bar actual input test
         shell: pwsh
         timeout-minutes: 5
@@ -306,6 +327,7 @@ jobs:
             artifacts/windows/screenshots/0.55.0/*.png
             artifacts/windows/screenshots/0.55.0/gpui-library-results.json
             artifacts/windows/screenshots/0.55.0/gpui-settings-results.json
+            artifacts/windows/screenshots/0.55.0/gpui-password-results.json
             artifacts/windows/screenshots/0.55.0/gpui-session-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json

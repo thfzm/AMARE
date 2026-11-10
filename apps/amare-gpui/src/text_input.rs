@@ -36,6 +36,7 @@ pub struct AddressInput {
     last_layout: Option<gpui::ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,
+    masked: bool,
 }
 
 impl AddressInput {
@@ -58,6 +59,7 @@ impl AddressInput {
             last_layout: None,
             last_bounds: None,
             is_selecting: false,
+            masked: false,
         }
     }
 
@@ -90,6 +92,14 @@ impl AddressInput {
         self.last_layout = None;
         self.last_bounds = None;
         cx.notify();
+    }
+
+    pub fn set_masked(&mut self, masked: bool, cx: &mut Context<Self>) {
+        if self.masked != masked {
+            self.masked = masked;
+            self.last_layout = None;
+            cx.notify();
+        }
     }
 
     pub fn select_all_text(&mut self, cx: &mut Context<Self>) {
@@ -475,11 +485,18 @@ impl Element for AddressTextElement {
     ) -> Self::PrepaintState {
         let input = self.input.read(cx);
         let content = input.content.clone();
+        let masked_content = if input.masked && !content.is_empty() {
+            Some("*".repeat(content.len()))
+        } else {
+            None
+        };
         let selected_range = input.selected_range.clone();
         let cursor = input.cursor_offset();
         let style = window.text_style();
         let (display_text, text_color) = if content.is_empty() {
             (input.placeholder.clone(), hsla(0., 0., 0.5, 1.))
+        } else if let Some(masked) = masked_content {
+            (masked.into(), style.color)
         } else {
             (content, style.color)
         };

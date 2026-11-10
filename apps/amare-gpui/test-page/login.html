@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AMARE login test</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    label, input, button { display: block; margin: 10px 0; }
+    input { width: 280px; padding: 6px; }
+    iframe { width: 420px; height: 180px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>AMARE Login Form Test</h1>
+  <form id="login" action="/login-result.html" method="post">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password">
+    <button id="submit" type="submit">Sign in</button>
+  </form>
+  <p id="status">waiting</p>
+  <iframe id="cross" title="cross origin" src="http://localhost:8767/login.html?frame=1"></iframe>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const state = { user: '', passwordLen: 0, submitted: false, frame: params.has('frame'), loginRect: null };
+    function publish() {
+      const button = document.getElementById('submit');
+      state.loginRect = { left: button.offsetLeft, top: button.offsetTop, width: button.offsetWidth, height: button.offsetHeight };
+      document.title = 'AMARE_TEST:' + encodeURIComponent(JSON.stringify(state));
+    }
+    for (const id of ['username', 'password']) {
+      document.getElementById(id).addEventListener('input', () => {
+        state.user = document.getElementById('username').value;
+        state.passwordLen = document.getElementById('password').value.length;
+        state.submitted = false;
+        document.getElementById('status').textContent = 'filled: user=' + (state.user.length > 0) + ' passwordLen=' + state.passwordLen;
+        publish();
+      });
+    }
+    document.getElementById('login').addEventListener('submit', (event) => {
+      event.preventDefault();
+      state.submitted = true;
+      state.user = document.getElementById('username').value;
+      state.passwordLen = document.getElementById('password').value.length;
+      document.getElementById('status').textContent = 'submitted without navigation';
+      publish();
+    });
+    publish();
+  </script>
+</body>
+</html>
