@@ -177,14 +177,9 @@ try {
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
-    foreach ($window in (Get-BrowserWindows)) {
-        if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
-        [void][AmareSettings]::SetForegroundWindow($window)
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-        Start-Sleep -Milliseconds 800
-    }
-    if (-not $app.WaitForExit(25000)) { throw "settings app did not exit after closing windows" }
+    Stop-Process -Id $app.Id -Force
+    if (-not $app.WaitForExit(20000)) { throw "settings app did not stop" }
+    Add-Result "multi-window-forced-exit" "UNVERIFIED" "forced termination used to preserve multi-window session; graceful multi-window exit not asserted"
     Start-Sleep -Seconds 2
 
     $app = Start-Process $Exe -PassThru
