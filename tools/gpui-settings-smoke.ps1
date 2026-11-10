@@ -134,12 +134,12 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
-    Click-Client $script:hwnd 908 22
+    Click-Client $script:hwnd 878 22
     if (-not [AmareSettings]::IsIconic($script:hwnd)) { throw "minimize click did not minimize window" }
     Add-Result "titlebar-minimize-click" "PASS" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 700
-    Click-Client $script:hwnd 952 22
+    Click-Client $script:hwnd 920 22
     if (-not [AmareSettings]::IsZoomed($script:hwnd)) { throw "maximize click did not maximize window" }
     Add-Result "titlebar-maximize-click" "PASS" "window maximized"
     Click-Client $script:hwnd 952 22
