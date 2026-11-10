@@ -18,7 +18,7 @@ use zeroize::Zeroize;
 use windows::Win32::{
     Foundation::POINT,
     UI::{
-        Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON},
+        Input::KeyboardAndMouse::{GetAsyncKeyState, SetFocus, VK_LBUTTON},
         WindowsAndMessaging::GetCursorPos,
     },
 };
@@ -1059,6 +1059,15 @@ impl AmareApp {
         cx.notify();
     }
 
+    fn focus_native_window(&self) {
+        #[cfg(target_os = "windows")]
+        if let Some(parent) = self.parent {
+            unsafe {
+                let _ = SetFocus(Some(parent));
+            }
+        }
+    }
+
     fn open_passwords(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.panel = if self.panel == LibraryPanel::Passwords {
             LibraryPanel::None
@@ -1067,6 +1076,7 @@ impl AmareApp {
         };
         self.password_ui.confirm_delete = None;
         self.password_ui.error = None;
+        self.focus_native_window();
         if self.password_ui.vault.is_unlocked() {
             let handle = self.password_ui.search.read(cx).focus_handle(cx);
             window.focus(&handle);
@@ -1173,8 +1183,9 @@ impl AmareApp {
         cx.notify();
     }
 
-    fn begin_password_add(&mut self, cx: &mut Context<Self>) {
+    fn begin_password_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.password_ui.form_open = true;
+        self.focus_native_window();
         self.password_ui.editing = None;
         self.password_ui.confirm_delete = None;
         let origin = self
@@ -1193,6 +1204,8 @@ impl AmareApp {
         self.password_ui.password.update(cx, |input, cx| {
             input.set_masked(self.password_ui.password_masked, cx)
         });
+        let handle = self.password_ui.origin.read(cx).focus_handle(cx);
+        window.focus(&handle);
         cx.notify();
     }
 
@@ -3066,8 +3079,8 @@ impl AmareApp {
         let lock = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.lock_password_vault(cx);
         });
-        let add = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-            this.begin_password_add(cx);
+        let add = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, window, cx| {
+            this.begin_password_add(window, cx);
         });
         let save = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
             this.save_password_form(cx);
