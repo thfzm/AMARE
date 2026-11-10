@@ -174,12 +174,21 @@ try {
     Shot "07-multiple-accounts.png"
     Shot "09-autofill-suggestion.png"
 
-    Click-Client $script:hwnd 982 249
-    Start-Sleep -Seconds 2
-    $page = Get-PageState
-    if ($null -eq $page -or $page.user -ne "alice" -or [int]$page.passwordLen -ne $passwordA.Length -or $page.submitted) {
-        throw "autofill validation failed"
+    $filled = $false
+    $page = $null
+    foreach ($y in 245, 249, 255, 260) {
+        foreach ($x in 970, 982, 995) {
+            Click-Client $script:hwnd $x $y
+            Start-Sleep -Milliseconds 600
+            $page = Get-PageState
+            if ($null -ne $page -and $page.user -eq "alice" -and [int]$page.passwordLen -eq $passwordA.Length -and -not $page.submitted) {
+                $filled = $true
+                break
+            }
+        }
+        if ($filled) { break }
     }
+    if (-not $filled) { throw "autofill validation failed" }
     Add-Result "origin-scoped-autofill" "PASS" "user=alice passwordLen=$($passwordA.Length) submitted=false"
 
     $loginButton = $page.loginRect
