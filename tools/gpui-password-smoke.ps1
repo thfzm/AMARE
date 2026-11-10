@@ -267,7 +267,12 @@ try {
     }
     if (-not $confirmed) { throw "Timed out waiting for delete confirmation" }
     Shot "07-delete-confirm.png"
-    Click-Client $script:hwnd $deleteX $deleteY
+    Click-Client $script:hwnd 978 $deleteY
+    [void](Wait-State { param($s) $null -eq $s.password_vault.confirm_delete -and @($s.password_vault.entries).Count -eq 2 } 8 "vault delete cancel")
+    Add-Result "vault-delete-cancel" "PASS" "cancel kept both accounts"
+    Click-Client $script:hwnd 997 $deleteY
+    [void](Wait-State { param($s) $null -ne $s.password_vault.confirm_delete } 6 "vault delete reconfirm")
+    Click-Client $script:hwnd 925 $deleteY
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 1 -and $null -eq $s.password_vault.confirm_delete } 8 "vault delete")
     Add-Result "vault-delete-confirm" "PASS" "confirmation shown and one account removed"
     Shot "07b-delete-complete.png"
