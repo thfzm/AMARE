@@ -144,6 +144,7 @@ function Close-Passwords {
 
 $script:hwnd = [IntPtr]::Zero
 $app = $null
+$secondApp = $null
 Remove-Item $Status -Force -ErrorAction SilentlyContinue
 Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $DataDir, $ScreenshotDir | Out-Null
@@ -415,12 +416,25 @@ try {
     if ($afterHash -ne $corruptHash) { throw "corrupt vault was overwritten after unlock failure" }
     Add-Result "vault-corruption-preserved" "PASS" "original encrypted vault unchanged after failed unlock"
     Shot "09-dpapi-error.png"
+    Close-Passwords
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/autotab.html")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multi-tab final")
+    Start-Sleep -Milliseconds 800
+    Shot "03-multiple-tabs.png"
+    $secondApp = Start-Process $Exe -PassThru
+    Start-Sleep -Seconds 3
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    ShotFull "04-multi-window.png"
+    if ($null -ne $secondApp -and -not $secondApp.HasExited) { Stop-Process -Id $secondApp.Id -Force }
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
     try { Shot "99-password-failure.png" } catch {}
 } finally {
+    if ($null -ne $secondApp -and -not $secondApp.HasExited) { try { $secondApp.Kill() } catch {} }
     if ($null -ne $app -and -not $app.HasExited) { try { $app.Kill() } catch {} }
     $summary = [pscustomobject]@{
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
