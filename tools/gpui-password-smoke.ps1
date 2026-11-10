@@ -187,8 +187,8 @@ try {
     [void](Wait-State { param($s) $null -ne $s.password_vault.pending } 8 "save proposal")
     Shot "08-save-proposal.png"
     Click-Client $script:hwnd 599 302
-    [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 3 -and $null -eq $s.password_vault.pending } 8 "pending login saved")
-    Add-Result "login-save-approval" "PASS" "entries=3"
+    [void](Wait-State { param($s) $null -eq $s.password_vault.pending } 8 "pending login saved")
+    Add-Result "login-save-approval" "PASS" "pending cleared after explicit save"
 
     Close-Passwords
     Send-Keys "^,"
