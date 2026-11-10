@@ -255,9 +255,14 @@ try {
     Click-Client $script:hwnd 300 114
     Send-Keys "^a"; Send-Keys "reset"; Start-Sleep -Milliseconds 500
     [void](Wait-State { param($s) $s.settings_query -eq "reset" } 6 "settings reset search")
-    Click-Client $script:hwnd 960 480
-    Click-Client $script:hwnd 960 480
-    [void](Wait-State { param($s) $s.settings.theme -eq "system" -and $s.settings.ui_font_size -eq 16 -and $s.settings.ui_density -eq "comfortable" } 10 "settings reset")
+    $reset = $false
+    foreach ($y in 396, 400, 404, 388, 408) {
+        Click-Client $script:hwnd 960 $y
+        Click-Client $script:hwnd 960 $y
+        $state = Read-State
+        if ($state.settings.theme -eq "system" -and $state.settings.ui_font_size -eq 16 -and $state.settings.ui_density -eq "comfortable") { $reset = $true; break }
+    }
+    if (-not $reset) { throw "Timed out waiting for settings reset" }
     Add-Result "settings-reset" "PASS" "defaults restored"
     Shot "13-settings-after-reset.png"
     Start-Sleep -Seconds 2
