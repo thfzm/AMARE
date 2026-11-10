@@ -132,6 +132,8 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+    [void][AmareSettings]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
     Shot "01-initial-browser.png"
 
     Open-Settings
@@ -168,6 +170,8 @@ try {
     Send-Keys "^,"
     [void](Wait-State { param($s) $s.panel -eq "none" } 6 "settings closed")
     Shot "10-browser-settings-applied.png"
+    [void][AmareSettings]::ShowWindow($script:hwnd, 9)
+    Start-Sleep -Seconds 1
 
     $baseWindows = (Get-BrowserWindows).Count
     Send-Keys "^n"
