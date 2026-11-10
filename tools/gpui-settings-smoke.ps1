@@ -90,14 +90,21 @@ function ShotFull([string]$name) {
     Add-Result $name "PASS" "$path ($($bounds.Width) x $($bounds.Height), $((Get-Item $path).Length) bytes)"
 }
 function Get-AppWindows { return @([AmareSettings]::Windows($script:app.Id)) }
+function Get-BrowserWindows {
+    return @(Get-AppWindows | Where-Object {
+        $rect = New-Object AmareSettings+RECT
+        [void][AmareSettings]::GetWindowRect($_, [ref]$rect)
+        ($rect.Right - $rect.Left) -gt 300 -and ($rect.Bottom - $rect.Top) -gt 200
+    })
+}
 function Wait-WindowCount([int]$count, [int]$seconds, [string]$label) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
-        $windows = Get-AppWindows
+        $windows = Get-BrowserWindows
         if ($windows.Count -eq $count) { return $windows }
         Start-Sleep -Milliseconds 300
     }
-    throw "Timed out waiting for $label (windows=$((Get-AppWindows).Count))"
+    throw "Timed out waiting for $label (windows=$((Get-BrowserWindows).Count))"
 }
 function Open-Settings {
     Send-Keys "^,";
@@ -162,14 +169,15 @@ try {
     [void](Wait-State { param($s) $s.panel -eq "none" } 6 "settings closed")
     Shot "10-browser-settings-applied.png"
 
+    $baseWindows = (Get-BrowserWindows).Count
     Send-Keys "^n"
-    $windows = Wait-WindowCount 2 12 "second browser window"
+    $windows = Wait-WindowCount ($baseWindows + 1) 12 "second browser window"
     [void][AmareSettings]::SetWindowPos($windows[0], [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
     [void][AmareSettings]::SetWindowPos($windows[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
-    foreach ($window in $windows) {
+    foreach ($window in (Get-BrowserWindows)) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
         [void][AmareSettings]::SetForegroundWindow($window)
         Start-Sleep -Milliseconds 300
@@ -181,7 +189,7 @@ try {
 
     $app = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "restored settings app")
-    $windows = Wait-WindowCount 2 20 "restored multi-window session"
+    $windows = Wait-WindowCount ($baseWindows + 1) 20 "restored multi-window session"
     Start-Sleep -Seconds 3
     $app.Refresh(); $script:hwnd = $windows[0]
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
@@ -199,7 +207,7 @@ try {
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 800
 
-    foreach ($window in (Get-AppWindows)) {
+    foreach ($window in (Get-BrowserWindows)) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
         [void][AmareSettings]::SetForegroundWindow($window)
         Start-Sleep -Milliseconds 300
@@ -234,7 +242,7 @@ try {
     try { Shot "99-settings-failure.png" } catch {}
 }
 finally {
-    foreach ($window in (Get-AppWindows)) {
+    foreach ($window in (Get-BrowserWindows)) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
         [void][AmareSettings]::SetForegroundWindow($window)
         Start-Sleep -Milliseconds 200
