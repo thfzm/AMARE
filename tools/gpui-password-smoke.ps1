@@ -191,7 +191,7 @@ try {
     Add-Result "login-save-approval" "PASS" "pending cleared after explicit save"
 
     Close-Passwords
-    Send-Keys "^,"
+    Click-Client $script:hwnd 966 66
     [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings panel")
     Click-Client $script:hwnd 82 419
     [void](Wait-State { param($s) $s.settings_category -eq "permissions" } 8 "permissions category")
