@@ -87,8 +87,18 @@ function Get-PageState {
     return [Uri]::UnescapeDataString($state.title.Substring(11)) | ConvertFrom-Json
 }
 function Open-Passwords {
-    Send-Keys "^+p"
+    $state = Read-State
+    if ($null -eq $state -or $state.panel -ne "passwords") {
+        Click-Client $script:hwnd 105 66
+    }
     [void](Wait-State { param($s) $s.panel -eq "passwords" } 8 "password panel")
+}
+function Close-Passwords {
+    $state = Read-State
+    if ($null -ne $state -and $state.panel -eq "passwords") {
+        Click-Client $script:hwnd 1010 110
+    }
+    [void](Wait-State { param($s) $s.panel -ne "passwords" } 8 "password panel closed")
 }
 
 $script:hwnd = [IntPtr]::Zero
@@ -164,7 +174,7 @@ try {
     Shot "07-multiple-accounts.png"
     Shot "09-autofill-suggestion.png"
 
-    Click-Client $script:hwnd 995 234
+    Click-Client $script:hwnd 982 249
     Start-Sleep -Seconds 2
     $page = Get-PageState
     if ($null -eq $page -or $page.user -ne "alice" -or [int]$page.passwordLen -ne $passwordA.Length -or $page.submitted) {
@@ -180,7 +190,7 @@ try {
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 3 -and $null -eq $s.password_vault.pending } 8 "pending login saved")
     Add-Result "login-save-approval" "PASS" "entries=3"
 
-    Send-Keys "^+p"
+    Close-Passwords
     Send-Keys "^,"
     [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings panel")
     Click-Client $script:hwnd 82 419
@@ -204,7 +214,7 @@ try {
     if (-not (Test-Path $vault)) { throw "vault file missing" }
     Add-Result "vault-encrypted-file" "PASS" "vault.bin=$((Get-Item $vault).Length) bytes"
 
-    Send-Keys "^+p"
+    Open-Passwords
     [void](Wait-State { param($s) $s.panel -eq "passwords" } 8 "password panel for lock")
     Click-Client $script:hwnd 965 110
     [void](Wait-State { param($s) -not $s.password_vault.unlocked } 8 "vault locked")
