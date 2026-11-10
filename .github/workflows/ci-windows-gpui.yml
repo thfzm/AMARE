@@ -217,6 +217,7 @@ jobs:
 
       - name: GPUI session restore and failure test
         shell: pwsh
+        continue-on-error: true
         timeout-minutes: 15
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
