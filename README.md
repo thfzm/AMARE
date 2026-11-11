@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.57.0 GPUI Browser Security Boundary & Privacy** 단계입니다. GPUI 0.2.2 + WebView2에서 DPAPI/XChaCha20-Poly1305 vault, 실제 삭제 확인/취소/완료·마지막 계정 empty-state, 손상 vault 원본 보존/복구, iframe·중첩 iframe·교차 출처 action 자동 완성 차단, 다중 창 merge/generation 동기화, 개인정보 자동 완성/저장 제안 설정, WebView2 ALL_SITE 데이터 삭제를 구현·검증했습니다. 실제 iframe 공격 자동화는 top-level guard와 실제 WebView2 결과를 분리 기록하며, 다중 창 동시 UI mutation, DPAPI 타 사용자/권한 실패, 사이트별 쿠키/권한 제어, DPI/Windows 11/signing은 **UNVERIFIED/BLOCKED**입니다.
+현재 저장소는 **AMARE 0.58.0 Stability & Privacy Verification** 단계입니다. GPUI 0.2.2 + WebView2에서 DPAPI/XChaCha20-Poly1305 vault, 실제 삭제 확인/취소/완료·마지막 계정 empty-state, 손상 vault/key 누락 원본 보존, iframe·중첩 iframe·교차 출처 action 자동 완성 차단, navigation ID 입력 재검증, 개인정보 자동 완성/저장 제안 설정을 재검증했습니다. 다중 창 동시 Vault mutation과 충돌 UX, 삭제 계정 부활 방지, 창 간 잠금 전파는 **FAIL/UNVERIFIED**이고, ALL_SITE 삭제는 UI lifecycle 실패로 **read-only/BLOCKED**, WebView2 페이지 DOM 캡처와 GPUI tab/library/settings/session 자동화는 **UNVERIFIED/FAIL**입니다. unsigned MSIX 설치와 DPAPI 타 사용자/권한 실패도 **UNVERIFIED/BLOCKED**입니다.
 
 ## 핵심 원칙
 
@@ -153,11 +153,12 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.55.0: **Windows DPAPI + XChaCha20-Poly1305 password vault PASS**, SQLite plaintext 부재/암호화 파일/잠금/재시작 복원, 실제 login form exact-origin autofill + auto-submit false + explicit save proposal, account add/edit/reveal/multiple accounts, site permissions read-only screen, actual 0.55 screenshots; delete UI click, iframe/intersection automation, vault access failure, multi-window concurrent access, cookie/site-data control, DPI/signing UNVERIFIED
 - Windows 0.56.0: **DPAPI vault security hardening** — actual delete confirm/cancel/complete + restart persistence, corrupted vault preserved with retry/backup guidance, multi-window merge/generation sync path, exact-origin autofill no auto-submit, plaintext scan, actual 0.56 screenshots; password **25/0/0**, vault unit 4/4, corrupt-DPAPI UX PASS, iframe attack automation/multi-window UI/DPAPI other-user failure/cookie control/DPI UNVERIFIED
 - Windows 0.57.0: **password security boundary** — iframe/nested/action-change no-capture **PASS**, exact-origin autofill/no-submit, actual delete cancel/confirm + last-account empty + restart, corrupted vault preservation, multiwindow merge/generation code, privacy autofill/save toggles, WebView2 ALL_SITE data clear; password **42/0/0**, unit 4/4, actual 0.57 screenshots; per-site cookie/permission control, DPAPI other-user failure, multiwindow simultaneous UI mutation, DPI/signing UNVERIFIED
+- Windows 0.58.0: **stability revalidation** — iframe/nested/action no-capture, navigation ID recheck, delete cancel/confirm/empty/restart, corrupted and key-missing vault preservation, privacy settings, actual 0.58 screenshots; password **43/0/0**, unit 4/4, WinUI **143/0/9/1** GUI **42/42**, Windows/Linux CI SUCCESS, GPUI CI step SUCCESS(내부 tab/library/settings/session FAIL); same-process multiwindow Vault mutation/충돌 UX/삭제 부활 방지/창 간 잠금 **FAIL/UNVERIFIED**, ALL_SITE **read-only/BLOCKED**, page DOM capture and GPUI tab/library/settings/session automation **UNVERIFIED/FAIL**, unsigned MSIX install **UNVERIFIED**
 - Android Phase 5: **GeckoView 셸 + 기본 브라우저 연동 + 데이터 관리 + 북마크/방문 기록/다운로드/사이트 권한 + 세션 복구 + 데이터 암호화 + 비밀번호 관리자 + 새 창/웹 알림 + HTTPS-only 보안 설정** — 빌드/단위 테스트 PASS, 실기기 UNVERIFIED (0.12.0)
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
-Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.53.0 report](artifacts/windows/release/AMARE-0.53.0-development-report.md)에 기록되어 있습니다.
+Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.58.0 report](artifacts/windows/release/AMARE-0.58.0-development-report.md)에 기록되어 있습니다.
 
 ## 라이선스 및 공개 정책
 

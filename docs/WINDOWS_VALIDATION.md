@@ -82,9 +82,12 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태
+## 5. 현재 실행 상태 (0.58.0)
 
-- Linux에서 Rust/C# 로직, FFI JSON ABI, C# interop은 검증했습니다.
-- Windows Runner/Windows 11에서 `verify-windows.ps1`은 **실행하지 않았습니다**.
-- Linux에서 WinUI XAML compiler는 Windows 전용이므로 실행할 수 없습니다. 이 실패는 Windows 빌드 실패로 간주하지 않습니다.
-- 별도 임시 프로젝트에서 `MainWindow.xaml.cs`를 WindowsAppSDK/WebView2 reference assembly로 C# semantic type-check했습니다. 링크 단계는 Windows 전용 `MakePri.exe`/XAML compiler 때문에 Linux에서 중단됩니다. 이는 XAML/Windows 빌드 PASS가 아닙니다.
+- Windows CI [42972643407](https://github.com/thfzm/AMARE/actions/runs/42972643407): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
+- Linux CI [42972643461](https://github.com/thfzm/AMARE/actions/runs/42972643461): **SUCCESS**.
+- GPUI CI [42974740733](https://github.com/thfzm/AMARE/actions/runs/42974740733): **SUCCESS**, password **43/0/0**, vault unit **4/4**.
+- GPUI tab(10/1/3), library(2/1/0), settings(1/1/0), session(0/1/0) 내부 test는 FAIL이며 `continue-on-error`로 password suite만 계속했다. 이 FAIL을 PASS로 변환하지 않는다.
+- unsigned MSIX 설치는 `0x80073D2C`로 실패해 **UNVERIFIED**다.
+- 같은 프로세스 다중 창의 동시 Vault mutation, 창 간 잠금 전파, 삭제 계정 부활 방지, ALL_SITE 실제 삭제, WebView2 페이지 DOM 캡처는 **FAIL/UNVERIFIED/BLOCKED**다.
+- Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**다.
