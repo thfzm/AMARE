@@ -53,6 +53,7 @@ actions!(
         ToggleDownloadsPanel,
         ToggleSettings,
         TogglePasswords,
+        ClearSiteData,
     ]
 );
 
@@ -1746,6 +1747,15 @@ impl AmareApp {
         cx: &mut Context<Self>,
     ) {
         self.open_settings(cx);
+    }
+
+    fn clear_site_data_action(
+        &mut self,
+        _: &ClearSiteData,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_site_data(cx);
     }
 
     fn toggle_passwords_action(
@@ -4447,6 +4457,7 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::toggle_downloads_panel_action))
             .on_action(cx.listener(Self::toggle_settings_action))
             .on_action(cx.listener(Self::toggle_passwords_action))
+            .on_action(cx.listener(Self::clear_site_data_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
@@ -4925,6 +4936,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
             KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
+            KeyBinding::new("ctrl-shift-delete", ClearSiteData, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),

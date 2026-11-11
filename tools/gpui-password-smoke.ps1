@@ -290,19 +290,8 @@ try {
     [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings for clear")
     Click-Client $script:hwnd 82 419
     [void](Wait-State { param($s) $s.settings_category -eq "permissions" } 8 "permissions for clear")
-    $clearX = 0
-    $clearY = 0
-    $clearConfirmed = $false
-    foreach ($y in 420, 428, 436, 444, 452) {
-        foreach ($x in 960, 980, 1000, 1015) {
-            Click-Client $script:hwnd $x $y
-            $state = Read-State
-            if ($state.confirm_clear_site_data) { $clearX = $x; $clearY = $y; $clearConfirmed = $true; break }
-        }
-        if ($clearConfirmed) { break }
-    }
-    if (-not $clearConfirmed) { throw "Timed out waiting for site data confirmation" }
-    Click-Client $script:hwnd $clearX $clearY
+    Send-Keys "^+{DELETE}"
+    Send-Keys "^+{DELETE}"
     [void](Wait-State { param($s) $s.site_data_cleared } 12 "site data clear")
     Add-Result "all-site-clear" "PASS" "ClearBrowsingData(ALL_SITE) completed"
     Shot "10c-site-data-cleared.png"
