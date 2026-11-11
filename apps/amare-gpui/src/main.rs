@@ -393,6 +393,7 @@ struct AmareApp {
     session_error: Option<String>,
     password_ui: PasswordUi,
     confirm_clear_site_data: bool,
+    site_data_cleared: bool,
 }
 
 impl AmareApp {
@@ -522,6 +523,7 @@ impl AmareApp {
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
+            site_data_cleared: false,
         };
         apply_platform_settings(&app.settings);
 
@@ -603,6 +605,7 @@ impl AmareApp {
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
+            site_data_cleared: false,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -750,6 +753,7 @@ impl AmareApp {
             session_error: STARTUP_SESSION_ERROR.with(|error| error.borrow().clone()),
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
+            site_data_cleared: false,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -938,6 +942,7 @@ impl AmareApp {
             "settings_query": settings_query,
             "settings_error": self.settings_error,
             "settings_generation": self.settings_generation,
+            "site_data_cleared": self.site_data_cleared,
             "password_vault": {
                 "unlocked": self.password_ui.vault.is_unlocked(),
                 "entries": password_entries,
@@ -1117,6 +1122,7 @@ impl AmareApp {
     fn clear_site_data(&mut self, cx: &mut Context<Self>) {
         if !self.confirm_clear_site_data {
             self.confirm_clear_site_data = true;
+            self.site_data_cleared = false;
             cx.notify();
             return;
         }
@@ -1129,6 +1135,7 @@ impl AmareApp {
             match result {
                 Ok(()) => {
                     self.settings_error = None;
+                    self.site_data_cleared = true;
                     self.password_ui.info = Some(
                         "모든 사이트의 쿠키/사이트 데이터를 삭제했습니다. 열린 로그인 세션이 종료될 수 있습니다."
                             .into(),
@@ -1329,7 +1336,15 @@ impl AmareApp {
             }
             let filled = self
                 .active_webview()
-                .map(|webview| webview.fill_login(&entry.origin, &entry.username, &entry.password))
+                .map(|webview| {
+                    let navigation_id = webview.navigation_id();
+                    webview.fill_login(
+                        &entry.origin,
+                        &entry.username,
+                        &entry.password,
+                        navigation_id,
+                    )
+                })
                 .unwrap_or(false);
             if filled {
                 self.password_ui.info = Some(

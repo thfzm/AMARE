@@ -272,6 +272,37 @@ try {
     Click-Client $script:hwnd 82 419
     [void](Wait-State { param($s) $s.settings_category -eq "permissions" } 8 "permissions category")
     Shot "10-site-permissions.png"
+    Click-Client $script:hwnd 520 110
+    [void](Wait-State { param($s) $s.panel -ne "settings" } 8 "settings closed")
+    function Navigate-Cookie([string]$url, [string]$expected, [string]$label) {
+        Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        [System.Windows.Forms.SendKeys]::SendWait($url)
+        Send-Keys "{ENTER}"
+        [void](Wait-State { param($s) $s.source -like "$url*" } 25 "$label page")
+        Start-Sleep -Seconds 1
+        $state = Wait-State { param($s) $s.title -like "AMARE_COOKIE:*" } 8 "$label title"
+        if ($state.title -ne "AMARE_COOKIE:$expected") { throw "$label cookie expected $expected got $($state.title)" }
+    }
+    Navigate-Cookie "http://127.0.0.1:8767/cookie-test.html?set=1" "true" "cookie A set"
+    Navigate-Cookie "http://localhost:8767/cookie-test.html?set=1" "true" "cookie B set"
+    Shot "10a-cookie-before.png"
+    Click-Client $script:hwnd 966 66
+    [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings for clear")
+    Click-Client $script:hwnd 82 419
+    [void](Wait-State { param($s) $s.settings_category -eq "permissions" } 8 "permissions for clear")
+    Click-Client $script:hwnd 1000 435
+    Click-Client $script:hwnd 1000 435
+    [void](Wait-State { param($s) $s.site_data_cleared } 12 "site data clear")
+    Add-Result "all-site-clear" "PASS" "ClearBrowsingData(ALL_SITE) completed"
+    Shot "10c-site-data-cleared.png"
+    Click-Client $script:hwnd 520 110
+    [void](Wait-State { param($s) $s.panel -ne "settings" } 8 "settings closed after clear")
+    Navigate-Cookie "http://127.0.0.1:8767/cookie-test.html" "false" "cookie A cleared"
+    Navigate-Cookie "http://localhost:8767/cookie-test.html" "false" "cookie B cleared"
+    Add-Result "all-site-cookie-scope" "PASS" "cookies for 127.0.0.1 and localhost removed"
+    Shot "10b-cookie-after.png"
+    Click-Client $script:hwnd 966 66
+    [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings final")
     Click-Client $script:hwnd 82 167
     [void](Wait-State { param($s) $s.settings_category -eq "appearance" } 8 "appearance category")
     Shot "11-settings.png"
@@ -387,7 +418,35 @@ try {
     if (-not $app.WaitForExit(20000)) { throw "empty persistence app did not exit" }
     Start-Sleep -Seconds 2
 
+    $keyPath = Join-Path $DataDir "password-vault\vault.key"
     $vaultPath = Join-Path $DataDir "password-vault\vault.bin"
+    $vaultBeforeKeyTest = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
+    Move-Item $keyPath "$keyPath.missing" -Force
+    $app = Start-Process $Exe -PassThru
+    [void](Wait-State { param($s) $null -ne $s.address } 60 "missing key app")
+    Start-Sleep -Seconds 2
+    $app.Refresh(); $script:hwnd = $app.MainWindowHandle
+    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    Start-Sleep -Seconds 1
+    Open-Passwords
+    $missingKeyError = $false
+    foreach ($y in 230, 242, 250) {
+        foreach ($x in 640, 760, 900) {
+            Click-Client $script:hwnd $x $y
+            $state = Read-State
+            if ($null -ne $state.password_vault.error) { $missingKeyError = $true; break }
+        }
+        if ($missingKeyError) { break }
+    }
+    if (-not $missingKeyError) { throw "missing key did not produce an error" }
+    if ((Get-FileHash $vaultPath -Algorithm SHA256).Hash -ne $vaultBeforeKeyTest) { throw "vault changed while key was missing" }
+    Add-Result "vault-key-missing-preserved" "PASS" "existing vault preserved when key missing"
+    Send-Keys "%{F4}"
+    if (-not $app.WaitForExit(20000)) { throw "missing key app did not exit" }
+    Move-Item "$keyPath.missing" $keyPath -Force
+    Start-Sleep -Seconds 2
+
     $beforeHash = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
     $bytes = [IO.File]::ReadAllBytes($vaultPath)
     $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 1

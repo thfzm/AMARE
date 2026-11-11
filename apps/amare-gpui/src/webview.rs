@@ -5,7 +5,10 @@ use std::{
 };
 
 #[cfg(target_os = "windows")]
-use std::sync::mpsc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc,
+};
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
@@ -320,6 +323,7 @@ pub struct WebViewHost {
     popup_requests: Arc<Mutex<Vec<String>>>,
     downloads: Arc<Mutex<Vec<DownloadState>>>,
     login_captures: Arc<Mutex<Vec<LoginCapture>>>,
+    navigation_id: Arc<AtomicU64>,
 }
 
 #[cfg(target_os = "windows")]
@@ -376,8 +380,11 @@ impl WebViewHost {
             let signals = Arc::new(Mutex::new(TabSignals::default()));
 
             let starting_signals = signals.clone();
+            let starting_navigation_id = Arc::new(AtomicU64::new(1));
+            let navigation_id_for_event = starting_navigation_id.clone();
             let navigation_starting =
                 NavigationStartingEventHandler::create(Box::new(move |_webview, _args| {
+                    navigation_id_for_event.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut signals) = starting_signals.lock() {
                         signals.loading = true;
                         signals.error = None;
@@ -644,6 +651,7 @@ impl WebViewHost {
                 popup_requests,
                 downloads,
                 login_captures,
+                navigation_id: starting_navigation_id,
             })
         }
     }
@@ -852,6 +860,10 @@ impl WebViewHost {
             .unwrap_or_default()
     }
 
+    pub fn navigation_id(&self) -> u64 {
+        self.navigation_id.load(Ordering::Relaxed)
+    }
+
     pub fn clear_site_data(&self) -> Result<(), String> {
         let profile = unsafe {
             self.webview
@@ -880,7 +892,16 @@ impl WebViewHost {
             .map_err(|_| "ClearBrowsingData channel closed".to_string())
     }
 
-    pub fn fill_login(&self, origin: &str, username: &str, password: &str) -> bool {
+    pub fn fill_login(
+        &self,
+        origin: &str,
+        username: &str,
+        password: &str,
+        expected_navigation: u64,
+    ) -> bool {
+        if self.navigation_id() != expected_navigation {
+            return false;
+        }
         let Ok(source_origin) = crate::password_vault::normalize_origin(&self.source()) else {
             return false;
         };

@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AMARE cookie test</title></head>
+<body><h1>AMARE cookie scope test</h1><p>This page records a first-party cookie and exposes only a boolean in its title.</p>
+<script>
+ const set = new URLSearchParams(location.search).has('set');
+ if (set) document.cookie = 'amare_cookie=1; path=/; SameSite=Lax';
+ const has = document.cookie.split(';').some(v => v.trim() === 'amare_cookie=1');
+ document.title = 'AMARE_COOKIE:' + (has ? 'true' : 'false');
+ document.body.insertAdjacentHTML('beforeend', '<p id="cookies">cookie present: ' + has + '</p>');
+</script></body></html>
