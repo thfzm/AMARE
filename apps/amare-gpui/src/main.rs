@@ -943,6 +943,7 @@ impl AmareApp {
             "settings_error": self.settings_error,
             "settings_generation": self.settings_generation,
             "site_data_cleared": self.site_data_cleared,
+            "confirm_clear_site_data": self.confirm_clear_site_data,
             "password_vault": {
                 "unlocked": self.password_ui.vault.is_unlocked(),
                 "entries": password_entries,
