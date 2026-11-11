@@ -2940,17 +2940,30 @@ impl AmareApp {
             let clear_site = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
                 this.clear_site_data(cx);
             });
-            content = content.child(self.setting_row(
-                "쿠키 및 사이트 데이터",
-                "WebView2 공식 ClearBrowsingData(ALL_SITE)로 현재 프로필의 모든 사이트 데이터를 삭제합니다. 사이트별 삭제는 API 제약으로 제공하지 않습니다.",
+            content = content.child(
                 div()
                     .flex()
+                    .flex_col()
                     .gap_2()
+                    .px_4()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(div().text_sm().child("쿠키 및 사이트 데이터"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("WebView2 공식 ClearBrowsingData(ALL_SITE)로 현재 프로필의 모든 사이트 데이터를 삭제합니다. 사이트별 삭제는 API 제약으로 제공하지 않습니다."),
+                    )
                     .child(
                         div()
                             .id("clear-site-data")
-                            .px_3()
-                            .py_1()
+                            .h(px(36.0))
+                            .w_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .rounded_md()
                             .bg(if self.confirm_clear_site_data {
                                 rgb(0xd9534f)
@@ -2962,17 +2975,16 @@ impl AmareApp {
                             } else {
                                 muted
                             })
-                            .text_xs()
+                            .text_sm()
                             .cursor_pointer()
                             .child(if self.confirm_clear_site_data {
-                                "정말 모든 사이트 데이터 삭제"
+                                "정말 모든 사이트 데이터 삭제 (전체 프로필)"
                             } else {
-                                "모든 사이트 데이터 삭제"
+                                "모든 사이트 데이터 삭제 (전체 프로필)"
                             })
                             .on_click(clear_site),
                     ),
-                dark,
-            ));
+            );
         }
 
         let search_box = div()
