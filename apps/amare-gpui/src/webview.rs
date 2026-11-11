@@ -888,8 +888,7 @@ impl WebViewHost {
             }),
         )
         .map_err(|error| format!("ClearBrowsingData: {error:?}"))?;
-        rx.recv()
-            .map_err(|_| "ClearBrowsingData channel closed".to_string())
+        wait_with_pump(rx).map_err(|_| "ClearBrowsingData did not complete".to_string())
     }
 
     pub fn fill_login(
