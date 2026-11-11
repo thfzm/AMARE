@@ -4,23 +4,64 @@
 //! XChaCha20-Poly1305. On Windows the random data key is stored in a DPAPI
 //! user-scoped key file. SQLite is deliberately not used for any vault secret.
 //! Non-Windows builds return `Unsupported`; no plaintext fallback is provided.
+//!
+//! 0.59 stores per-entry revisions and persistent deletion tombstones so a
+//! stale window cannot silently overwrite a newer edit or resurrect a deleted
+//! account. The merge is optimistic and rejects same-entry conflicts instead
+//! of using last-writer-wins.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::Mutex;
 use url::Url;
 use zeroize::Zeroize;
 
 const VAULT_MAGIC: &[u8; 9] = b"AMAREVLT1";
 const VAULT_AAD: &[u8] = b"amare.gpui.password-vault.v1";
+const VAULT_FORMAT_VERSION: u32 = 2;
 const MAX_VAULT_BYTES: usize = 8 * 1024 * 1024;
+const CONFLICT_PREFIX: &str = "충돌: ";
 static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static VAULT_LOCK_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static VAULT_GLOBALLY_LOCKED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static VAULT_SAVE_LOCK: Mutex<()> = Mutex::new(());
+static VAULT_SAVE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub fn generation() -> u64 {
     VAULT_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+fn default_revision() -> u64 {
+    1
+}
+
+fn default_format() -> u32 {
+    VAULT_FORMAT_VERSION
+}
+
+pub fn lock_state() -> (u64, bool) {
+    (
+        VAULT_LOCK_EPOCH.load(std::sync::atomic::Ordering::SeqCst),
+        VAULT_GLOBALLY_LOCKED.load(std::sync::atomic::Ordering::SeqCst),
+    )
+}
+
+/// Request that every window in this process drop its decrypted vault state.
+pub fn request_global_lock() -> u64 {
+    VAULT_GLOBALLY_LOCKED.store(true, std::sync::atomic::Ordering::SeqCst);
+    VAULT_LOCK_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+}
+
+/// Clear the process-wide lock request. Other windows stay locked until their
+/// own user explicitly unlocks; they are no longer forced to relock.
+pub fn clear_global_lock() -> u64 {
+    VAULT_GLOBALLY_LOCKED.store(false, std::sync::atomic::Ordering::SeqCst);
+    VAULT_LOCK_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PasswordEntry {
     pub id: u64,
     pub origin: String,
@@ -29,6 +70,8 @@ pub struct PasswordEntry {
     pub title: String,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
+    #[serde(default = "default_revision")]
+    pub revision: u64,
 }
 
 impl Drop for PasswordEntry {
@@ -40,6 +83,93 @@ impl Drop for PasswordEntry {
 impl PasswordEntry {
     pub fn masked_password(&self) -> String {
         "•".repeat(self.password.chars().count().min(32))
+    }
+
+    fn same_payload(&self, other: &Self) -> bool {
+        self.origin == other.origin
+            && self.username == other.username
+            && self.password == other.password
+            && self.title == other.title
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct Tombstone {
+    pub id: u64,
+    #[serde(default = "default_revision")]
+    pub revision: u64,
+    #[serde(default)]
+    pub deleted_at_ms: i64,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct VaultData {
+    #[serde(default = "default_format")]
+    pub format: u32,
+    #[serde(default)]
+    pub generation: u64,
+    #[serde(default)]
+    pub entries: Vec<PasswordEntry>,
+    #[serde(default)]
+    pub tombstones: Vec<Tombstone>,
+}
+
+impl VaultData {
+    fn from_legacy(entries: Vec<PasswordEntry>) -> Self {
+        Self {
+            format: VAULT_FORMAT_VERSION,
+            generation: 0,
+            entries,
+            tombstones: Vec::new(),
+        }
+    }
+
+    fn normalise(&mut self) {
+        self.format = VAULT_FORMAT_VERSION;
+        self.entries.sort_by_key(|entry| entry.id);
+        self.entries.dedup_by_key(|entry| entry.id);
+        let mut tombstones: BTreeMap<u64, Tombstone> = BTreeMap::new();
+        for tombstone in self.tombstones.drain(..) {
+            let revision = tombstone.revision.max(1);
+            tombstones
+                .entry(tombstone.id)
+                .and_modify(|existing| {
+                    if revision > existing.revision {
+                        existing.revision = revision;
+                        existing.deleted_at_ms = tombstone.deleted_at_ms;
+                    }
+                })
+                .or_insert(Tombstone {
+                    id: tombstone.id,
+                    revision,
+                    deleted_at_ms: tombstone.deleted_at_ms,
+                });
+        }
+        let deleted: BTreeSet<u64> = tombstones.keys().copied().collect();
+        self.entries.retain(|entry| !deleted.contains(&entry.id));
+        self.tombstones = tombstones.into_values().collect();
+        for entry in &mut self.entries {
+            entry.revision = entry.revision.max(1);
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct VaultBaseline {
+    revisions: BTreeMap<u64, u64>,
+    tombstones: BTreeSet<u64>,
+}
+
+impl VaultBaseline {
+    fn from_data(data: &VaultData) -> Self {
+        Self {
+            revisions: data
+                .entries
+                .iter()
+                .map(|entry| (entry.id, entry.revision.max(1)))
+                .collect(),
+            tombstones: data.tombstones.iter().map(|item| item.id).collect(),
+        }
     }
 }
 
@@ -69,6 +199,7 @@ pub fn same_origin(left: &str, right: &str) -> bool {
 pub struct PasswordVault {
     entries: Vec<PasswordEntry>,
     deleted_ids: BTreeSet<u64>,
+    base: VaultBaseline,
     unlocked: bool,
 }
 
@@ -85,13 +216,14 @@ impl PasswordVault {
         &self.entries
     }
 
-    pub fn entries_mut(&mut self) -> &mut Vec<PasswordEntry> {
-        &mut self.entries
+    pub fn tombstone_count(&self) -> usize {
+        self.base.tombstones.len()
     }
 
     pub fn lock(&mut self) {
         self.entries.clear();
         self.deleted_ids.clear();
+        self.base = VaultBaseline::default();
         self.unlocked = false;
     }
 
@@ -125,13 +257,10 @@ impl PasswordVault {
     }
 
     #[cfg(target_os = "windows")]
-    fn read_entries(
-        key: &[u8; 32],
-        vault_path: &std::path::Path,
-    ) -> Result<Vec<PasswordEntry>, String> {
+    fn read_vault(key: &[u8; 32], vault_path: &std::path::Path) -> Result<VaultData, String> {
         use amare_security::decrypt;
         if !vault_path.exists() {
-            return Ok(Vec::new());
+            return Ok(VaultData::default());
         }
         let bytes = std::fs::read(vault_path)
             .map_err(|_| "보안 저장소 파일을 읽을 수 없습니다.".to_string())?;
@@ -143,10 +272,19 @@ impl PasswordVault {
         }
         let mut plain = decrypt(key, &bytes[VAULT_MAGIC.len()..], VAULT_AAD)
             .map_err(|_| "보안 저장소를 복호화할 수 없습니다.".to_string())?;
-        let parsed: Vec<PasswordEntry> = serde_json::from_slice(&plain)
-            .map_err(|_| "보안 저장소 데이터가 손상되었습니다.".to_string())?;
+        let mut data = match serde_json::from_slice::<VaultData>(&plain) {
+            Ok(data) => data,
+            Err(_) => match serde_json::from_slice::<Vec<PasswordEntry>>(&plain) {
+                Ok(entries) => VaultData::from_legacy(entries),
+                Err(_) => {
+                    plain.zeroize();
+                    return Err("보안 저장소 데이터가 손상되었습니다.".into());
+                }
+            },
+        };
         plain.zeroize();
-        Ok(parsed)
+        data.normalise();
+        Ok(data)
     }
 
     #[cfg(target_os = "windows")]
@@ -168,14 +306,19 @@ impl PasswordVault {
             .map_err(|_| "Windows DPAPI 보안 키를 열 수 없습니다.".to_string())
     }
 
+    fn apply_data(&mut self, data: VaultData) {
+        self.base = VaultBaseline::from_data(&data);
+        self.entries = data.entries;
+        self.deleted_ids.clear();
+        self.unlocked = true;
+    }
+
     #[cfg(target_os = "windows")]
     pub fn unlock(&mut self) -> Result<(), String> {
         let (key_path, vault_path) = Self::paths()?;
         let key = self.key_for(&key_path, &vault_path)?;
-        let parsed = Self::read_entries(&key, &vault_path)?;
-        self.entries = parsed;
-        self.deleted_ids.clear();
-        self.unlocked = true;
+        let data = Self::read_vault(&key, &vault_path)?;
+        self.apply_data(data);
         Ok(())
     }
 
@@ -187,17 +330,19 @@ impl PasswordVault {
     #[cfg(target_os = "windows")]
     pub fn save(&mut self) -> Result<(), String> {
         use amare_security::encrypt;
+        let _save_guard = VAULT_SAVE_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (key_path, vault_path) = Self::paths()?;
         let key = self.key_for(&key_path, &vault_path)?;
-        let mut merged = Self::read_entries(&key, &vault_path)?;
-        merged.retain(|entry| !self.deleted_ids.contains(&entry.id));
-        for entry in &self.entries {
-            if let Some(existing) = merged.iter_mut().find(|item| item.id == entry.id) {
-                *existing = entry.clone();
-            } else {
-                merged.push(entry.clone());
-            }
-        }
+        let remote = Self::read_vault(&key, &vault_path)?;
+        let merged = merge_vault(
+            &self.base,
+            &self.entries,
+            &self.deleted_ids,
+            remote,
+            now_ms(),
+        )?;
         let mut plain = serde_json::to_vec(&merged)
             .map_err(|_| "보안 저장소 직렬화에 실패했습니다.".to_string())?;
         let encrypted = encrypt(&key, &plain, VAULT_AAD)
@@ -206,7 +351,8 @@ impl PasswordVault {
         if encrypted.len() + VAULT_MAGIC.len() > MAX_VAULT_BYTES {
             return Err("보안 저장소가 너무 큽니다.".into());
         }
-        let temp = vault_path.with_extension(format!("tmp-{}", std::process::id()));
+        let sequence = VAULT_SAVE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temp = vault_path.with_extension(format!("tmp-{}-{}", std::process::id(), sequence));
         {
             use std::io::Write;
             let mut options = std::fs::OpenOptions::new();
@@ -221,9 +367,7 @@ impl PasswordVault {
         }
         std::fs::rename(&temp, &vault_path)
             .map_err(|_| "보안 저장소 파일을 교체할 수 없습니다.".to_string())?;
-        self.entries = merged;
-        self.deleted_ids.clear();
-        self.unlocked = true;
+        self.apply_data(merged);
         VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
@@ -257,37 +401,55 @@ impl PasswordVault {
         if password.is_empty() || password.chars().count() > 8192 {
             return Err("비밀번호를 확인해 주세요.".into());
         }
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64;
-        let existing_id = id.or_else(|| {
-            self.entries
-                .iter()
-                .find(|entry| entry.origin == origin && entry.username == username)
-                .map(|entry| entry.id)
-        });
-        if let Some(existing_id) = existing_id {
+        let now = now_ms();
+
+        if let Some(existing_id) = id {
+            let Some(entry) = self
+                .entries
+                .iter_mut()
+                .find(|entry| entry.id == existing_id)
+            else {
+                return Err(format!(
+                    "{CONFLICT_PREFIX}수정하려는 계정이 이미 삭제되었습니다. 최신 상태를 다시 불러오세요."
+                ));
+            };
+            entry.origin = origin;
+            entry.username = username.to_string();
+            entry.title = title.chars().take(512).collect();
+            entry.updated_at_ms = now;
+            entry.revision = entry.revision.max(1).saturating_add(1);
+            entry.password.zeroize();
+            entry.password = password.to_string();
+            return Ok(existing_id);
+        }
+
+        if let Some(existing_id) = self
+            .entries
+            .iter()
+            .find(|entry| entry.origin == origin && entry.username == username)
+            .map(|entry| entry.id)
+        {
             if let Some(entry) = self
                 .entries
                 .iter_mut()
                 .find(|entry| entry.id == existing_id)
             {
-                entry.origin = origin;
-                entry.username = username.to_string();
                 entry.title = title.chars().take(512).collect();
                 entry.updated_at_ms = now;
+                entry.revision = entry.revision.max(1).saturating_add(1);
                 entry.password.zeroize();
                 entry.password = password.to_string();
                 return Ok(existing_id);
             }
         }
+
         let id = self
             .entries
             .iter()
             .map(|entry| entry.id)
             .max()
             .unwrap_or(0)
+            .max(now.max(0) as u64)
             .max(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -303,6 +465,7 @@ impl PasswordVault {
             title: title.chars().take(512).collect(),
             created_at_ms: now,
             updated_at_ms: now,
+            revision: 1,
         });
         Ok(id)
     }
@@ -318,6 +481,123 @@ impl PasswordVault {
     }
 }
 
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+/// Merge local changes into the latest remote vault.
+///
+/// - independent entries are preserved,
+/// - a stale unchanged entry never overwrites a newer remote edit,
+/// - a stale unchanged entry is dropped when the remote has a tombstone,
+/// - modifying or deleting an entry that changed remotely is rejected,
+/// - tombstones are never removed by a stale window.
+fn merge_vault(
+    base: &VaultBaseline,
+    local_entries: &[PasswordEntry],
+    deleted_ids: &BTreeSet<u64>,
+    mut remote: VaultData,
+    deleted_at_ms: i64,
+) -> Result<VaultData, String> {
+    remote.normalise();
+    let mut remote_tombstones: BTreeMap<u64, Tombstone> = remote
+        .tombstones
+        .into_iter()
+        .map(|item| (item.id, item))
+        .collect();
+
+    for id in deleted_ids {
+        let base_revision = base.revisions.get(id).copied().unwrap_or(0);
+        let remote_entry = remote.entries.iter().find(|entry| entry.id == *id);
+        if let Some(entry) = remote_entry {
+            if entry.revision > base_revision {
+                return Err(format!(
+                    "{CONFLICT_PREFIX}다른 창에서 수정한 계정이라 삭제할 수 없습니다. 최신 상태를 다시 불러오세요."
+                ));
+            }
+            let revision = entry.revision.max(base_revision).saturating_add(1).max(1);
+            remote_tombstones
+                .entry(*id)
+                .and_modify(|item| item.revision = item.revision.max(revision))
+                .or_insert(Tombstone {
+                    id: *id,
+                    revision,
+                    deleted_at_ms,
+                });
+        } else if !remote_tombstones.contains_key(id) {
+            let revision = base_revision.saturating_add(1).max(1);
+            remote_tombstones.insert(
+                *id,
+                Tombstone {
+                    id: *id,
+                    revision,
+                    deleted_at_ms,
+                },
+            );
+        }
+    }
+
+    for local in local_entries {
+        let base_revision = base.revisions.get(&local.id).copied().unwrap_or(0);
+        let local_changed = local.revision.max(1) > base_revision;
+        let tombstone = remote_tombstones.get(&local.id).cloned();
+
+        if tombstone.is_some() {
+            if !local_changed && base_revision > 0 {
+                // The user never touched this entry in this window. It was
+                // deleted elsewhere, so drop the stale copy without failing an
+                // unrelated save.
+                continue;
+            }
+            return Err(format!(
+                "{CONFLICT_PREFIX}다른 창에서 삭제한 계정입니다. 최신 상태를 다시 불러오세요."
+            ));
+        }
+
+        if let Some(index) = remote.entries.iter().position(|entry| entry.id == local.id) {
+            let remote_entry = &remote.entries[index];
+            if !local_changed && base_revision > 0 {
+                // Keep the newer remote entry and its revision.
+                continue;
+            }
+            let remote_changed = remote_entry.revision > base_revision;
+            if remote_changed && !remote_entry.same_payload(local) {
+                return Err(format!(
+                    "{CONFLICT_PREFIX}같은 계정이 다른 창에서 수정되었습니다. 최신 상태를 다시 불러오세요."
+                ));
+            }
+            if remote_changed && remote_entry.same_payload(local) {
+                continue;
+            }
+            let mut updated = local.clone();
+            updated.revision = remote_entry
+                .revision
+                .max(base_revision)
+                .max(local.revision)
+                .saturating_add(1)
+                .max(1);
+            remote.entries[index] = updated;
+        } else {
+            if !local_changed && base_revision > 0 {
+                // Remote deletion without a tombstone (legacy/corrupt data).
+                continue;
+            }
+            remote.entries.push(local.clone());
+        }
+    }
+
+    remote.entries.retain(|entry| {
+        !remote_tombstones.contains_key(&entry.id) && !deleted_ids.contains(&entry.id)
+    });
+    remote.tombstones = remote_tombstones.into_values().collect();
+    remote.generation = remote.generation.saturating_add(1).max(1);
+    remote.normalise();
+    Ok(remote)
+}
+
 impl Drop for PasswordVault {
     fn drop(&mut self) {
         self.lock();
@@ -327,6 +607,32 @@ impl Drop for PasswordVault {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(id: u64, username: &str, password: &str, revision: u64) -> PasswordEntry {
+        PasswordEntry {
+            id,
+            origin: "https://example.com".into(),
+            username: username.into(),
+            password: password.into(),
+            title: "Example".into(),
+            created_at_ms: 1,
+            updated_at_ms: 1,
+            revision,
+        }
+    }
+
+    fn data(entries: Vec<PasswordEntry>, tombstones: Vec<Tombstone>) -> VaultData {
+        VaultData {
+            format: VAULT_FORMAT_VERSION,
+            generation: 1,
+            entries,
+            tombstones,
+        }
+    }
+
+    fn baseline(data: &VaultData) -> VaultBaseline {
+        VaultBaseline::from_data(data)
+    }
 
     #[test]
     fn origin_is_exact_and_scheme_aware() {
@@ -364,6 +670,7 @@ mod tests {
         let mut vault = PasswordVault {
             entries: Vec::new(),
             deleted_ids: BTreeSet::new(),
+            base: VaultBaseline::default(),
             unlocked: true,
         };
         let first = vault
@@ -384,6 +691,177 @@ mod tests {
     }
 
     #[test]
+    fn independent_edits_are_merged() {
+        let first = entry(1, "one", "pw1", 1);
+        let second = entry(2, "two", "pw2", 1);
+        let base_data = data(vec![first.clone(), second.clone()], Vec::new());
+        let base = baseline(&base_data);
+        let mut local_first = first.clone();
+        local_first.password = "local-one".into();
+        local_first.revision = 2;
+        let mut remote_second = second;
+        remote_second.password = "remote-two".into();
+        remote_second.revision = 2;
+        let remote = data(vec![first, remote_second.clone()], Vec::new());
+
+        let merged = merge_vault(
+            &base,
+            &[local_first.clone(), remote_second.clone()],
+            &BTreeSet::new(),
+            remote,
+            10,
+        )
+        .unwrap();
+        assert_eq!(
+            merged
+                .entries
+                .iter()
+                .find(|item| item.id == 1)
+                .unwrap()
+                .password,
+            "local-one"
+        );
+        assert_eq!(
+            merged
+                .entries
+                .iter()
+                .find(|item| item.id == 2)
+                .unwrap()
+                .password,
+            "remote-two"
+        );
+    }
+
+    #[test]
+    fn same_entry_conflict_is_rejected() {
+        let original = entry(1, "one", "pw1", 1);
+        let base = baseline(&data(vec![original.clone()], Vec::new()));
+        let mut local = original.clone();
+        local.password = "local".into();
+        local.revision = 2;
+        let mut remote_entry = original;
+        remote_entry.password = "remote".into();
+        remote_entry.revision = 2;
+
+        let error = merge_vault(
+            &base,
+            &[local],
+            &BTreeSet::new(),
+            data(vec![remote_entry], Vec::new()),
+            10,
+        )
+        .err()
+        .unwrap();
+        assert!(error.starts_with(CONFLICT_PREFIX));
+    }
+
+    #[test]
+    fn modification_against_remote_delete_is_rejected() {
+        let original = entry(1, "one", "pw1", 1);
+        let base = baseline(&data(vec![original.clone()], Vec::new()));
+        let mut local = original;
+        local.password = "local".into();
+        local.revision = 2;
+        let remote = data(
+            Vec::new(),
+            vec![Tombstone {
+                id: 1,
+                revision: 2,
+                deleted_at_ms: 5,
+            }],
+        );
+        let error = merge_vault(&base, &[local], &BTreeSet::new(), remote, 10)
+            .err()
+            .unwrap();
+        assert!(error.starts_with(CONFLICT_PREFIX));
+    }
+
+    #[test]
+    fn deletion_against_remote_edit_is_rejected() {
+        let original = entry(1, "one", "pw1", 1);
+        let base = baseline(&data(vec![original.clone()], Vec::new()));
+        let mut remote_entry = original;
+        remote_entry.password = "remote".into();
+        remote_entry.revision = 2;
+        let mut deleted = BTreeSet::new();
+        deleted.insert(1);
+        let error = merge_vault(
+            &base,
+            &[],
+            &deleted,
+            data(vec![remote_entry], Vec::new()),
+            10,
+        )
+        .err()
+        .unwrap();
+        assert!(error.starts_with(CONFLICT_PREFIX));
+    }
+
+    #[test]
+    fn stale_unchanged_entry_is_not_resurrected() {
+        let first = entry(1, "one", "pw1", 1);
+        let second = entry(2, "two", "pw2", 1);
+        let base_data = data(vec![first.clone(), second.clone()], Vec::new());
+        let base = baseline(&base_data);
+        let mut local_second = second.clone();
+        local_second.password = "local-two".into();
+        local_second.revision = 2;
+        let remote = data(
+            vec![],
+            vec![Tombstone {
+                id: 1,
+                revision: 2,
+                deleted_at_ms: 5,
+            }],
+        );
+
+        let merged =
+            merge_vault(&base, &[first, local_second], &BTreeSet::new(), remote, 10).unwrap();
+        assert!(!merged.entries.iter().any(|item| item.id == 1));
+        assert_eq!(
+            merged
+                .entries
+                .iter()
+                .find(|item| item.id == 2)
+                .unwrap()
+                .password,
+            "local-two"
+        );
+        assert_eq!(merged.tombstones.len(), 1);
+    }
+
+    #[test]
+    fn stale_tombstone_survives_restart_and_blocks_modified_readd() {
+        let original = entry(1, "one", "pw1", 1);
+        let base = baseline(&data(vec![original.clone()], Vec::new()));
+        let mut local = original;
+        local.password = "resurrect".into();
+        local.revision = 2;
+        let remote = data(
+            Vec::new(),
+            vec![Tombstone {
+                id: 1,
+                revision: 2,
+                deleted_at_ms: 5,
+            }],
+        );
+        let error = merge_vault(&base, &[local], &BTreeSet::new(), remote, 10)
+            .err()
+            .unwrap();
+        assert!(error.starts_with(CONFLICT_PREFIX));
+    }
+
+    #[test]
+    fn legacy_array_is_migrated_with_revisions() {
+        let legacy = serde_json::to_vec(&vec![entry(1, "one", "pw1", 1)]).unwrap();
+        let entries: Vec<PasswordEntry> = serde_json::from_slice(&legacy).unwrap();
+        let migrated = VaultData::from_legacy(entries);
+        assert_eq!(migrated.format, VAULT_FORMAT_VERSION);
+        assert_eq!(migrated.entries[0].revision, 1);
+        assert!(migrated.tombstones.is_empty());
+    }
+
+    #[test]
     fn secret_is_zeroized_on_drop() {
         let mut entry = PasswordEntry {
             id: 1,
@@ -393,6 +871,7 @@ mod tests {
             title: String::new(),
             created_at_ms: 0,
             updated_at_ms: 0,
+            revision: 1,
         };
         let ptr = entry.password.as_ptr();
         let len = entry.password.len();

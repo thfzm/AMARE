@@ -51,6 +51,24 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     [AmareSession]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 300
 }
+function Scroll-Page {
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        Click-Client $script:hwnd 500 400
+        Send-Keys "{PGDN}"; Send-Keys "{PGDN}"; Send-Keys "{PGDN}"
+        [AmareSession]::mouse_event(0x0800, 0, 0, -360, [UIntPtr]::Zero)
+        [AmareSession]::mouse_event(0x0800, 0, 0, -360, [UIntPtr]::Zero)
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if ($null -ne $state -and @($state.tabs).Count -gt 0) {
+                $firstTab = @($state.tabs)[0]
+                if ([int64]$firstTab.scroll_y -gt 100) { return $state }
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    throw "Timed out waiting for scroll position capture"
+}
 function Shot([string]$name) {
     $rect = New-Object AmareSession+RECT
     [void][AmareSession]::GetWindowRect($script:hwnd, [ref]$rect)
@@ -129,9 +147,7 @@ try {
     $app = Start-App $completeData
     [void](Navigate $scroll 20)
     [void][AmareSession]::SetForegroundWindow($script:hwnd)
-    Click-Client $script:hwnd 500 400
-    Send-Keys "{PGDN}"; Send-Keys "{PGDN}"; Send-Keys "{PGDN}"
-    [void](Wait-State { param($s) @($s.tabs)[0].scroll_y -gt 100 } 15 "scroll position capture")
+    [void](Scroll-Page)
     [void](Ensure-Tabs 2); [void](Navigate $fast 20)
     [void](Ensure-Tabs 3); [void](Navigate $fast 20)
     Start-Sleep -Seconds 4

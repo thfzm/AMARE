@@ -14,8 +14,12 @@ using System;
 using System.Runtime.InteropServices;
 public static class AmareLib {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
 }
 '@
@@ -36,6 +40,17 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 160 }
+function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
+    $point = New-Object AmareLib+POINT
+    [void][AmareLib]::ClientToScreen($hwnd, [ref]$point)
+    [void][AmareLib]::SetForegroundWindow($hwnd)
+    [void][AmareLib]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+    Start-Sleep -Milliseconds 120
+    [AmareLib]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+    [AmareLib]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 350
+}
 function Shot([string]$name) {
     $r = New-Object AmareLib+RECT
     [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$r)
@@ -80,12 +95,23 @@ function Ensure-LibraryTabs([int]$target) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         [void][AmareLib]::SetForegroundWindow($script:hwnd)
+        Click-Client $script:hwnd 420 70
         Send-Keys "^t"
-        $deadline = (Get-Date).AddSeconds(8)
+        $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { return $state }
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 250
+        }
+        $rect = New-Object AmareLib+RECT
+        [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect)
+        $width = [Math]::Max(1, $rect.Right - $rect.Left)
+        Click-Client $script:hwnd ($width - 276) 22
+        $deadline = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { return $state }
+            Start-Sleep -Milliseconds 250
         }
     }
     throw "Could not create $target tabs"

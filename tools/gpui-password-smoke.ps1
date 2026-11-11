@@ -23,6 +23,7 @@ public static class AmarePassword {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
 }
 '@
 
@@ -112,6 +113,60 @@ function ShotFull([string]$name) {
     $g.Dispose(); $bmp.Dispose()
     Add-Result $name "PASS" "$path ($($bounds.Width) x $($bounds.Height), $((Get-Item $path).Length) bytes)"
 }
+function Test-PngContent([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    if ((Get-Item $path).Length -lt 3000) { return $false }
+    $bmp = [System.Drawing.Bitmap]::FromFile($path)
+    try {
+        if ($bmp.Width -lt 320 -or $bmp.Height -lt 200) { return $false }
+        $colored = 0
+        $samples = 0
+        for ($y = 0; $y -lt $bmp.Height; $y += 12) {
+            for ($x = 0; $x -lt $bmp.Width; $x += 12) {
+                $pixel = $bmp.GetPixel($x, $y)
+                $samples++
+                if ([Math]::Abs($pixel.R - $pixel.G) -gt 18 -or [Math]::Abs($pixel.G - $pixel.B) -gt 18 -or ($pixel.R -lt 220 -and $pixel.G -lt 220)) {
+                    $colored++
+                }
+            }
+        }
+        return ($samples -gt 0 -and $colored -gt 25)
+    } finally {
+        $bmp.Dispose()
+    }
+}
+function Capture-Page([string]$name) {
+    $before = Read-State
+    $previous = [int64]$before.capture_count
+    $capture = $null
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        Click-Client $script:hwnd 420 70
+        Send-Keys "^+s"
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if ($null -ne $state -and [int64]$state.capture_count -gt $previous) {
+                $capture = $state
+                break
+            }
+            if ($null -ne $state -and $null -ne $state.last_capture_error) {
+                throw "CapturePreview failed: $($state.last_capture_error)"
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($null -eq $capture) { continue }
+        $source = [string]$capture.last_capture_path
+        if (-not (Test-Path $source)) { throw "CapturePreview file missing: $source" }
+        $target = Join-Path $ScreenshotDir $name
+        Move-Item $source $target -Force
+        if (Test-PngContent $target) {
+            Add-Result $name "PASS" "$target ($($capture.last_capture_width) x $($capture.last_capture_height), $((Get-Item $target).Length) bytes), DOM content non-blank"
+            return $capture
+        }
+        Start-Sleep -Seconds 1
+    }
+    throw "CapturePreview returned blank page content for $name"
+}
 function Get-PageState {
     $state = Read-State
     if ($null -eq $state -or -not $state.title.StartsWith("AMARE_TEST:")) { return $null }
@@ -153,6 +208,8 @@ $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
+$env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
+$env:AMARE_GPUI_CAPTURE_DIR = $ScreenshotDir
 $passwordA = "S3cret!Alice-55"
 $passwordB = "S3cret!Bob-55"
 try {
@@ -171,6 +228,19 @@ try {
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
+    Capture-Page "02-page-content-example.png"
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/capture-test.html*" } 20 "capture test page")
+    Start-Sleep -Milliseconds 700
+    Shot "02-capture-test-window.png"
+    Capture-Page "02-page-content.png"
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page restored")
+    Start-Sleep -Milliseconds 700
     Open-Passwords
     Shot "02-password-manager-panel.png"
     Unlock-Vault
@@ -275,7 +345,26 @@ try {
     Click-Client $script:hwnd 82 167
     [void](Wait-State { param($s) $s.settings_category -eq "appearance" } 8 "appearance category")
     Shot "11-settings.png"
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/capture-test.html*" } 20 "capture page for max")
+    Start-Sleep -Milliseconds 700
+    [void][AmarePassword]::ShowWindow($script:hwnd, 3)
+    $maxDeadline = (Get-Date).AddSeconds(8)
+    while (-not [AmarePassword]::IsZoomed($script:hwnd) -and (Get-Date) -lt $maxDeadline) { Start-Sleep -Milliseconds 200 }
+    if (-not [AmarePassword]::IsZoomed($script:hwnd)) { throw "window did not maximize" }
+    Start-Sleep -Milliseconds 700
     Shot "12-titlebar-maximized.png"
+    ShotFull "13-maximized-desktop.png"
+    Capture-Page "12b-page-maximized.png"
+    Add-Result "window-maximize" "PASS" "IsZoomed=true"
+    [void][AmarePassword]::ShowWindow($script:hwnd, 6)
+    Start-Sleep -Seconds 1
+    [void][AmarePassword]::ShowWindow($script:hwnd, 9)
+    Start-Sleep -Seconds 1
+    Capture-Page "12c-page-minimize-restore.png"
+    Add-Result "capture-after-minimize-restore" "PASS" "CapturePreview content after minimize/restore"
 
     $plaintextFound = $false
     foreach ($file in Get-ChildItem $DataDir -Recurse -File) {
@@ -451,11 +540,7 @@ try {
     [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multi-tab final")
     Start-Sleep -Milliseconds 800
     Shot "03-multiple-tabs.png"
-    $secondApp = Start-Process $Exe -PassThru
-    Start-Sleep -Seconds 3
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
-    ShotFull "04-multi-window.png"
-    if ($null -ne $secondApp -and -not $secondApp.HasExited) { Stop-Process -Id $secondApp.Id -Force }
+    Capture-Page "03b-active-tab-content.png"
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }
 } catch {

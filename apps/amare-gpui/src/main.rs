@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -53,6 +55,7 @@ actions!(
         ToggleDownloadsPanel,
         ToggleSettings,
         TogglePasswords,
+        CapturePage,
     ]
 );
 
@@ -321,8 +324,10 @@ struct PasswordUi {
     confirm_delete: Option<u64>,
     pending: Option<PendingLogin>,
     error: Option<String>,
+    conflict: Option<String>,
     info: Option<String>,
     vault_generation: u64,
+    lock_epoch: u64,
     recovery_path: Option<String>,
 }
 
@@ -346,8 +351,10 @@ fn create_password_ui(cx: &mut App) -> PasswordUi {
         confirm_delete: None,
         pending: None,
         error: None,
+        conflict: None,
         info: None,
         vault_generation: 0,
+        lock_epoch: password_vault::lock_state().0,
         recovery_path: None,
     }
 }
@@ -394,6 +401,10 @@ struct AmareApp {
     password_ui: PasswordUi,
     confirm_clear_site_data: bool,
     site_data_cleared: bool,
+    capture_count: u64,
+    last_capture_path: Option<String>,
+    last_capture_error: Option<String>,
+    last_capture_size: Option<(u32, u32)>,
 }
 
 impl AmareApp {
@@ -524,6 +535,10 @@ impl AmareApp {
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
             site_data_cleared: false,
+            capture_count: 0,
+            last_capture_path: None,
+            last_capture_error: None,
+            last_capture_size: None,
         };
         apply_platform_settings(&app.settings);
 
@@ -606,6 +621,10 @@ impl AmareApp {
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
             site_data_cleared: false,
+            capture_count: 0,
+            last_capture_path: None,
+            last_capture_error: None,
+            last_capture_size: None,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -754,6 +773,10 @@ impl AmareApp {
             password_ui: create_password_ui(cx),
             confirm_clear_site_data: false,
             site_data_cleared: false,
+            capture_count: 0,
+            last_capture_path: None,
+            last_capture_error: None,
+            last_capture_size: None,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -788,18 +811,31 @@ impl AmareApp {
     }
 
     fn write_status(&mut self, cx: &mut Context<Self>) {
-        let Ok(path) = std::env::var("AMARE_GPUI_STATUS") else {
-            return;
-        };
-        match std::env::var("AMARE_GPUI_STATUS_WINDOW") {
-            Ok(expected) => {
-                if expected.parse::<u64>().ok() != Some(self.window_id) {
-                    return;
-                }
+        let path = if let Ok(directory) = std::env::var("AMARE_GPUI_STATUS_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            if std::fs::create_dir_all(&directory).is_err() {
+                return;
             }
-            Err(_) if self.window_id != 1 => return,
-            Err(_) => {}
-        }
+            directory.join(format!(
+                "status-{}-{}.json",
+                std::process::id(),
+                self.window_id
+            ))
+        } else {
+            let Ok(path) = std::env::var("AMARE_GPUI_STATUS") else {
+                return;
+            };
+            match std::env::var("AMARE_GPUI_STATUS_WINDOW") {
+                Ok(expected) => {
+                    if expected.parse::<u64>().ok() != Some(self.window_id) {
+                        return;
+                    }
+                }
+                Err(_) if self.window_id != 1 => return,
+                Err(_) => {}
+            }
+            std::path::PathBuf::from(path)
+        };
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
             webview.ensure_ime();
@@ -901,7 +937,8 @@ impl AmareApp {
                     "id": entry.id,
                     "origin": entry.origin,
                     "username": entry.username,
-                    "title": entry.title
+                    "title": entry.title,
+                    "revision": entry.revision
                 })
             })
             .collect::<Vec<_>>();
@@ -923,6 +960,11 @@ impl AmareApp {
                 "source": pending.source
             })
         });
+        #[cfg(target_os = "windows")]
+        let window_handle = self.parent.map(|handle| handle.0 as usize).unwrap_or(0);
+        #[cfg(not(target_os = "windows"))]
+        let window_handle = 0usize;
+        let (lock_epoch, globally_locked) = password_vault::lock_state();
         let payload = serde_json::json!({
             "address": address,
             "marked_range": marked,
@@ -930,6 +972,7 @@ impl AmareApp {
             "source": source,
             "title": title,
             "window_id": self.window_id,
+            "window_handle": window_handle,
             "active_tab": active.map(|tab| tab.id),
             "panel": panel,
             "history_query": self.history_query,
@@ -944,6 +987,11 @@ impl AmareApp {
             "settings_generation": self.settings_generation,
             "site_data_cleared": self.site_data_cleared,
             "confirm_clear_site_data": self.confirm_clear_site_data,
+            "capture_count": self.capture_count,
+            "last_capture_path": self.last_capture_path,
+            "last_capture_error": self.last_capture_error,
+            "last_capture_width": self.last_capture_size.map(|size| size.0),
+            "last_capture_height": self.last_capture_size.map(|size| size.1),
             "password_vault": {
                 "unlocked": self.password_ui.vault.is_unlocked(),
                 "entries": password_entries,
@@ -958,7 +1006,11 @@ impl AmareApp {
                 "form_origin": password_form_origin,
                 "form_username": password_form_username,
                 "form_password_len": password_form_length,
-                "error": self.password_ui.error
+                "error": self.password_ui.error,
+                "conflict": self.password_ui.conflict,
+                "tombstones": self.password_ui.vault.tombstone_count(),
+                "lock_epoch": lock_epoch,
+                "globally_locked": globally_locked
             },
             "session_summary": self.session_summary.as_ref().map(|summary| serde_json::json!({
                 "windows": summary.windows,
@@ -1093,8 +1145,11 @@ impl AmareApp {
     fn unlock_password_vault(&mut self, cx: &mut Context<Self>) {
         match self.password_ui.vault.unlock() {
             Ok(()) => {
+                password_vault::clear_global_lock();
+                self.password_ui.lock_epoch = password_vault::lock_state().0;
                 self.password_ui.vault_generation = password_vault::generation();
                 self.password_ui.error = None;
+                self.password_ui.conflict = None;
                 self.password_ui.recovery_path = None;
                 self.password_ui.info = Some("보안 저장소 잠금을 해제했습니다.".into());
             }
@@ -1109,6 +1164,7 @@ impl AmareApp {
     }
 
     fn lock_password_vault(&mut self, cx: &mut Context<Self>) {
+        self.password_ui.lock_epoch = password_vault::request_global_lock();
         self.password_ui.vault.lock();
         self.password_ui.pending = None;
         self.password_ui.form_open = false;
@@ -1116,8 +1172,29 @@ impl AmareApp {
         self.password_ui.reveal = None;
         self.password_ui.confirm_delete = None;
         self.password_ui.error = None;
-        self.password_ui.info = Some("보안 저장소를 잠갔습니다.".into());
+        self.password_ui.conflict = None;
+        self.password_ui.info = Some("모든 창의 보안 저장소를 잠갔습니다.".into());
         cx.notify();
+    }
+
+    fn sync_vault_lock(&mut self, cx: &mut Context<Self>) {
+        let (epoch, locked) = password_vault::lock_state();
+        if epoch == self.password_ui.lock_epoch {
+            return;
+        }
+        self.password_ui.lock_epoch = epoch;
+        if locked {
+            self.password_ui.vault.lock();
+            self.password_ui.pending = None;
+            self.password_ui.form_open = false;
+            self.password_ui.editing = None;
+            self.password_ui.reveal = None;
+            self.password_ui.confirm_delete = None;
+            self.password_ui.error = None;
+            self.password_ui.conflict = None;
+            self.password_ui.info = Some("다른 창에서 보안 저장소를 잠갔습니다.".into());
+            cx.notify();
+        }
     }
 
     fn clear_site_data(&mut self, cx: &mut Context<Self>) {
@@ -1183,6 +1260,7 @@ impl AmareApp {
                 self.password_ui.vault_generation = generation;
                 self.password_ui.info = Some("다른 창의 보안 저장소 변경을 반영했습니다.".into());
                 self.password_ui.error = None;
+                self.password_ui.conflict = None;
             }
             Err(error) => {
                 self.password_ui.error = Some(error);
@@ -1193,6 +1271,7 @@ impl AmareApp {
 
     fn begin_password_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.password_ui.form_open = true;
+        self.password_ui.conflict = None;
         self.focus_native_window();
         self.password_ui.editing = None;
         self.password_ui.confirm_delete = None;
@@ -1230,6 +1309,7 @@ impl AmareApp {
         };
         self.password_ui.form_open = true;
         self.password_ui.editing = Some(id);
+        self.password_ui.conflict = None;
         self.password_ui.confirm_delete = None;
         self.password_ui
             .origin
@@ -1271,15 +1351,37 @@ impl AmareApp {
                     self.password_ui.form_open = false;
                     self.password_ui.editing = None;
                     self.password_ui.error = None;
+                    self.password_ui.conflict = None;
                     self.password_ui.info = Some("로그인 정보를 저장했습니다.".into());
                     self.password_ui
                         .password
                         .update(cx, |input, cx| input.set_content("", cx));
                 }
-                Err(error) => self.password_ui.error = Some(error),
+                Err(error) => self.handle_password_conflict(error, cx),
             },
-            Err(error) => self.password_ui.error = Some(error),
+            Err(error) => self.handle_password_conflict(error, cx),
         }
+        cx.notify();
+    }
+
+    fn handle_password_conflict(&mut self, error: String, cx: &mut Context<Self>) {
+        if !error.starts_with("충돌: ") {
+            self.password_ui.error = Some(error);
+            return;
+        }
+        if self.password_ui.vault.unlock().is_ok() {
+            self.password_ui.vault_generation = password_vault::generation();
+        }
+        self.password_ui.form_open = false;
+        self.password_ui.editing = None;
+        self.password_ui.reveal = None;
+        self.password_ui.confirm_delete = None;
+        self.password_ui.pending = None;
+        self.password_ui.password.update(cx, |input, cx| {
+            input.set_content("", cx);
+        });
+        self.password_ui.error = Some(format!("{error} 최신 상태를 다시 불러왔습니다."));
+        self.password_ui.conflict = Some(error);
         cx.notify();
     }
 
@@ -1300,8 +1402,9 @@ impl AmareApp {
                     self.password_ui.vault_generation = password_vault::generation();
                     self.password_ui.info = Some("로그인 정보를 삭제했습니다.".into());
                     self.password_ui.error = None;
+                    self.password_ui.conflict = None;
                 }
-                Err(error) => self.password_ui.error = Some(error),
+                Err(error) => self.handle_password_conflict(error, cx),
             }
         }
         self.password_ui.confirm_delete = None;
@@ -1393,10 +1496,11 @@ impl AmareApp {
                     self.password_ui.pending = None;
                     self.password_ui.info = Some("로그인 정보를 저장했습니다.".into());
                     self.password_ui.error = None;
+                    self.password_ui.conflict = None;
                 }
-                Err(error) => self.password_ui.error = Some(error),
+                Err(error) => self.handle_password_conflict(error, cx),
             },
-            Err(error) => self.password_ui.error = Some(error),
+            Err(error) => self.handle_password_conflict(error, cx),
         }
         cx.notify();
     }
@@ -1969,7 +2073,8 @@ impl AmareApp {
     fn open_new_window(&mut self, cx: &mut Context<Self>) {
         let url = std::env::var("AMARE_GPUI_NEW_WINDOW_URL")
             .unwrap_or_else(|_| self.settings.home_page.clone());
-        let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
+        let (width, height) = automation_window_size();
+        let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -2132,6 +2237,68 @@ impl AmareApp {
         self.open_new_window(cx);
     }
 
+    fn capture_page_action(
+        &mut self,
+        _: &CapturePage,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.capture_active_page(cx);
+    }
+
+    fn capture_active_page(&mut self, cx: &mut Context<Self>) {
+        let Some(tab_id) = self.active_tab().map(|tab| tab.id) else {
+            self.last_capture_error = Some("활성 탭이 없습니다.".into());
+            cx.notify();
+            return;
+        };
+        #[cfg(target_os = "windows")]
+        let result = self
+            .active_webview()
+            .ok_or_else(|| "WebView2 controller unavailable".to_string())
+            .and_then(|webview| webview.capture_preview_png());
+        #[cfg(not(target_os = "windows"))]
+        let result: Result<Vec<u8>, String> =
+            Err("이 플랫폼에서는 CapturePreview를 지원하지 않습니다.".into());
+        match result {
+            Ok(bytes) => {
+                let directory = std::env::var("AMARE_GPUI_CAPTURE_DIR")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::env::temp_dir().join("amare-gpui-captures"));
+                if let Err(error) = std::fs::create_dir_all(&directory) {
+                    self.last_capture_error = Some(format!("캡처 폴더 생성 실패: {error}"));
+                    cx.notify();
+                    return;
+                }
+                let sequence = self.capture_count.saturating_add(1);
+                let path = directory.join(format!(
+                    "page-w{}-tab{}-{}.png",
+                    self.window_id, tab_id, sequence
+                ));
+                match std::fs::write(&path, &bytes) {
+                    Ok(()) => {
+                        self.capture_count = sequence;
+                        self.last_capture_path = Some(path.display().to_string());
+                        self.last_capture_error = None;
+                        self.last_capture_size = png_dimensions(&bytes);
+                        self.password_ui.info = Some(format!(
+                            "CapturePreview 저장: {} ({} bytes)",
+                            path.display(),
+                            bytes.len()
+                        ));
+                    }
+                    Err(error) => {
+                        self.last_capture_error = Some(format!("캡처 저장 실패: {error}"));
+                    }
+                }
+            }
+            Err(error) => {
+                self.last_capture_error = Some(error);
+            }
+        }
+        cx.notify();
+    }
+
     fn next_tab_action(&mut self, _: &NextTab, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() > 1 {
             let next = (self.active + 1) % self.tabs.len();
@@ -2214,10 +2381,11 @@ impl AmareApp {
             }
             let seed = std::rc::Rc::new(std::cell::RefCell::new(Some(tab)));
             let slot = seed.clone();
+            let (width, height) = automation_window_size();
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
-                    size(px(1180.0), px(760.0)),
+                    size(px(width), px(height)),
                     cx,
                 ))),
                 titlebar: Some(gpui::TitlebarOptions {
@@ -2932,7 +3100,7 @@ impl AmareApp {
             });
             content = content.child(self.info_setting_row(
                 "쿠키 및 사이트 데이터",
-                "WebView2 ALL_SITE 삭제 API는 UI 프로세스에서 완료/종료를 안정적으로 검증하지 못했습니다. 0.58.0은 read-only로 유지하며 사이트별 삭제 UI를 제공하지 않습니다.",
+                "WebView2 ALL_SITE 삭제 API는 UI 프로세스에서 완료/종료를 안정적으로 검증하지 못했습니다. 0.59.0은 read-only로 유지하며 사이트별 삭제 UI를 제공하지 않습니다.",
                 "BLOCKED / read-only".into(),
                 dark,
             ));
@@ -4259,6 +4427,7 @@ impl Render for AmareApp {
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
+        self.sync_vault_lock(cx);
         self.sync_password_vault(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
@@ -4414,6 +4583,7 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::new_tab_action))
             .on_action(cx.listener(Self::close_tab_action))
             .on_action(cx.listener(Self::new_window_action))
+            .on_action(cx.listener(Self::capture_page_action))
             .on_action(cx.listener(Self::toggle_bookmark_action))
             .on_action(cx.listener(Self::toggle_bookmarks_panel_action))
             .on_action(cx.listener(Self::toggle_history_panel_action))
@@ -4874,6 +5044,31 @@ fn history_key(url: &str) -> String {
     }
 }
 
+fn automation_window_size() -> (f32, f32) {
+    if let Ok(value) = std::env::var("AMARE_GPUI_WINDOW_SIZE") {
+        if let Some((width, height)) = value.split_once('x') {
+            if let (Ok(width), Ok(height)) =
+                (width.trim().parse::<f32>(), height.trim().parse::<f32>())
+            {
+                if (640.0..=4096.0).contains(&width) && (480.0..=4096.0).contains(&height) {
+                    return (width, height);
+                }
+            }
+        }
+    }
+    (1180.0, 760.0)
+}
+
+fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 24 || &bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    Some((width, height))
+}
+
 fn title_for(url: &str) -> String {
     url.trim_start_matches("https://")
         .trim_start_matches("http://")
@@ -4898,6 +5093,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
             KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
+            KeyBinding::new("ctrl-shift-s", CapturePage, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
@@ -4928,7 +5124,8 @@ fn main() {
         let (restored, session_error) = load_session_windows(&startup_settings);
         STARTUP_SESSION_ERROR.with(|error| *error.borrow_mut() = session_error);
         if restored.is_empty() {
-            let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
+            let (width, height) = automation_window_size();
+            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),

@@ -16,6 +16,7 @@ public static class AmareSettings {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -75,6 +76,18 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     Start-Sleep -Milliseconds 80
     [AmareSettings]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 350
+}
+function Click-Titlebar([string]$button) {
+    $rect = New-Object AmareSettings+RECT
+    [void][AmareSettings]::GetClientRect($script:hwnd, [ref]$rect)
+    $width = [Math]::Max(640, $rect.Right - $rect.Left)
+    $x = switch ($button) {
+        "minimize" { $width - 162 }
+        "maximize" { $width - 128 }
+        "close" { $width - 50 }
+        default { throw "unknown titlebar button: $button" }
+    }
+    Click-Client $script:hwnd $x 22
 }
 function Shot([string]$name) {
     $rect = New-Object AmareSettings+RECT
@@ -142,19 +155,19 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
-    Click-Client $script:hwnd 878 22
-    [void](Wait-WindowState { [AmareSettings]::IsIconic($script:hwnd) } 4 "window minimize")
+    Click-Titlebar "minimize"
+    [void](Wait-WindowState { [AmareSettings]::IsIconic($script:hwnd) } 6 "window minimize")
     Add-Result "titlebar-minimize-click" "PASS" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 700
-    Click-Client $script:hwnd 920 22
-    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 4 "window maximize")
+    Click-Titlebar "maximize"
+    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 6 "window maximize")
     Add-Result "titlebar-maximize-click" "PASS" "window maximized"
-    Click-Client $script:hwnd 952 22
-    [void](Wait-WindowState { -not [AmareSettings]::IsZoomed($script:hwnd) } 4 "window restore")
+    Click-Titlebar "maximize"
+    [void](Wait-WindowState { -not [AmareSettings]::IsZoomed($script:hwnd) } 6 "window restore")
     Add-Result "titlebar-restore-click" "PASS" "window restored"
-    Click-Client $script:hwnd 952 22
-    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 4 "second window maximize")
+    Click-Titlebar "maximize"
+    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 6 "second window maximize")
     Start-Sleep -Milliseconds 500
     Shot "01-initial-browser.png"
 

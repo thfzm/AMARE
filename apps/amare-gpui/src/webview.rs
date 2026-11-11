@@ -13,16 +13,16 @@ use std::sync::{
 #[cfg(target_os = "windows")]
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
-    ClearBrowsingDataCompletedHandler, CreateCoreWebView2ControllerCompletedHandler,
-    CreateCoreWebView2EnvironmentCompletedHandler, DownloadStartingEventHandler,
-    ExecuteScriptCompletedHandler,
+    CapturePreviewCompletedHandler, ClearBrowsingDataCompletedHandler,
+    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    DownloadStartingEventHandler, ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE, COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED,
-        COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS, COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED,
-        COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
-        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2_4, ICoreWebView2_13,
-        ICoreWebView2Controller, ICoreWebView2DownloadOperation, ICoreWebView2Environment,
-        ICoreWebView2Profile2, ICoreWebView2Profile6,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE, COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+        COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
+        COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+        COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
+        ICoreWebView2_4, ICoreWebView2_13, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
+        ICoreWebView2Environment, ICoreWebView2Profile2, ICoreWebView2Profile6,
     },
     NavigationCompletedEventHandler, NavigationStartingEventHandler,
     NewWindowRequestedEventHandler, WebMessageReceivedEventHandler, take_pwstr, wait_with_pump,
@@ -44,7 +44,7 @@ use windows::{
                 },
                 KeyboardAndMouse::{
                     GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
-                    VK_LEFT, VK_MENU, VK_N, VK_R, VK_RIGHT, VK_SHIFT, VK_T, VK_TAB, VK_W,
+                    VK_LEFT, VK_MENU, VK_N, VK_R, VK_RIGHT, VK_S, VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
             WindowsAndMessaging::{PostMessageW, WM_KEYDOWN, WM_KEYUP},
@@ -590,6 +590,8 @@ impl WebViewHost {
                                 Some(VK_N.0)
                             } else if control && vk == VK_D.0 as u32 {
                                 Some(VK_D.0)
+                            } else if control && shift && vk == VK_S.0 as u32 {
+                                Some(VK_S.0)
                             } else if control && shift && vk == VK_B.0 as u32 {
                                 Some(VK_B.0)
                             } else if control && shift && vk == VK_H.0 as u32 {
@@ -889,6 +891,62 @@ impl WebViewHost {
         )
         .map_err(|error| format!("ClearBrowsingData: {error:?}"))?;
         wait_with_pump(rx).map_err(|_| "ClearBrowsingData did not complete".to_string())
+    }
+
+    pub fn capture_preview_png(&self) -> Result<Vec<u8>, String> {
+        use windows::Win32::{
+            Foundation::HGLOBAL,
+            System::Com::{
+                STREAM_SEEK_END, STREAM_SEEK_SET, StructuredStorage::CreateStreamOnHGlobal,
+            },
+        };
+        const MAX_CAPTURE_BYTES: u64 = 64 * 1024 * 1024;
+        let stream = unsafe {
+            CreateStreamOnHGlobal(HGLOBAL(std::ptr::null_mut()), true)
+                .map_err(|error| format!("CreateStreamOnHGlobal: {error}"))?
+        };
+        let webview = self.webview.clone();
+        let capture_stream = stream.clone();
+        CapturePreviewCompletedHandler::wait_for_async_operation(
+            Box::new(move |handler| unsafe {
+                webview
+                    .CapturePreview(
+                        COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+                        &capture_stream,
+                        &handler,
+                    )
+                    .map_err(webview2_com::Error::WindowsError)
+            }),
+            Box::new(move |error| {
+                error?;
+                Ok(())
+            }),
+        )
+        .map_err(|error| format!("CapturePreview: {error:?}"))?;
+
+        let mut size = 0u64;
+        unsafe {
+            stream
+                .Seek(0, STREAM_SEEK_END, Some(&mut size))
+                .map_err(|error| format!("CapturePreview seek end: {error}"))?;
+            if size == 0 || size > MAX_CAPTURE_BYTES {
+                return Err(format!("CapturePreview returned invalid size: {size}"));
+            }
+            stream
+                .Seek(0, STREAM_SEEK_SET, None)
+                .map_err(|error| format!("CapturePreview seek start: {error}"))?;
+            let mut bytes = vec![0u8; size as usize];
+            let mut read = 0u32;
+            stream
+                .Read(bytes.as_mut_ptr() as *mut _, size as u32, Some(&mut read))
+                .ok()
+                .map_err(|error| format!("CapturePreview read: {error}"))?;
+            bytes.truncate(read as usize);
+            if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                return Err("CapturePreview did not return a PNG".into());
+            }
+            Ok(bytes)
+        }
     }
 
     pub fn fill_login(

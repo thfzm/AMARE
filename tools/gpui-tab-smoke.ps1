@@ -106,7 +106,7 @@ function Wait-Tabs([int]$count, [int]$seconds, [string]$label) {
     return Wait-State { param($s) @($s.tabs).Count -eq $count } $seconds $label
 }
 function Ensure-Tabs([int]$target) {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
         $state = Read-State
         $count = @($state.tabs).Count
         if ($count -eq $target) { return $state }
@@ -115,12 +115,31 @@ function Ensure-Tabs([int]$target) {
             Start-Sleep -Milliseconds 700
             continue
         }
+        # Focus the GPUI toolbar before asking for a new tab. When the focus is
+        # inside WebView2 the async accelerator forwarding can race the next
+        # key, so always establish a known focus first.
+        [void][AmareTab]::SetForegroundWindow($script:hwnd)
+        $origin = Get-Origin $script:hwnd
+        Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
         Send-Keys "^t"
-        $deadline = (Get-Date).AddSeconds(15)
+        $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { break }
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 250
+        }
+        if (@((Read-State).tabs).Count -ge $target) { continue }
+        # Toolbar new-tab fallback, also useful when accelerator forwarding is
+        # still busy creating the previous WebView2 controller.
+        $rect = Get-Rect $script:hwnd
+        $origin = Get-Origin $script:hwnd
+        $width = [Math]::Max(1, $rect.Right - $rect.Left)
+        Click-At $script:hwnd ($origin.X + $width - 276) ($origin.Y + 22)
+        $deadline = (Get-Date).AddSeconds(12)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { break }
+            Start-Sleep -Milliseconds 250
         }
     }
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"

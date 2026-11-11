@@ -8,8 +8,13 @@ on:
       - 'tools/gpui-input-smoke.ps1'
       - 'tools/gpui-tab-smoke.ps1'
       - 'tools/gpui-library-smoke.ps1'
-      - 'tools/slow_http_server.py'
       - 'tools/gpui-download-smoke.ps1'
+      - 'tools/gpui-settings-smoke.ps1'
+      - 'tools/gpui-session-smoke.ps1'
+      - 'tools/gpui-password-smoke.ps1'
+      - 'tools/gpui-vault-multiwindow.ps1'
+      - 'tools/slow_http_server.py'
+      - 'tools/slow_session_server.py'
       - '.github/workflows/ci-windows-gpui.yml'
   pull_request:
     paths:
@@ -43,19 +48,35 @@ jobs:
 
       - name: GPUI password vault test
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: 20
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |
           $server = Start-Process python -ArgumentList @("-m", "http.server", "8767", "--bind", "127.0.0.1", "--directory", "apps/amare-gpui/test-page") -PassThru
           try {
             $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
             $status = Join-Path $env:RUNNER_TEMP "amare-gpui-password-status.json"
             $data = Join-Path $env:RUNNER_TEMP "amare-gpui-password-data"
-            $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.58.0"
+            $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
             & "tools/gpui-password-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -LoginUrl "http://127.0.0.1:8767/login.html?tab=PW"
             if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI password smoke failed with exit code $LASTEXITCODE" }
           } finally {
             if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
+
+      - name: GPUI vault multi-window integrity test
+        shell: pwsh
+        timeout-minutes: 25
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-vault-multiwindow-status"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-vault-multiwindow-data"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
+          New-Item -ItemType Directory -Force -Path $shots | Out-Null
+          & "tools/gpui-vault-multiwindow.ps1" -Exe $exe -StatusDir $status -DataDir $data -ScreenshotDir $shots -LoginUrl "http://127.0.0.1:8767/login.html?tab=PW"
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI vault multiwindow smoke failed with exit code $LASTEXITCODE" }
 
       - name: Smoke launch GPUI application
         shell: pwsh
@@ -156,9 +177,12 @@ jobs:
         timeout-minutes: 15
         env:
           AMARE_GPUI_RESTORE: "0"
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-input-status.json"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-input-data"
+          $env:AMARE_GPUI_DATA_DIR = $data
           $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $page = (Resolve-Path "apps/amare-gpui/test-page/index.html").Path -replace '\\', '/'
@@ -173,9 +197,12 @@ jobs:
         timeout-minutes: 20
         env:
           AMARE_GPUI_RESTORE: "0"
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-tab-status.json"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-tab-data"
+          $env:AMARE_GPUI_DATA_DIR = $data
           $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $page = (Resolve-Path "apps/amare-gpui/test-page/index.html").Path -replace '\\', '/'
@@ -192,7 +219,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-library-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-downloads"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.58.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
           New-Item -ItemType Directory -Force -Path $shots, $downloads | Out-Null
           $downloadFile = Join-Path (Resolve-Path "apps/amare-gpui/test-page").Path "download-test.bin"
           [IO.File]::WriteAllBytes($downloadFile, (New-Object byte[] (5 * 1024 * 1024)))
@@ -216,7 +243,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-download-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-download-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-download-files"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.58.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
           & "tools/gpui-download-smoke.ps1" -Exe $exe -Status $status -DataDir $data -DownloadDir $downloads -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI download smoke failed with exit code $LASTEXITCODE" }
 
@@ -224,11 +251,13 @@ jobs:
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.58.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
           & "tools/gpui-settings-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI settings smoke failed with exit code $LASTEXITCODE" }
 
@@ -236,11 +265,13 @@ jobs:
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-session-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-session-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.58.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0"
           & "tools/gpui-session-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -Port 8772
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI session smoke failed with exit code $LASTEXITCODE" }
 
@@ -305,6 +336,30 @@ jobs:
           $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
           if ($after -gt $before) { throw "WebView2 processes remained after address test exit" }
 
+      - name: GPUI suite failure gate
+        if: always()
+        shell: pwsh
+        run: |
+          $paths = @(
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\gpui-tab-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0\gpui-library-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0\gpui-settings-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0\gpui-session-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0\gpui-password-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.59.0\gpui-vault-multiwindow-results.json")
+          )
+          $failed = 0
+          $unverified = 0
+          foreach ($path in $paths) {
+            if (-not (Test-Path $path)) { Write-Host "MISSING result file: $path"; $failed++; continue }
+            $data = Get-Content $path -Raw | ConvertFrom-Json
+            Write-Host "$(Split-Path $path -Leaf): PASS=$($data.pass) FAIL=$($data.fail) UNVERIFIED=$($data.unverified)"
+            $failed += [int]$data.fail
+            $unverified += [int]$data.unverified
+          }
+          Write-Host "GPUI aggregate FAIL=$failed UNVERIFIED=$unverified"
+          if ($failed -gt 0) { throw "GPUI suite contains $failed FAIL result(s); see result JSON files" }
+
       - name: Upload GPUI artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -327,12 +382,13 @@ jobs:
             ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-library-status.json
             ${{ runner.temp }}/amare-gpui-download-status.json
-            artifacts/windows/screenshots/0.58.0/gpui-download-results.json
-            artifacts/windows/screenshots/0.58.0/*.png
-            artifacts/windows/screenshots/0.58.0/gpui-library-results.json
-            artifacts/windows/screenshots/0.58.0/gpui-settings-results.json
-            artifacts/windows/screenshots/0.58.0/gpui-password-results.json
-            artifacts/windows/screenshots/0.58.0/gpui-session-results.json
+            artifacts/windows/screenshots/0.59.0/gpui-download-results.json
+            artifacts/windows/screenshots/0.59.0/*.png
+            artifacts/windows/screenshots/0.59.0/gpui-library-results.json
+            artifacts/windows/screenshots/0.59.0/gpui-settings-results.json
+            artifacts/windows/screenshots/0.59.0/gpui-password-results.json
+            artifacts/windows/screenshots/0.59.0/gpui-session-results.json
+            artifacts/windows/screenshots/0.59.0/gpui-vault-multiwindow-results.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
             ${{ runner.temp }}/amare-gpui-ime.log
