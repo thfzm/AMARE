@@ -53,7 +53,6 @@ actions!(
         ToggleDownloadsPanel,
         ToggleSettings,
         TogglePasswords,
-        ClearSiteData,
     ]
 );
 
@@ -1749,15 +1748,6 @@ impl AmareApp {
         self.open_settings(cx);
     }
 
-    fn clear_site_data_action(
-        &mut self,
-        _: &ClearSiteData,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.clear_site_data(cx);
-    }
-
     fn toggle_passwords_action(
         &mut self,
         _: &TogglePasswords,
@@ -2940,51 +2930,12 @@ impl AmareApp {
             let clear_site = cx.listener(|this: &mut Self, _: &gpui::ClickEvent, _, cx| {
                 this.clear_site_data(cx);
             });
-            content = content.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .px_4()
-                    .py_3()
-                    .border_b_1()
-                    .border_color(border)
-                    .child(div().text_sm().child("쿠키 및 사이트 데이터"))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("WebView2 공식 ClearBrowsingData(ALL_SITE)로 현재 프로필의 모든 사이트 데이터를 삭제합니다. 사이트별 삭제는 API 제약으로 제공하지 않습니다."),
-                    )
-                    .child(
-                        div()
-                            .id("clear-site-data")
-                            .h(px(36.0))
-                            .w_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_md()
-                            .bg(if self.confirm_clear_site_data {
-                                rgb(0xd9534f)
-                            } else {
-                                background
-                            })
-                            .text_color(if self.confirm_clear_site_data {
-                                rgb(0xffffff)
-                            } else {
-                                muted
-                            })
-                            .text_sm()
-                            .cursor_pointer()
-                            .child(if self.confirm_clear_site_data {
-                                "정말 모든 사이트 데이터 삭제 (전체 프로필)"
-                            } else {
-                                "모든 사이트 데이터 삭제 (전체 프로필)"
-                            })
-                            .on_click(clear_site),
-                    ),
-            );
+            content = content.child(self.info_setting_row(
+                "쿠키 및 사이트 데이터",
+                "WebView2 ALL_SITE 삭제 API는 UI 프로세스에서 완료/종료를 안정적으로 검증하지 못했습니다. 0.58.0은 read-only로 유지하며 사이트별 삭제 UI를 제공하지 않습니다.",
+                "BLOCKED / read-only".into(),
+                dark,
+            ));
         }
 
         let search_box = div()
@@ -4469,7 +4420,6 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::toggle_downloads_panel_action))
             .on_action(cx.listener(Self::toggle_settings_action))
             .on_action(cx.listener(Self::toggle_passwords_action))
-            .on_action(cx.listener(Self::clear_site_data_action))
             .on_action(cx.listener(Self::next_tab_action))
             .on_action(cx.listener(Self::previous_tab_action))
             .flex()
@@ -4948,7 +4898,6 @@ fn main() {
             KeyBinding::new("ctrl-shift-d", ToggleDownloadsPanel, None),
             KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
-            KeyBinding::new("ctrl-shift-delete", ClearSiteData, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),
