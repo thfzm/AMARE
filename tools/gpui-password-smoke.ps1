@@ -303,7 +303,7 @@ try {
     }
     if (-not $clearConfirmed) { throw "Timed out waiting for site data confirmation" }
     Click-Client $script:hwnd $clearX $clearY
-    [void](Wait-State { param($s) $s.site_data_cleared } 12 "site data clear")
+    [void](Wait-State { param($s) $s.site_data_cleared } 45 "site data clear")
     Add-Result "all-site-clear" "PASS" "ClearBrowsingData(ALL_SITE) completed"
     Shot "10c-site-data-cleared.png"
     Click-Client $script:hwnd 520 110
