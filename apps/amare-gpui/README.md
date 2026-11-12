@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.59.0)
+# AMARE GPUI Windows Shell (0.60.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.59.0)
+## Verified in Windows CI (0.60.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,9 +48,12 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
-- GPUI final suites: password 51/0/0, multiwindow 20/0/1, tab 20/0/6, library 19/0/0, settings 18/0/7, session 8/0/2, input 24/0/5, download 7/0/1. Aggregate 167/0/22; the failure gate enforces 0 FAIL.
-- Test-only triggers create repeated tabs and the second window deterministically while still using the product `new_tab`/`open_new_window` paths. `continue-on-error` remains only for evidence collection and is enforced by a final failure gate.
-- ALL_SITE deletion remains **read-only/BLOCKED**. Titlebar actual clicks, multi-window session restore, session scroll restore, corrupt-session banner, Korean IME, context menu, and DPI remain UNVERIFIED.
+- 0.60 repeated the same commit three times: attempt 1/2 reached **0 FAIL**; attempt 3 timed out in the tab step after 20 minutes and produced only a partial result JSON. **The 3x consecutive 0 FAIL criterion is not met.**
+- The failure gate checks FAIL totals only; it did not convert the tab-step timeout/partial JSON into FAIL. This is a known gate gap.
+- Test-only triggers are still used to create repeated tabs and the second window deterministically while invoking the product `new_tab`/`open_new_window` paths. Actual repeated Ctrl+T/Ctrl+N/button input remains UNVERIFIED.
+- Vault v2 multi-window verification is **20 PASS / 0 FAIL / 1 UNVERIFIED**. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
+- CapturePreview normal/active/max/minimize-restore is PASS. Per-tab individual capture is UNVERIFIED.
+- ALL_SITE deletion remains **read-only/BLOCKED**. Titlebar actual clicks, multi-window session restore, session scroll restore, corrupt-session banner, Korean IME, context menu, DPI, and WebView2 cleanup remain UNVERIFIED.
 - Session restore after restart: tab count/order/title/URL/active tab/window geometry PASS for one window; two-window restore PASS with forced-exit session snapshot; `11-multi-window-session-restored.png`, `15-session-restored.png` and `16-downloads-after-restart.png`.
 - WebView2 DownloadStarting progress/complete/failure/restart metadata and file open/folder controls.
 - Windows custom titlebar tab integration with system min/max/restore/close hit areas.

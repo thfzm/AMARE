@@ -82,12 +82,12 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.59.0)
+## 5. 현재 실행 상태 (0.60.0)
 
-- Windows CI [43161123572](https://github.com/thfzm/AMARE/actions/runs/43161123572): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
-- Linux CI [43161123592](https://github.com/thfzm/AMARE/actions/runs/43161123592): **SUCCESS**.
-- GPUI CI [43161123680](https://github.com/thfzm/AMARE/actions/runs/43161123680): **SUCCESS**, aggregate **167/0/22** (password 51/0/0, unit 11/11, multiwindow 20/0/1, tab 20/0/6, library 19/0/0, settings 18/0/7, session 8/0/2).
-- persistent tombstone, per-entry conflict rejection, stale delete no-resurrection, cross-window lock propagation, same-process two-window GUI, WebView2 CapturePreview DOM PNG **PASS**.
-- pending autofill cancellation, titlebar actual click, multi-window session restore, per-tab individual capture, session scroll restore, corrupt-session banner, Korean IME, DPI는 **UNVERIFIED**다.
+- Windows CI [43306852071](https://github.com/thfzm/AMARE/actions/runs/43306852071): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
+- Linux CI [43306851963](https://github.com/thfzm/AMARE/actions/runs/43306851963): **SUCCESS**.
+- GPUI CI [43306852072](https://github.com/thfzm/AMARE/actions/runs/43306852072): attempt 1/2 **0 FAIL**, attempt 3 **tab 20분 timeout** — **3회 연속 0 FAIL 미달**.
+- Vault unit 11/11, multiwindow 20/0/1, CapturePreview normal/active/max/restore **PASS**.
+- 새 탭/두 번째 창 실제 입력 반복, pending autofill 취소, titlebar 실제 click, multi-window session restore, per-tab capture, session scroll restore, corrupt-session banner, Korean IME, DPI는 **UNVERIFIED**다.
 - ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.
 - Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**다.
