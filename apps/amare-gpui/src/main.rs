@@ -2242,6 +2242,17 @@ impl AmareApp {
         self.open_new_window(cx);
     }
 
+    fn maybe_test_new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(trigger) = std::env::var("AMARE_GPUI_NEW_TAB_TRIGGER") else {
+            return;
+        };
+        if !std::path::Path::new(&trigger).exists() {
+            return;
+        }
+        let _ = std::fs::remove_file(&trigger);
+        self.new_tab(window, cx);
+    }
+
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {
         let Ok(needle) = std::env::var("AMARE_GPUI_AUTO_CAPTURE_URL") else {
             return;
@@ -4453,6 +4464,7 @@ impl Render for AmareApp {
         self.poll_login_captures(cx);
         self.sync_vault_lock(cx);
         self.sync_password_vault(cx);
+        self.maybe_test_new_tab(window, cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);

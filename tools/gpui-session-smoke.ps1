@@ -117,6 +117,16 @@ function Ensure-Tabs([int]$target) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
+        if ($null -ne $script:newTabTrigger) {
+            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { break }
+                Start-Sleep -Milliseconds 250
+            }
+            if (@((Read-State).tabs).Count -ge $target) { continue }
+        }
         Force-Focus $script:hwnd
         Send-GpuiShortcut $script:hwnd 0x54
         $deadline = (Get-Date).AddSeconds(25)
@@ -161,6 +171,12 @@ $corruptData = Join-Path $DataDir "corrupt"
 Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $completeData, $failureData, $corruptData, $ScreenshotDir | Out-Null
 $server = Start-Process python -ArgumentList @("tools/slow_session_server.py", $Port) -PassThru
+$script:newTabTrigger = $null
+if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
+    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
+    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
+    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
+}
 try {
     Start-Sleep -Seconds 2
     $fast = "http://127.0.0.1:$Port/fast"
