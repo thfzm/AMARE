@@ -405,6 +405,7 @@ struct AmareApp {
     last_capture_path: Option<String>,
     last_capture_error: Option<String>,
     last_capture_size: Option<(u32, u32)>,
+    last_auto_capture_source: String,
 }
 
 impl AmareApp {
@@ -539,6 +540,7 @@ impl AmareApp {
             last_capture_path: None,
             last_capture_error: None,
             last_capture_size: None,
+            last_auto_capture_source: String::new(),
         };
         apply_platform_settings(&app.settings);
 
@@ -625,6 +627,7 @@ impl AmareApp {
             last_capture_path: None,
             last_capture_error: None,
             last_capture_size: None,
+            last_auto_capture_source: String::new(),
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -777,6 +780,7 @@ impl AmareApp {
             last_capture_path: None,
             last_capture_error: None,
             last_capture_size: None,
+            last_auto_capture_source: String::new(),
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -802,6 +806,7 @@ impl AmareApp {
                     break;
                 }
                 this.update(cx, |app, cx| {
+                    app.maybe_auto_capture(cx);
                     app.write_status(cx);
                     cx.notify();
                 });
@@ -2235,6 +2240,25 @@ impl AmareApp {
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
         self.open_new_window(cx);
+    }
+
+    fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {
+        let Ok(needle) = std::env::var("AMARE_GPUI_AUTO_CAPTURE_URL") else {
+            return;
+        };
+        #[cfg(target_os = "windows")]
+        let source = self
+            .active_webview()
+            .map(|webview| webview.source())
+            .unwrap_or_default();
+        #[cfg(not(target_os = "windows"))]
+        let source = String::new();
+        if source.is_empty() || !source.contains(&needle) || source == self.last_auto_capture_source
+        {
+            return;
+        }
+        self.last_auto_capture_source = source;
+        self.capture_active_page(cx);
     }
 
     fn capture_page_action(
@@ -5095,6 +5119,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
             KeyBinding::new("ctrl-shift-s", CapturePage, None),
             KeyBinding::new("f9", CapturePage, None),
+            KeyBinding::new("ctrl-alt-p", CapturePage, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),

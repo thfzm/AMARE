@@ -135,13 +135,36 @@ function Test-PngContent([string]$path) {
         $bmp.Dispose()
     }
 }
+function Capture-Auto([string]$name) {
+    $state = Wait-State { param($s) [int64]$s.capture_count -ge 1 -and $null -ne $s.last_capture_path } 15 "auto CapturePreview"
+    $source = [string]$state.last_capture_path
+    if (-not (Test-Path $source)) { throw "auto CapturePreview file missing: $source" }
+    $target = Join-Path $ScreenshotDir $name
+    Move-Item $source $target -Force
+    if (-not (Test-PngContent $target)) { throw "auto CapturePreview returned blank page content" }
+    Add-Result $name "PASS" "$target ($($state.last_capture_width) x $($state.last_capture_height), $((Get-Item $target).Length) bytes), DOM content non-blank"
+}
+function Capture-Auto-Refresh([string]$name, [string]$url) {
+    $before = Read-State
+    $previous = [int64]$before.capture_count
+    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [System.Windows.Forms.SendKeys]::SendWait($url)
+    Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) $s.source -like "$url*" } 20 "capture navigation")
+    $state = Wait-State { param($s) [int64]$s.capture_count -gt $previous -and $null -ne $s.last_capture_path } 15 "auto CapturePreview refresh"
+    $source = [string]$state.last_capture_path
+    $target = Join-Path $ScreenshotDir $name
+    Move-Item $source $target -Force
+    if (-not (Test-PngContent $target)) { throw "CapturePreview returned blank page content for $name" }
+    Add-Result $name "PASS" "$target ($($state.last_capture_width) x $($state.last_capture_height), $((Get-Item $target).Length) bytes), DOM content non-blank"
+}
 function Capture-Page([string]$name) {
     $before = Read-State
     $previous = [int64]$before.capture_count
     $capture = $null
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
         Click-Client $script:hwnd 420 70
-        Send-Keys "{F9}"
+        Send-Keys "^%p"
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -213,6 +236,7 @@ $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_CAPTURE_DIR = $ScreenshotDir
+$env:AMARE_GPUI_AUTO_CAPTURE_URL = "capture-test.html"
 $passwordA = "S3cret!Alice-55"
 $passwordB = "S3cret!Bob-55"
 try {
@@ -237,7 +261,7 @@ try {
     [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/capture-test.html*" } 20 "capture test page")
     Start-Sleep -Milliseconds 700
     Shot "02-capture-test-window.png"
-    Capture-Page "02-page-content.png"
+    Capture-Auto "02-page-content.png"
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
     Send-Keys "{ENTER}"
@@ -359,13 +383,13 @@ try {
     Start-Sleep -Milliseconds 700
     Shot "12-titlebar-maximized.png"
     ShotFull "13-maximized-desktop.png"
-    Capture-Page "12b-page-maximized.png"
+    Capture-Auto-Refresh "12b-page-maximized.png" "http://127.0.0.1:8767/capture-test.html?max=1"
     Add-Result "window-maximize" "PASS" "IsZoomed=true"
     [void][AmarePassword]::ShowWindow($script:hwnd, 6)
     Start-Sleep -Seconds 1
     [void][AmarePassword]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Seconds 1
-    Capture-Page "12c-page-minimize-restore.png"
+    Capture-Auto-Refresh "12c-page-minimize-restore.png" "http://127.0.0.1:8767/capture-test.html?restore=1"
     Add-Result "capture-after-minimize-restore" "PASS" "CapturePreview content after minimize/restore"
 
     $plaintextFound = $false
@@ -542,7 +566,7 @@ try {
     [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multi-tab final")
     Start-Sleep -Milliseconds 800
     Shot "03-multiple-tabs.png"
-    Capture-Page "03b-active-tab-content.png"
+    Capture-Auto-Refresh "03b-active-tab-content.png" "http://127.0.0.1:8767/capture-test.html?tabcap=1"
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }
 } catch {
