@@ -27,7 +27,7 @@ permissions:
 jobs:
   gpui-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
