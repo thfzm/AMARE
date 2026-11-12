@@ -291,8 +291,12 @@ try {
     if (-not $app.WaitForExit(10000)) {
         [void][AmareSettings]::SetForegroundWindow($script:hwnd)
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-        if (-not $app.WaitForExit(15000)) { throw "reset app did not exit" }
-        Add-Result "titlebar-close-click" "UNVERIFIED" "close button did not exit; Alt+F4 fallback used"
+        if (-not $app.WaitForExit(15000)) {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            Add-Result "titlebar-close-click" "UNVERIFIED" "close button/Alt+F4 did not exit; process killed"
+        } else {
+            Add-Result "titlebar-close-click" "UNVERIFIED" "close button did not exit; Alt+F4 fallback used"
+        }
     } else {
         Add-Result "titlebar-close-click" "PASS" "window closed via close button"
     }

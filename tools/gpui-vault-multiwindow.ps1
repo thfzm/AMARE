@@ -255,8 +255,7 @@ $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
-$trigger = Join-Path $DataDir "open-second-window.trigger"
-$env:AMARE_GPUI_SECOND_WINDOW_TRIGGER = $trigger
+$env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
 $passwordA = "S3cret!Alice-59"
 $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
@@ -278,7 +277,6 @@ try {
     Add-Account $script:hwnd1 "http://127.0.0.1:8767" "alice" $passwordA
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
-    New-Item -ItemType File -Force -Path $trigger | Out-Null
     $states = @()
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
@@ -436,6 +434,7 @@ try {
 
     Remove-Item $StatusDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $StatusDir | Out-Null
+    $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "0"
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-WindowCount 1 60 "restart window"
     $script:hwnd1 = [IntPtr][int64]$states[0].window_handle

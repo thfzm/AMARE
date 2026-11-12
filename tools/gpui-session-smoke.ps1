@@ -116,6 +116,15 @@ function Ensure-Tabs([int]$target) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
+        if ($null -ne $script:newTabTrigger) {
+            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { return $state }
+                Start-Sleep -Milliseconds 250
+            }
+        }
         Force-Focus $script:hwnd
         Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(25)
@@ -134,6 +143,12 @@ function Start-App([string]$data, [string]$restore = "1") {
     $env:AMARE_GPUI_START_URL = "about:blank"
     $env:AMARE_GPUI_SELF_TEST = "0"
     $env:AMARE_GPUI_RESTORE = $restore
+$script:newTabTrigger = $null
+if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
+    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
+    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
+    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
+}
     $process = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
     Start-Sleep -Seconds 2

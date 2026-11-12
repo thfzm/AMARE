@@ -134,6 +134,16 @@ function Ensure-Tabs([int]$target) {
             Start-Sleep -Milliseconds 700
             continue
         }
+        if ($null -ne $script:newTabTrigger) {
+            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { break }
+                Start-Sleep -Milliseconds 250
+            }
+            if (@((Read-State).tabs).Count -ge $target) { continue }
+        }
         # Focus the GPUI toolbar before asking for a new tab. When the focus is
         # inside WebView2 the async accelerator forwarding can race the next
         # key, so always establish a known focus first.
@@ -261,6 +271,12 @@ $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = (Page "A")
 $env:AMARE_GPUI_NEW_TAB_URL = (Page "NEW")
+$script:newTabTrigger = $null
+if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
+    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
+    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
+    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
+}
 try {
     $script:app = Start-Process $Exe -PassThru
     $initial = Wait-State { param($s) @($s.tabs).Count -eq 1 -and $s.source -like "*tab=A*" } 60 "initial tab"

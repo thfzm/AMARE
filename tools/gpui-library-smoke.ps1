@@ -115,6 +115,15 @@ function Ensure-LibraryTabs([int]$target) {
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
+        if ($null -ne $script:newTabTrigger) {
+            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { return $state }
+                Start-Sleep -Milliseconds 250
+            }
+        }
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 50 30
         Send-CtrlKey 0x54
@@ -158,6 +167,12 @@ $env:AMARE_GPUI_DATA_DIR = $DataDir
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
+$script:newTabTrigger = $null
+if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
+    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
+    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
+    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
+}
 try {
     $app = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "initial library app")

@@ -210,6 +210,7 @@ jobs:
         env:
           AMARE_GPUI_RESTORE: "0"
           AMARE_GPUI_WINDOW_SIZE: "1044x788"
+          AMARE_GPUI_TEST_TRIGGERS: "1"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-tab-status.json"
@@ -226,6 +227,8 @@ jobs:
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
+        env:
+          AMARE_GPUI_TEST_TRIGGERS: "1"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
@@ -279,6 +282,7 @@ jobs:
         timeout-minutes: 15
         env:
           AMARE_GPUI_WINDOW_SIZE: "1044x788"
+          AMARE_GPUI_TEST_TRIGGERS: "1"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-session-status.json"
