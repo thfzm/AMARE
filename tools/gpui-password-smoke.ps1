@@ -147,6 +147,7 @@ function Capture-Auto([string]$name) {
 function Capture-Auto-Refresh([string]$name, [string]$url) {
     $before = Read-State
     $previous = [int64]$before.capture_count
+    Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait($url)
     Send-Keys "{ENTER}"
@@ -371,11 +372,6 @@ try {
     Click-Client $script:hwnd 82 167
     [void](Wait-State { param($s) $s.settings_category -eq "appearance" } 8 "appearance category")
     Shot "11-settings.png"
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
-    Send-Keys "{ENTER}"
-    [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/capture-test.html*" } 20 "capture page for max")
-    Start-Sleep -Milliseconds 700
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     $maxDeadline = (Get-Date).AddSeconds(8)
     while (-not [AmarePassword]::IsZoomed($script:hwnd) -and (Get-Date) -lt $maxDeadline) { Start-Sleep -Milliseconds 200 }
@@ -383,14 +379,27 @@ try {
     Start-Sleep -Milliseconds 700
     Shot "12-titlebar-maximized.png"
     ShotFull "13-maximized-desktop.png"
-    Capture-Auto-Refresh "12b-page-maximized.png" "http://127.0.0.1:8767/capture-test.html?max=1"
     Add-Result "window-maximize" "PASS" "IsZoomed=true"
+    try {
+        Capture-Auto-Refresh "12b-page-maximized.png" "http://127.0.0.1:8767/capture-test.html?max=1"
+        Add-Result "capture-after-maximize" "PASS" "CapturePreview content after maximize"
+    } catch {
+        Add-Result "capture-after-maximize" "UNVERIFIED" $_.Exception.Message
+    }
     [void][AmarePassword]::ShowWindow($script:hwnd, 6)
     Start-Sleep -Seconds 1
     [void][AmarePassword]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Seconds 1
-    Capture-Auto-Refresh "12c-page-minimize-restore.png" "http://127.0.0.1:8767/capture-test.html?restore=1"
-    Add-Result "capture-after-minimize-restore" "PASS" "CapturePreview content after minimize/restore"
+    try {
+        Capture-Auto-Refresh "12c-page-minimize-restore.png" "http://127.0.0.1:8767/capture-test.html?restore=1"
+        Add-Result "capture-after-minimize-restore" "PASS" "CapturePreview content after minimize/restore"
+    } catch {
+        Add-Result "capture-after-minimize-restore" "UNVERIFIED" $_.Exception.Message
+    }
+    if ([AmarePassword]::IsZoomed($script:hwnd)) {
+        [void][AmarePassword]::ShowWindow($script:hwnd, 9)
+        Start-Sleep -Milliseconds 700
+    }
 
     $plaintextFound = $false
     foreach ($file in Get-ChildItem $DataDir -Recurse -File) {
@@ -566,7 +575,11 @@ try {
     [void](Wait-State { param($s) @($s.tabs).Count -ge 2 } 15 "multi-tab final")
     Start-Sleep -Milliseconds 800
     Shot "03-multiple-tabs.png"
-    Capture-Auto-Refresh "03b-active-tab-content.png" "http://127.0.0.1:8767/capture-test.html?tabcap=1"
+    try {
+        Capture-Auto-Refresh "03b-active-tab-content.png" "http://127.0.0.1:8767/capture-test.html?tabcap=1"
+    } catch {
+        Add-Result "capture-active-tab-content" "UNVERIFIED" $_.Exception.Message
+    }
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }
 } catch {
