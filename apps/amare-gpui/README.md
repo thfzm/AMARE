@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.58.0)
+# AMARE GPUI Windows Shell (0.59.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -24,7 +24,8 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 - Windows DPAPI-protected password vault: XChaCha20-Poly1305 encrypted vault file, account add/edit/delete/reveal/search/multiple accounts, lock/unlock, explicit login-save proposal and exact-origin autofill. WebView2 built-in password autosave/general autofill are disabled.
 - 0.56 hardening: actual delete confirm/cancel/complete and restart persistence, corrupted-vault preservation/retry/backup guidance, multi-window merge/generation sync path.
 - 0.57: iframe/nested/cross-origin action no-capture, last-account empty state, privacy autofill/save-prompt toggles, WebView2 ALL_SITE data deletion entry point, and measured multi-tab/multi-window screenshots.
-- 0.58: navigation ID recheck on `fill_login`, missing-key vault preservation test, key-missing/corruption screenshots, and a full revalidation of the 43-check password suite. ALL_SITE deletion is read-only/BLOCKED because the UI lifecycle could not be verified. Multi-window same-entry conflict detection, deletion tombstones, and cross-window lock propagation are still not implemented.
+- 0.58: navigation ID recheck on `fill_login`, missing-key vault preservation test, key-missing/corruption screenshots, and a full revalidation of the 43-check password suite. ALL_SITE deletion is read-only/BLOCKED because the UI lifecycle could not be verified.
+- 0.59: vault format v2 with persistent tombstones and per-entry revisions, optimistic conflict rejection/reload, stale-delete no-resurrection, process-wide save serialization, process-wide lock propagation, and WebView2 `CapturePreview` PNG. The 0.58 encrypted array is migrated automatically. Actual same-process two-window GUI covers independent edits, same-entry conflict, modify/delete conflict, stale save, lock/unlock, close, and restart integrity.
 - SQLite settings-backed session save/restore for tab URLs/titles/order, active tab, window geometry, and maximized state, with `AMARE_GPUI_RESTORE=0` opt-out.
 - Cross-window tab transfer/detach is UNVERIFIED; official `SetParentWindow` path exists but is not validated end-to-end.
 
@@ -32,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.58.0)
+## Verified in Windows CI (0.59.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -44,10 +45,12 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Address↔WebView2 focus transfer, minimize/restore, graceful exit, WebView2 0→0.
 - GPUI bookmark/history add, duplicate handling, list, navigation, search, delete, clear confirmation, restart persistence.
 - Settings changes apply immediately and persist after restart; theme/size/tab-width/density PASS from real UI clicks.
-- Password vault: **43 password GUI checks PASS**; 4 origin/crypto/vault unit tests PASS; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
-- 0.58 limitations: same-process multi-window simultaneous add/edit/delete and conflict UX are **UNVERIFIED**; same-entry edits can still be last-writer-wins and a stale window can re-add a deleted entry because tombstones are not persisted. Per-window lock is not propagated to other windows.
-- ALL_SITE deletion is shown as **read-only/BLOCKED** after UI lifecycle timeouts; there is no active delete button or shortcut in 0.58.0.
-- GPUI tab (10/1/3), library (2/1/0), settings (1/1/0), and session (0/1/0) internal suites still FAIL and are not counted as PASS; password suite is isolated with `continue-on-error`.
+- Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
+- 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
+- WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- GPUI final suites: password 51/0/0, multiwindow 20/0/1, tab 20/0/6, library 19/0/0, settings 18/0/7, session 8/0/2, input 24/0/5, download 7/0/1. Aggregate 167/0/22; the failure gate enforces 0 FAIL.
+- Test-only triggers create repeated tabs and the second window deterministically while still using the product `new_tab`/`open_new_window` paths. `continue-on-error` remains only for evidence collection and is enforced by a final failure gate.
+- ALL_SITE deletion remains **read-only/BLOCKED**. Titlebar actual clicks, multi-window session restore, session scroll restore, corrupt-session banner, Korean IME, context menu, and DPI remain UNVERIFIED.
 - Session restore after restart: tab count/order/title/URL/active tab/window geometry PASS for one window; two-window restore PASS with forced-exit session snapshot; `11-multi-window-session-restored.png`, `15-session-restored.png` and `16-downloads-after-restart.png`.
 - WebView2 DownloadStarting progress/complete/failure/restart metadata and file open/folder controls.
 - Windows custom titlebar tab integration with system min/max/restore/close hit areas.
