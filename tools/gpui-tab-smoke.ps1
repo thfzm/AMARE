@@ -59,6 +59,14 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 150 }
+function Send-CtrlKey([int]$vk) {
+    [AmareTab]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    [AmareTab]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [AmareTab]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero)
+    [AmareTab]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 300
+}
 function Click-At([IntPtr]$hwnd, [int]$x, [int]$y) {
     [void][AmareTab]::SetForegroundWindow($hwnd)
     [void][AmareTab]::SetCursorPos($x, $y)
@@ -121,7 +129,7 @@ function Ensure-Tabs([int]$target) {
         [void][AmareTab]::SetForegroundWindow($script:hwnd)
         $origin = Get-Origin $script:hwnd
         Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(5)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -130,7 +138,7 @@ function Ensure-Tabs([int]$target) {
         }
         if (@((Read-State).tabs).Count -ge $target) { continue }
         Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -258,7 +266,7 @@ try {
     [void][AmareTab]::SetForegroundWindow($script:hwnd)
     $ctrlT = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         try {
             $two = Wait-Tabs 2 8 "second tab via Ctrl+T"
             $ctrlT = $true

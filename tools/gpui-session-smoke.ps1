@@ -20,6 +20,7 @@ public static class AmareSession {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
 }
 '@
@@ -40,6 +41,14 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 160 }
+function Send-CtrlKey([int]$vk) {
+    [AmareSession]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    [AmareSession]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [AmareSession]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero)
+    [AmareSession]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 300
+}
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareSession+POINT
     [void][AmareSession]::ClientToScreen($hwnd, [ref]$point)
@@ -96,7 +105,7 @@ function Ensure-Tabs([int]$target) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         [void][AmareSession]::SetForegroundWindow($script:hwnd)
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(8)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State

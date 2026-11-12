@@ -20,6 +20,7 @@ public static class AmareLib {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
 }
 '@
@@ -40,6 +41,14 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 160 }
+function Send-CtrlKey([int]$vk) {
+    [AmareLib]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    [AmareLib]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [AmareLib]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero)
+    [AmareLib]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 300
+}
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareLib+POINT
     [void][AmareLib]::ClientToScreen($hwnd, [ref]$point)
@@ -96,7 +105,7 @@ function Ensure-LibraryTabs([int]$target) {
         if (@($state.tabs).Count -ge $target) { return $state }
         [void][AmareLib]::SetForegroundWindow($script:hwnd)
         Click-Client $script:hwnd 50 30
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(5)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -104,7 +113,7 @@ function Ensure-LibraryTabs([int]$target) {
             Start-Sleep -Milliseconds 250
         }
         Click-Client $script:hwnd 420 70
-        Send-Keys "^t"
+        Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State

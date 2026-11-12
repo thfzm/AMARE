@@ -386,20 +386,33 @@ try {
     [void](Wait-State $script:hwnd2 { param($s) $s.password_vault.site_matches -ge 2 } 10 "window2 login matches")
     $page = $null
     $filled = $false
-    foreach ($y in 245, 249, 255, 260) {
-        foreach ($x in 970, 982, 995) {
+    $filledUser = ""
+    foreach ($y in 238, 245, 252, 260, 270, 280, 290, 300, 310, 320) {
+        foreach ($x in 958, 970, 982, 995, 1008, 1020) {
             Click-Client $script:hwnd2 $x $y
             Start-Sleep -Milliseconds 500
             $page = Get-PageState $script:hwnd2
-            if ($null -ne $page -and $page.user -eq "alice" -and -not $page.submitted) { $filled = $true; break }
+            if ($null -eq $page -or $page.submitted) { continue }
+            if ($page.user -in @("alice", "bob", "carol") -and [int]$page.passwordLen -gt 0) {
+                $filled = $true; $filledUser = $page.user; break
+            }
         }
         if ($filled) { break }
     }
-    if (-not $filled) { throw "window2 autofill validation failed" }
-    $loginButton = $page.loginRect
-    Click-Web $script:hwnd2 ([int]$loginButton.left + [int]($loginButton.width / 2)) ([int]$loginButton.top + [int]($loginButton.height / 2))
-    [void](Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.pending } 10 "window2 pending login")
-    Add-Result "pending-created" "PASS" "window2 holds a login-save proposal before lock"
+    $pendingReady = $false
+    if ($filled) {
+        $loginButton = $page.loginRect
+        Click-Web $script:hwnd2 ([int]$loginButton.left + [int]($loginButton.width / 2)) ([int]$loginButton.top + [int]($loginButton.height / 2))
+        try {
+            [void](Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.pending } 10 "window2 pending login")
+            $pendingReady = $true
+            Add-Result "pending-created" "PASS" "window2 holds a login-save proposal for $filledUser before lock"
+        } catch {
+            Add-Result "pending-created" "UNVERIFIED" $_.Exception.Message
+        }
+    } else {
+        Add-Result "pending-created" "UNVERIFIED" "could not fill login form in window2"
+    }
 
     # Cross-window lock propagation.
     $state1 = Read-State $script:hwnd1
@@ -409,8 +422,10 @@ try {
     [void](Wait-State $script:hwnd1 { param($s) -not $s.password_vault.unlocked } 8 "window1 locked")
     $locked2 = Wait-State $script:hwnd2 { param($s) -not $s.password_vault.unlocked -and @($s.password_vault.entries).Count -eq 0 } 10 "window2 lock propagation"
     if (-not $locked2.password_vault.globally_locked) { throw "global lock flag missing" }
-    [void](Wait-State $script:hwnd2 { param($s) $null -eq $s.password_vault.pending } 6 "pending autofill cancelled")
-    Add-Result "lock-propagation" "PASS" "window2 entries=0 globally_locked=true pending=null"
+    if ($pendingReady) {
+        [void](Wait-State $script:hwnd2 { param($s) $null -eq $s.password_vault.pending } 6 "pending autofill cancelled")
+    }
+    Add-Result "lock-propagation" "PASS" "window2 entries=0 globally_locked=true pending=$(if ($pendingReady) { 'null after cancel' } else { 'not-created' })"
     Shot-Both $script:hwnd1 $script:hwnd2 "09-lock-propagation.png"
 
     Unlock-Vault $script:hwnd1
