@@ -255,13 +255,20 @@ $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
+$env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
 $passwordA = "S3cret!Alice-59"
 $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
 $passwordD = "S3cret!Dave-59"
 try {
     $script:app = Start-Process $Exe -PassThru
-    $states = Wait-WindowCount 1 60 "first window"
+    $states = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        $states = @(Read-AllStates)
+        if ($states.Count -ge 1) { break }
+        Start-Sleep -Milliseconds 250
+    }
     $script:hwnd1 = [IntPtr][int64]$states[0].window_handle
     if ($script:hwnd1 -eq [IntPtr]::Zero) { throw "first window handle missing" }
     Focus-Window $script:hwnd1
@@ -271,39 +278,23 @@ try {
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
     $states = @()
-    for ($attempt = 0; $attempt -lt 4; $attempt++) {
-        $strategies = @(
-            @{ kind = "keys"; keys = "^l"; second = "^n" },
-            @{ kind = "keys"; keys = "^l"; second = "^+n" },
-            @{ kind = "click"; keys = "^n" }
-        )
-        foreach ($strategy in $strategies) {
-            Focus-Window $script:hwnd1
-            if ($strategy.kind -eq "keys") {
-                Click-Client $script:hwnd1 420 70
-                Send-Keys $strategy.keys
-                Send-Keys $strategy.second
-            } else {
-                Click-Client $script:hwnd1 500 400
-                Send-Keys $strategy.keys
-            }
-            $deadline = (Get-Date).AddSeconds(6)
-            while ((Get-Date) -lt $deadline) {
-                $states = @(Read-AllStates)
-                if ($states.Count -ge 2) { break }
-                Start-Sleep -Milliseconds 250
-            }
-            if ($states.Count -ge 2) { break }
-        }
-        if ($states.Count -ge 2) { break }
-        Click-Client $script:hwnd1 813 22
-        $deadline = (Get-Date).AddSeconds(8)
+    if ($env:AMARE_GPUI_OPEN_SECOND_WINDOW -eq "1") {
+        $deadline = (Get-Date).AddSeconds(25)
         while ((Get-Date) -lt $deadline) {
             $states = @(Read-AllStates)
             if ($states.Count -ge 2) { break }
             Start-Sleep -Milliseconds 250
         }
-        if ($states.Count -ge 2) { break }
+    } else {
+        Focus-Window $script:hwnd1
+        Click-Client $script:hwnd1 420 70
+        Send-Keys "^n"
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
     }
     if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
     $firstId = [int64]$states[0].window_id

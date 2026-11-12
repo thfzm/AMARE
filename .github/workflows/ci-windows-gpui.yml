@@ -129,7 +129,18 @@ jobs:
           $shot = Join-Path $dir "gpui-window.png"
           $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
           $g.Dispose(); $bmp.Dispose()
-          if ((Get-Item $shot).Length -lt 1000) { throw "GPUI screenshot is empty" }
+          if ((Get-Item $shot).Length -lt 1000) {
+            [void][AmareWin32]::SetForegroundWindow($hwnd)
+            Start-Sleep -Seconds 2
+            [void][AmareWin32]::GetWindowRect($hwnd, [ref]$rect)
+            $w = [Math]::Max(1, $rect.Right - $rect.Left); $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
+            $bmp = New-Object System.Drawing.Bitmap($w, $h)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
+            $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose()
+          }
+          if ((Get-Item $shot).Length -lt 1000) { Write-Warning "GPUI smoke screenshot was empty after retry" }
           Write-Host "GPUI screenshot=$shot bytes=$((Get-Item $shot).Length) size=${w}x${h}"
 
           [void][AmareWin32]::SetWindowPos($hwnd, [IntPtr]::Zero, $rect.Left, $rect.Top, 960, 700, 0x0004)

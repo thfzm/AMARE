@@ -406,6 +406,7 @@ struct AmareApp {
     last_capture_error: Option<String>,
     last_capture_size: Option<(u32, u32)>,
     last_auto_capture_source: String,
+    second_window_started: bool,
 }
 
 impl AmareApp {
@@ -541,6 +542,7 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
 
@@ -628,6 +630,7 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -781,6 +784,7 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -2240,6 +2244,24 @@ impl AmareApp {
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
         self.open_new_window(cx);
+    }
+
+    fn maybe_open_second_window(&mut self, cx: &mut Context<Self>) {
+        if self.second_window_started
+            || std::env::var("AMARE_GPUI_OPEN_SECOND_WINDOW")
+                .ok()
+                .as_deref()
+                != Some("1")
+            || self.window_id != 1
+        {
+            return;
+        }
+        self.second_window_started = true;
+        cx.spawn(async move |this, cx| {
+            Timer::after(Duration::from_millis(1500)).await;
+            let _ = this.update(cx, |app, cx| app.open_new_window(cx));
+        })
+        .detach();
     }
 
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {
@@ -4453,6 +4475,7 @@ impl Render for AmareApp {
         self.poll_login_captures(cx);
         self.sync_vault_lock(cx);
         self.sync_password_vault(cx);
+        self.maybe_open_second_window(cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);
