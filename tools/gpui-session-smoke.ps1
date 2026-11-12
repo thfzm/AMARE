@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -44,12 +45,12 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 160 }
 function Force-Focus([IntPtr]$hwnd) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        [void][AmareSession]::SetForegroundWindow($hwnd)
+        [void](Force-AmareForeground $hwnd)
         if ([AmareSession]::GetForegroundWindow() -eq $hwnd) { return }
         Start-Sleep -Milliseconds 150
     }
     [AmareSession]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [void][AmareSession]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [AmareSession]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 150
 }
@@ -64,7 +65,7 @@ function Send-CtrlKey([int]$vk) {
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareSession+POINT
     [void][AmareSession]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmareSession]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmareSession]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmareSession]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -116,15 +117,6 @@ function Ensure-Tabs([int]$target) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
-        if ($null -ne $script:newTabTrigger) {
-            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
-            $deadline = (Get-Date).AddSeconds(30)
-            while ((Get-Date) -lt $deadline) {
-                $state = Read-State
-                if (@($state.tabs).Count -ge $target) { return $state }
-                Start-Sleep -Milliseconds 250
-            }
-        }
         Force-Focus $script:hwnd
         Send-CtrlKey 0x54
         $deadline = (Get-Date).AddSeconds(25)
@@ -143,24 +135,18 @@ function Start-App([string]$data, [string]$restore = "1") {
     $env:AMARE_GPUI_START_URL = "about:blank"
     $env:AMARE_GPUI_SELF_TEST = "0"
     $env:AMARE_GPUI_RESTORE = $restore
-$script:newTabTrigger = $null
-if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
-    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
-    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
-    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
-}
     $process = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
     Start-Sleep -Seconds 2
     $process.Refresh(); $script:hwnd = $process.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "session app window missing" }
-    [void][AmareSession]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmareSession]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Milliseconds 500
     return $process
 }
 function Stop-App([System.Diagnostics.Process]$process) {
-    [void][AmareSession]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Send-Keys "%{F4}"
     if (-not $process.WaitForExit(25000)) { throw "session app did not exit" }
     Start-Sleep -Seconds 2
@@ -185,7 +171,7 @@ try {
     # A. Complete restore: three fast tabs and one scroll position.
     $app = Start-App $completeData
     [void](Navigate $scroll 20)
-    [void][AmareSession]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void](Scroll-Page)
     [void](Ensure-Tabs 2); [void](Navigate $fast 20)
     [void](Ensure-Tabs 3); [void](Navigate $fast 20)

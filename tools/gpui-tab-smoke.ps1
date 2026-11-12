@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -61,12 +62,12 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 150 }
 function Force-Focus([IntPtr]$hwnd) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        [void][AmareTab]::SetForegroundWindow($hwnd)
+        [void](Force-AmareForeground $hwnd)
         if ([AmareTab]::GetForegroundWindow() -eq $hwnd) { return }
         Start-Sleep -Milliseconds 150
     }
     [AmareTab]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [void][AmareTab]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [AmareTab]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 150
 }
@@ -79,7 +80,7 @@ function Send-CtrlKey([int]$vk) {
     Start-Sleep -Milliseconds 300
 }
 function Click-At([IntPtr]$hwnd, [int]$x, [int]$y) {
-    [void][AmareTab]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmareTab]::SetCursorPos($x, $y)
     Start-Sleep -Milliseconds 150
     [AmareTab]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -106,7 +107,7 @@ function Page([string]$tab) { return "$BaseUrl`?tab=$tab" }
 function Count-Windows { return [AmareTab]::CountWindows($script:app.Id) }
 function Drag-At([IntPtr]$hwnd, [int]$sx, [int]$sy, [int]$ex, [int]$ey) {
     $origin = Get-Origin $hwnd
-    [void][AmareTab]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmareTab]::SetCursorPos($origin.X + $sx, $origin.Y + $sy)
     [AmareTab]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 120
@@ -133,16 +134,6 @@ function Ensure-Tabs([int]$target) {
             Send-CtrlKey 0x57
             Start-Sleep -Milliseconds 700
             continue
-        }
-        if ($null -ne $script:newTabTrigger) {
-            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
-            $deadline = (Get-Date).AddSeconds(30)
-            while ((Get-Date) -lt $deadline) {
-                $state = Read-State
-                if (@($state.tabs).Count -ge $target) { break }
-                Start-Sleep -Milliseconds 250
-            }
-            if (@((Read-State).tabs).Count -ge $target) { continue }
         }
         # Focus the GPUI toolbar before asking for a new tab. When the focus is
         # inside WebView2 the async accelerator forwarding can race the next
@@ -271,12 +262,6 @@ $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = (Page "A")
 $env:AMARE_GPUI_NEW_TAB_URL = (Page "NEW")
-$script:newTabTrigger = $null
-if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
-    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
-    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
-    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
-}
 try {
     $script:app = Start-Process $Exe -PassThru
     $initial = Wait-State { param($s) @($s.tabs).Count -eq 1 -and $s.source -like "*tab=A*" } 60 "initial tab"
@@ -284,13 +269,13 @@ try {
     $script:app.Refresh()
     $script:hwnd = $script:app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
-    [void][AmareTab]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Set-EnglishLayout $script:hwnd
     $child = [AmareTab]::FindWindowEx($script:hwnd, [IntPtr]::Zero, "Chrome_WidgetWin_0", $null)
     if ($child -ne [IntPtr]::Zero) { Set-EnglishLayout $child }
     Add-Result "initial-tab" "PASS" "id=$($initial.active_tab) source=$($initial.source)"
     Process-Metrics "1-tab"
-    [void][AmareTab]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     $ctrlT = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         Send-CtrlKey 0x54
@@ -301,7 +286,7 @@ try {
         } catch {
             Write-Host "Retrying Ctrl+T"
             Set-EnglishLayout $script:hwnd
-            [void][AmareTab]::SetForegroundWindow($script:hwnd)
+            [void](Force-AmareForeground $script:hwnd)
             Start-Sleep -Milliseconds 500
         }
     }

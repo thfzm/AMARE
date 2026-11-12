@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ScreenshotDir
 )
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -25,7 +26,7 @@ function Add-Result([string]$name,[string]$state,[string]$detail){$script:result
 function Read-State { if(-not(Test-Path $Status)){return $null};try{return Get-Content $Status -Raw|ConvertFrom-Json}catch{return $null} }
 function Wait-State([scriptblock]$cond,[int]$sec,[string]$label){$d=(Get-Date).AddSeconds($sec);while((Get-Date)-lt$d){$s=Read-State;if($null-ne$s -and (& $cond $s)){return $s};Start-Sleep -Milliseconds 250};throw "Timed out waiting for $label"}
 function Shot([string]$name){$r=New-Object AmareDl+RECT;[void][AmareDl]::GetWindowRect($script:hwnd,[ref]$r);$w=[Math]::Max(1,$r.Right-$r.Left);$h=[Math]::Max(1,$r.Bottom-$r.Top);$b=New-Object System.Drawing.Bitmap($w,$h);$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen($r.Left,$r.Top,0,0,$b.Size);$p=Join-Path $ScreenshotDir $name;$b.Save($p,[System.Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$b.Dispose();Add-Result $name "PASS" "$p ($w x $h, $((Get-Item $p).Length) bytes)"}
-function Click-Web([int]$x,[int]$y){$pt=New-Object AmareDl+POINT;[void][AmareDl]::ClientToScreen($script:hwnd,[ref]$pt);[void][AmareDl]::SetForegroundWindow($script:hwnd);[System.Windows.Forms.Cursor]::Position=New-Object System.Drawing.Point(($pt.X+$x),($pt.Y+88+$y));[AmareDl]::mouse_event(2,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 80;[AmareDl]::mouse_event(4,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 300}
+function Click-Web([int]$x,[int]$y){$pt=New-Object AmareDl+POINT;[void][AmareDl]::ClientToScreen($script:hwnd,[ref]$pt);[void](Force-AmareForeground $script:hwnd);[System.Windows.Forms.Cursor]::Position=New-Object System.Drawing.Point(($pt.X+$x),($pt.Y+88+$y));[AmareDl]::mouse_event(2,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 80;[AmareDl]::mouse_event(4,0,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 300}
 function PageState { $s=Read-State;if($null-eq$s-or-not$s.title.StartsWith("AMARE_TEST:")){return $null};return [Uri]::UnescapeDataString($s.title.Substring(11))|ConvertFrom-Json }
 $script:hwnd=[IntPtr]::Zero;$app=$null;$server=$null;$before=@(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
 Remove-Item $Status -Force -ErrorAction SilentlyContinue
@@ -42,7 +43,7 @@ try {
  $app=Start-Process $Exe -PassThru
  [void](Wait-State {param($s) $s.source -like "*tab=DL*" -and $null-ne$s.address} 60 "download test page")
  $app.Refresh();$script:hwnd=$app.MainWindowHandle;if($script:hwnd-eq[IntPtr]::Zero){throw "window missing"}
- [void][AmareDl]::SetForegroundWindow($script:hwnd)
+ [void](Force-AmareForeground $script:hwnd)
  $pageState=$null
  for($i=0;$i-lt40;$i++){ $pageState=PageState; if($null-ne$pageState-and$null-ne$pageState.downloadRect){break}; Start-Sleep -Milliseconds 250 }
  if($null-eq$pageState-or$null-eq$pageState.downloadRect){throw "download link rect unavailable"}
@@ -74,7 +75,7 @@ try {
  for($i=0;$i-lt40;$i++){Start-Sleep -Milliseconds 500;$app2.Refresh();if($app2.MainWindowHandle-ne[IntPtr]::Zero){break}}
  $script:hwnd=$app2.MainWindowHandle
  if($script:hwnd-eq[IntPtr]::Zero){throw "restarted download window missing"}
- [void][AmareDl]::SetForegroundWindow($script:hwnd)
+ [void](Force-AmareForeground $script:hwnd)
  [System.Windows.Forms.SendKeys]::SendWait("^+d");Start-Sleep -Milliseconds 500
  Shot "12-download-list-restored.png"
  Add-Result "download-restart-persistence" "PASS" "downloads=$(@($restored.downloads).Count)"

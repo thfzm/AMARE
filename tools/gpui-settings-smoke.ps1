@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -69,7 +70,7 @@ function Wait-WindowState([scriptblock]$condition, [int]$seconds, [string]$label
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareSettings+POINT
     [void][AmareSettings]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmareSettings]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmareSettings]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmareSettings]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -167,7 +168,7 @@ try {
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
-    [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Try-Titlebar "minimize" { [AmareSettings]::IsIconic($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 6) } "titlebar-minimize-click" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 700
@@ -250,7 +251,7 @@ try {
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
 
     foreach ($window in (Get-BrowserWindows)) {
-        [void][AmareSettings]::SetForegroundWindow($window)
+        [void](Force-AmareForeground $window)
         Start-Sleep -Milliseconds 120
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         Start-Sleep -Milliseconds 120
@@ -272,7 +273,7 @@ try {
     }
     Start-Sleep -Seconds 3
     $app.Refresh(); $script:hwnd = $windows[0]
-    [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     $restored = Read-State
     if ($restored.settings.theme -ne "dark" -or $restored.settings.ui_font_size -ne $fontValue -or $restored.settings.tab_width -ne $tabValue -or $restored.settings.ui_density -ne $densityValue) {
         throw "settings did not persist after restart: $($restored.settings | ConvertTo-Json -Compress)"
@@ -289,7 +290,7 @@ try {
 
     Click-Client $script:hwnd 997 22
     if (-not $app.WaitForExit(10000)) {
-        [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+        [void](Force-AmareForeground $script:hwnd)
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         if (-not $app.WaitForExit(15000)) {
             Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
@@ -307,7 +308,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "reset test app")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmareSettings]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmareSettings]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Settings
@@ -338,7 +339,7 @@ try {
 finally {
     foreach ($window in (Get-BrowserWindows)) {
         if (-not [AmareSettings]::IsWindowVisible($window)) { continue }
-        [void][AmareSettings]::SetForegroundWindow($window)
+        [void](Force-AmareForeground $window)
         Start-Sleep -Milliseconds 200
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         Start-Sleep -Milliseconds 500

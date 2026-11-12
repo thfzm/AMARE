@@ -29,5 +29,10 @@
     </div>
     <p id="status">CapturePreview content marker: AMARE_059_CAPTURE_OK</p>
   </main>
+  <script>
+    const variant = new URLSearchParams(location.search).get('variant') || 'default';
+    document.querySelector('h1').textContent = 'AMARE CapturePreview ' + variant;
+    document.getElementById('status').textContent += ' variant=' + variant;
+  </script>
 </body>
 </html>

@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -44,12 +45,12 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 160 }
 function Force-Focus([IntPtr]$hwnd) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        [void][AmareLib]::SetForegroundWindow($hwnd)
+        [void](Force-AmareForeground $hwnd)
         if ([AmareLib]::GetForegroundWindow() -eq $hwnd) { return }
         Start-Sleep -Milliseconds 150
     }
     [AmareLib]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [void][AmareLib]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [AmareLib]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 150
 }
@@ -64,7 +65,7 @@ function Send-CtrlKey([int]$vk) {
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareLib+POINT
     [void][AmareLib]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmareLib]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmareLib]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmareLib]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -115,15 +116,6 @@ function Ensure-LibraryTabs([int]$target) {
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
-        if ($null -ne $script:newTabTrigger) {
-            Set-Content -Path $script:newTabTrigger -Value "1" -Encoding ascii
-            $deadline = (Get-Date).AddSeconds(30)
-            while ((Get-Date) -lt $deadline) {
-                $state = Read-State
-                if (@($state.tabs).Count -ge $target) { return $state }
-                Start-Sleep -Milliseconds 250
-            }
-        }
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 50 30
         Send-CtrlKey 0x54
@@ -167,19 +159,13 @@ $env:AMARE_GPUI_DATA_DIR = $DataDir
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
-$script:newTabTrigger = $null
-if ($env:AMARE_GPUI_TEST_TRIGGERS -eq "1") {
-    $script:newTabTrigger = Join-Path $env:RUNNER_TEMP "amare-new-tab.trigger"
-    Remove-Item $script:newTabTrigger -Force -ErrorAction SilentlyContinue
-    $env:AMARE_GPUI_NEW_TAB_TRIGGER = $script:newTabTrigger
-}
 try {
     $app = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "initial library app")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
-    [void][AmareLib]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Shot "01-initial-new-tab.png"
 
     [void](Navigate "https://example.com/" 25)
@@ -225,7 +211,7 @@ try {
     Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LibPoint { [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; } [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p); }'
     $p = New-Object LibPoint+POINT
     [void][LibPoint]::ClientToScreen($script:hwnd, [ref]$p)
-    [void][AmareLib]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmareLib]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Shot "08-titlebar-maximized.png"
@@ -241,12 +227,12 @@ try {
     [LibAlt]::keybd_event(0x09,0,2,[UIntPtr]::Zero)
     [LibAlt]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
     Start-Sleep -Seconds 1
-    [void][AmareLib]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
 
     $beforeSession = Read-State
     $beforeRect = New-Object AmareLib+RECT
     [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$beforeRect)
-    [void][AmareLib]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "library app did not exit" }
     Start-Sleep -Seconds 2
@@ -266,7 +252,7 @@ try {
     Add-Result "restart-persistence" "PASS" "bookmarks=$(@($restored.bookmarks).Count) history=$(@($restored.history).Count)"
     $app2.Refresh(); $script:hwnd = $app2.MainWindowHandle
     if ($script:hwnd -ne [IntPtr]::Zero) {
-        [void][AmareLib]::SetForegroundWindow($script:hwnd)
+        [void](Force-AmareForeground $script:hwnd)
         $afterRect = New-Object AmareLib+RECT
         [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$afterRect)
         $beforeW = $beforeRect.Right - $beforeRect.Left; $beforeH = $beforeRect.Bottom - $beforeRect.Top

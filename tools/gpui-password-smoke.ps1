@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -46,7 +47,7 @@ function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($k
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmarePassword+POINT
     [void][AmarePassword]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmarePassword]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmarePassword]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmarePassword]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -57,7 +58,7 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
 function Click-Web([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmarePassword+POINT
     [void][AmarePassword]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmarePassword]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][AmarePassword]::SetCursorPos(($point.X + $x), ($point.Y + 88 + $y))
     Start-Sleep -Milliseconds 120
     [AmarePassword]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -246,7 +247,7 @@ try {
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Shot "01-initial-browser.png"
@@ -388,7 +389,7 @@ try {
     ShotFull "13-maximized-desktop.png"
     Add-Result "window-maximize" "PASS" "IsZoomed=true"
     try {
-        Capture-Auto-Refresh "12b-page-maximized.png" "http://127.0.0.1:8767/capture-test.html?max=1"
+        Capture-Auto-Refresh "12b-page-maximized.png" "http://127.0.0.1:8767/capture-test.html?variant=MAX"
         Add-Result "capture-after-maximize" "PASS" "CapturePreview content after maximize"
     } catch {
         Add-Result "capture-after-maximize" "UNVERIFIED" $_.Exception.Message
@@ -398,7 +399,7 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Seconds 1
     try {
-        Capture-Auto-Refresh "12c-page-minimize-restore.png" "http://127.0.0.1:8767/capture-test.html?restore=1"
+        Capture-Auto-Refresh "12c-page-minimize-restore.png" "http://127.0.0.1:8767/capture-test.html?variant=RESTORE"
         Add-Result "capture-after-minimize-restore" "PASS" "CapturePreview content after minimize/restore"
     } catch {
         Add-Result "capture-after-minimize-restore" "UNVERIFIED" $_.Exception.Message
@@ -443,7 +444,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "vault restart app")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -481,7 +482,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "deleted vault restart")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -507,7 +508,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "empty vault restart")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -526,7 +527,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "missing key app")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -557,7 +558,7 @@ try {
     [void](Wait-State { param($s) $null -ne $s.address } 60 "corrupt vault app")
     Start-Sleep -Seconds 2
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
-    [void][AmarePassword]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -583,9 +584,19 @@ try {
     Start-Sleep -Milliseconds 800
     Shot "03-multiple-tabs.png"
     try {
-        Capture-Auto-Refresh "03b-active-tab-content.png" "http://127.0.0.1:8767/capture-test.html?tabcap=1"
+        Capture-Auto-Refresh "03b-active-tab-content.png" "http://127.0.0.1:8767/capture-test.html?variant=A"
+        $tabA = (Read-State).active_tab
+        Click-Client $script:hwnd 200 30
+        [void](Wait-State { param($s) $s.active_tab -ne $tabA } 8 "second tab active")
+        Capture-Auto-Refresh "14-tab-b-content.png" "http://127.0.0.1:8767/capture-test.html?variant=B"
+        $tabB = (Read-State).active_tab
+        if ($tabA -eq $tabB) { throw "tab identity did not change for per-tab capture" }
+        $hashA = (Get-FileHash (Join-Path $ScreenshotDir "03b-active-tab-content.png") -Algorithm SHA256).Hash
+        $hashB = (Get-FileHash (Join-Path $ScreenshotDir "14-tab-b-content.png") -Algorithm SHA256).Hash
+        if ($hashA -eq $hashB) { throw "per-tab captures are identical" }
+        Add-Result "capture-per-tab" "PASS" "tabA=$tabA tabB=$tabB hashes differ"
     } catch {
-        Add-Result "capture-active-tab-content" "UNVERIFIED" $_.Exception.Message
+        Add-Result "capture-per-tab" "UNVERIFIED" $_.Exception.Message
     }
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(20000)) { throw "corrupt vault app did not exit" }

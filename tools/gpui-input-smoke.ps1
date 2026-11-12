@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -93,7 +94,7 @@ function Wait-Page([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for page $label"
 }
 function Click-At([IntPtr]$hwnd, [int]$x, [int]$y) {
-    [void][Amare47]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [void][Amare47]::SetCursorPos($x, $y)
     Start-Sleep -Milliseconds 150
     [Amare47]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -175,7 +176,7 @@ function Get-Address([int]$timeout = 8) {
 }
 function Navigate-Address([string]$url, [int]$timeout = 20) {
     for ($attempt = 1; $attempt -le 2; $attempt++) {
-        [void][Amare47]::SetForegroundWindow($script:hwnd)
+        [void](Force-AmareForeground $script:hwnd)
         Send-Keys "^l"
         Start-Sleep -Milliseconds 250
         Send-Keys "^a"
@@ -207,7 +208,7 @@ try {
     $app.Refresh()
     $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window handle missing" }
-    [void][Amare47]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Set-EnglishLayout $script:hwnd
     $webviewChild = Find-WebViewChild $script:hwnd
     if ($webviewChild -ne [IntPtr]::Zero) { Set-EnglishLayout $webviewChild }
@@ -475,7 +476,7 @@ try {
     [void][Amare47]::ShowWindow($script:hwnd, 6)
     Start-Sleep -Seconds 1
     [void][Amare47]::ShowWindow($script:hwnd, 9)
-    [void][Amare47]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Start-Sleep -Milliseconds 700
     Send-Keys "^l"
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
@@ -486,7 +487,7 @@ try {
 
     Shot "gpui-final-input-state.png"
 
-    [void][Amare47]::SetForegroundWindow($script:hwnd)
+    [void](Force-AmareForeground $script:hwnd)
     Send-Keys "%{F4}"
     if (-not $app.WaitForExit(15000)) { throw "GPUI app did not exit after Alt+F4" }
     Start-Sleep -Seconds 2
@@ -496,7 +497,7 @@ try {
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
-    if ($null -ne $app -and -not $app.HasExited) { try { [void][Amare47]::SetForegroundWindow($script:hwnd); Send-Keys "%{F4}" } catch {} }
+    if ($null -ne $app -and -not $app.HasExited) { try { [void](Force-AmareForeground $script:hwnd); Send-Keys "%{F4}" } catch {} }
     try { Shot "gpui-input-failure.png" } catch {}
 }
 finally {

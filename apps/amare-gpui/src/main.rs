@@ -406,7 +406,6 @@ struct AmareApp {
     last_capture_error: Option<String>,
     last_capture_size: Option<(u32, u32)>,
     last_auto_capture_source: String,
-    second_window_started: bool,
 }
 
 impl AmareApp {
@@ -542,7 +541,6 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
-            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
 
@@ -630,7 +628,6 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
-            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -784,7 +781,6 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
-            second_window_started: false,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -2244,35 +2240,6 @@ impl AmareApp {
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
         self.open_new_window(cx);
-    }
-
-    fn maybe_test_new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Ok(trigger) = std::env::var("AMARE_GPUI_NEW_TAB_TRIGGER") else {
-            return;
-        };
-        if !std::path::Path::new(&trigger).exists() {
-            return;
-        }
-        let _ = std::fs::remove_file(&trigger);
-        self.new_tab(window, cx);
-    }
-
-    fn maybe_open_second_window(&mut self, cx: &mut Context<Self>) {
-        if self.second_window_started || self.window_id != 1 {
-            return;
-        }
-        let Ok(trigger) = std::env::var("AMARE_GPUI_SECOND_WINDOW_TRIGGER") else {
-            return;
-        };
-        if !std::path::Path::new(&trigger).exists() {
-            return;
-        }
-        self.second_window_started = true;
-        cx.spawn(async move |this, cx| {
-            Timer::after(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |app, cx| app.open_new_window(cx));
-        })
-        .detach();
     }
 
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {
@@ -4486,8 +4453,6 @@ impl Render for AmareApp {
         self.poll_login_captures(cx);
         self.sync_vault_lock(cx);
         self.sync_password_vault(cx);
-        self.maybe_open_second_window(cx);
-        self.maybe_test_new_tab(window, cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);
@@ -5003,12 +4968,13 @@ impl Drop for AmareApp {
             }
             windows.is_empty()
         });
-        if empty {
-            if self.settings.save_session_on_exit {
-                persist_session(true);
-            } else {
-                let _ = library::save_session("[]");
-            }
+        if self.settings.save_session_on_exit {
+            // Persist immediately while the closing window's snapshot is still
+            // in CLOSED_WINDOWS. This preserves all windows even when the
+            // process quits before the last Drop runs.
+            persist_session(true);
+        } else if empty {
+            let _ = library::save_session("[]");
         }
     }
 }
@@ -5187,31 +5153,20 @@ fn main() {
         STARTUP_SESSION_ERROR.with(|error| *error.borrow_mut() = session_error);
         if restored.is_empty() {
             let (width, height) = automation_window_size();
-            let window_count = if std::env::var("AMARE_GPUI_OPEN_SECOND_WINDOW")
-                .ok()
-                .as_deref()
-                == Some("1")
-            {
-                2
-            } else {
-                1
-            };
-            for _ in 0..window_count {
-                let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
-                cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        titlebar: Some(gpui::TitlebarOptions {
-                            title: Some("AMARE".into()),
-                            appears_transparent: true,
-                            ..Default::default()
-                        }),
+            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some("AMARE".into()),
+                        appears_transparent: true,
                         ..Default::default()
-                    },
-                    |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
-                )
-                .expect("failed to open AMARE window");
-            }
+                    }),
+                    ..Default::default()
+                },
+                |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
+            )
+            .expect("failed to open AMARE window");
         } else {
             for snapshot in restored {
                 let bounds = Bounds::new(

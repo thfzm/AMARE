@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-test-focus.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -76,12 +77,12 @@ function Wait-State([IntPtr]$hwnd, [scriptblock]$condition, [int]$seconds, [stri
 }
 function Focus-Window([IntPtr]$hwnd) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        [void][AmareVaultWin]::SetForegroundWindow($hwnd)
+        [void](Force-AmareForeground $hwnd)
         if ([AmareVaultWin]::GetForegroundWindow() -eq $hwnd) { Start-Sleep -Milliseconds 150; return }
         Start-Sleep -Milliseconds 150
     }
     [AmareVaultWin]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [void][AmareVaultWin]::SetForegroundWindow($hwnd)
+    [void](Force-AmareForeground $hwnd)
     [AmareVaultWin]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 150
 }
@@ -121,10 +122,10 @@ function Shot-Both([IntPtr]$left, [IntPtr]$right, [string]$name) {
     $b2 = New-Object System.Drawing.Bitmap($w2, $h2)
     $g1 = [System.Drawing.Graphics]::FromImage($b1)
     $g2 = [System.Drawing.Graphics]::FromImage($b2)
-    [void][AmareVaultWin]::SetForegroundWindow($left)
+    [void](Force-AmareForeground $left)
     Start-Sleep -Milliseconds 400
     $g1.CopyFromScreen($r1.Left, $r1.Top, 0, 0, $b1.Size)
-    [void][AmareVaultWin]::SetForegroundWindow($right)
+    [void](Force-AmareForeground $right)
     Start-Sleep -Milliseconds 400
     $g2.CopyFromScreen($r2.Left, $r2.Top, 0, 0, $b2.Size)
     $canvasW = [Math]::Max($w1, $w2)
@@ -262,7 +263,6 @@ $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
-$env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
 $passwordA = "S3cret!Alice-59"
 $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
@@ -285,11 +285,26 @@ try {
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
     $states = @()
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline) {
-        $states = @(Read-AllStates)
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        Focus-Window $script:hwnd1
+        Click-Client $script:hwnd1 813 30
+        $deadline = (Get-Date).AddSeconds(6)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
         if ($states.Count -ge 2) { break }
-        Start-Sleep -Milliseconds 250
+        Click-Client $script:hwnd1 420 70
+        Send-Keys "^l"
+        Send-Keys "^n"
+        $deadline = (Get-Date).AddSeconds(6)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($states.Count -ge 2) { break }
     }
     if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
     $firstId = [int64]$states[0].window_id
@@ -395,7 +410,11 @@ try {
         if ($filled) { break }
     }
     $pendingReady = $false
+    $aliceRevisionBeforeCancel = $null
     if ($filled) {
+        $beforeCancel = Read-State $script:hwnd2
+        $aliceBefore = @($beforeCancel.password_vault.entries | Where-Object username -eq "alice")[0]
+        if ($null -ne $aliceBefore) { $aliceRevisionBeforeCancel = $aliceBefore.revision }
         $loginButton = $page.loginRect
         Click-Web $script:hwnd2 ([int]$loginButton.left + [int]($loginButton.width / 2)) ([int]$loginButton.top + [int]($loginButton.height / 2))
         try {
@@ -407,6 +426,29 @@ try {
         }
     } else {
         Add-Result "pending-created" "UNVERIFIED" "could not fill login form in window2"
+    }
+
+    if ($pendingReady) {
+        $cancelled = $false
+        foreach ($cx in 655, 670, 685) {
+            Click-Client $script:hwnd2 $cx 302
+            Start-Sleep -Milliseconds 500
+            $afterCancel = Read-State $script:hwnd2
+            if ($null -eq $afterCancel.password_vault.pending) { $cancelled = $true; break }
+        }
+        if (-not $cancelled) { throw "pending cancel button did not clear pending" }
+        $afterCancel = Read-State $script:hwnd2
+        $aliceAfter = @($afterCancel.password_vault.entries | Where-Object username -eq "alice")[0]
+        if ($null -ne $aliceRevisionBeforeCancel -and $null -ne $aliceAfter -and $aliceAfter.revision -ne $aliceRevisionBeforeCancel) {
+            throw "cancel unexpectedly saved/updated alice"
+        }
+        Add-Result "pending-cancel" "PASS" "저장하지 않기 cleared pending; alice revision unchanged ($aliceRevisionBeforeCancel)"
+
+        # Re-create a pending proposal so lock propagation also covers it.
+        $loginButton = $page.loginRect
+        Click-Web $script:hwnd2 ([int]$loginButton.left + [int]($loginButton.width / 2)) ([int]$loginButton.top + [int]($loginButton.height / 2))
+        [void](Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.pending } 10 "window2 pending recreated")
+        Add-Result "pending-recreated" "PASS" "pending proposal recreated for lock propagation"
     }
 
     # Cross-window lock propagation.
@@ -441,7 +483,6 @@ try {
 
     Remove-Item $StatusDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $StatusDir | Out-Null
-    $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "0"
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-WindowCount 1 60 "restart window"
     $script:hwnd1 = [IntPtr][int64]$states[0].window_handle
@@ -455,7 +496,13 @@ try {
     if ([int64]$restored.password_vault.tombstones -lt $beforeTombs) { throw "tombstones lost after restart" }
     $vaultHashAfter = (Get-FileHash $vaultPath -Algorithm SHA256).Hash
     if ($vaultHashAfter -ne $vaultHashBefore) { throw "vault changed merely by unlock after restart" }
-    Add-Result "restart-integrity" "PASS" "alice+bob+carol remain; dave/erin absent; tombstones=$($restored.password_vault.tombstones); vault hash unchanged"
+    if ($null -ne $aliceRevisionBeforeCancel) {
+        $aliceRestart = @($restored.password_vault.entries | Where-Object username -eq "alice")[0]
+        if ($null -eq $aliceRestart -or $aliceRestart.revision -ne $aliceRevisionBeforeCancel) {
+            throw "cancelled pending changed alice revision after restart"
+        }
+    }
+    Add-Result "restart-integrity" "PASS" "alice+bob+carol remain; dave/erin absent; cancelled pending not saved; tombstones=$($restored.password_vault.tombstones); vault hash unchanged"
     Shot-Window $script:hwnd1 "11-restart-integrity.png"
 
     [void][AmareVaultWin]::ShowWindow($script:hwnd1, 3)
