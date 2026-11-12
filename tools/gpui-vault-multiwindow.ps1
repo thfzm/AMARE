@@ -299,7 +299,7 @@ try {
         if ($states.Count -ge 2) { break }
         Click-Client $script:hwnd1 420 70
         Send-Keys "^l"
-        Send-Keys "^n"
+        Send-GpuiShortcut $script:hwnd1 0x4E
         $deadline = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $deadline) {
             $states = @(Read-AllStates)
@@ -308,7 +308,7 @@ try {
         }
         if ($states.Count -ge 2) { break }
         Click-Client $script:hwnd1 420 70
-        Send-Keys "^+n"
+        Send-GpuiShortcut $script:hwnd1 0x4E
         $deadline = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $deadline) {
             $states = @(Read-AllStates)

@@ -141,7 +141,7 @@ function Ensure-Tabs([int]$target) {
         Force-Focus $script:hwnd
         $origin = Get-Origin $script:hwnd
         Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
-        Send-Keys "^t"
+        Send-GpuiShortcut $script:hwnd 0x54
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -150,7 +150,7 @@ function Ensure-Tabs([int]$target) {
         }
         if (@((Read-State).tabs).Count -ge $target) { continue }
         Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
-        Send-Keys "^t"
+        Send-GpuiShortcut $script:hwnd 0x54
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -278,7 +278,7 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     $ctrlT = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        Send-Keys "^t"
+        Send-GpuiShortcut $script:hwnd 0x54
         try {
             $two = Wait-Tabs 2 8 "second tab via Ctrl+T"
             $ctrlT = $true

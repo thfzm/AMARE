@@ -118,7 +118,7 @@ function Ensure-Tabs([int]$target) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         Force-Focus $script:hwnd
-        Send-Keys "^t"
+        Send-GpuiShortcut $script:hwnd 0x54
         $deadline = (Get-Date).AddSeconds(25)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
