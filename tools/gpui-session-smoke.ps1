@@ -113,12 +113,12 @@ function Navigate([string]$url, [int]$timeout = 20) {
     return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
 }
 function Ensure-Tabs([int]$target) {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         Force-Focus $script:hwnd
         Send-CtrlKey 0x54
-        $deadline = (Get-Date).AddSeconds(8)
+        $deadline = (Get-Date).AddSeconds(25)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { return $state }

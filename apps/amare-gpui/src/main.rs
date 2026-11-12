@@ -2257,7 +2257,11 @@ impl AmareApp {
             return;
         }
         self.second_window_started = true;
-        self.open_new_window(cx);
+        cx.spawn(async move |this, cx| {
+            Timer::after(Duration::from_millis(100)).await;
+            let _ = this.update(cx, |app, cx| app.open_new_window(cx));
+        })
+        .detach();
     }
 
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {

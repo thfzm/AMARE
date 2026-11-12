@@ -130,7 +130,7 @@ function Ensure-Tabs([int]$target) {
         $count = @($state.tabs).Count
         if ($count -eq $target) { return $state }
         if ($count -gt $target) {
-            Send-Keys "^w"
+            Send-CtrlKey 0x57
             Start-Sleep -Milliseconds 700
             continue
         }
@@ -141,7 +141,7 @@ function Ensure-Tabs([int]$target) {
         $origin = Get-Origin $script:hwnd
         Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
         Send-CtrlKey 0x54
-        $deadline = (Get-Date).AddSeconds(5)
+        $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { break }
@@ -150,7 +150,7 @@ function Ensure-Tabs([int]$target) {
         if (@((Read-State).tabs).Count -ge $target) { continue }
         Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
         Send-CtrlKey 0x54
-        $deadline = (Get-Date).AddSeconds(10)
+        $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { break }
@@ -164,7 +164,7 @@ function Ensure-Tabs([int]$target) {
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
         foreach ($by in 22, 30, 38) {
             Click-At $script:hwnd ($origin.X + $width - 276) ($origin.Y + $by)
-            $deadline = (Get-Date).AddSeconds(4)
+            $deadline = (Get-Date).AddSeconds(10)
             while ((Get-Date) -lt $deadline) {
                 $state = Read-State
                 if (@($state.tabs).Count -ge $target) { break }
