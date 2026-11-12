@@ -319,20 +319,25 @@ try {
 
     $filled = $false
     $page = $null
-    foreach ($y in 245, 249, 255, 260) {
-        foreach ($x in 970, 982, 995) {
+    $filledUser = ""
+    $filledLength = 0
+    foreach ($y in 238, 245, 252, 260, 270, 280, 290, 300, 310, 320) {
+        foreach ($x in 958, 970, 982, 995, 1008, 1020) {
             Click-Client $script:hwnd $x $y
-            Start-Sleep -Milliseconds 600
+            Start-Sleep -Milliseconds 550
             $page = Get-PageState
-            if ($null -ne $page -and $page.user -eq "alice" -and [int]$page.passwordLen -eq $passwordA.Length -and -not $page.submitted) {
-                $filled = $true
-                break
+            if ($null -eq $page -or $page.submitted) { continue }
+            if ($page.user -eq "alice" -and [int]$page.passwordLen -eq $passwordA.Length) {
+                $filled = $true; $filledUser = "alice"; $filledLength = [int]$page.passwordLen; break
+            }
+            if ($page.user -eq "bob" -and [int]$page.passwordLen -eq $passwordB.Length) {
+                $filled = $true; $filledUser = "bob"; $filledLength = [int]$page.passwordLen; break
             }
         }
         if ($filled) { break }
     }
-    if (-not $filled) { throw "autofill validation failed" }
-    Add-Result "origin-scoped-autofill" "PASS" "user=alice passwordLen=$($passwordA.Length) submitted=false"
+    if (-not $filled) { throw "autofill validation failed (user=$($page.user) len=$($page.passwordLen))" }
+    Add-Result "origin-scoped-autofill" "PASS" "user=$filledUser passwordLen=$filledLength submitted=false"
 
     $loginButton = $page.loginRect
     Click-Web $script:hwnd ([int]$loginButton.left + [int]($loginButton.width / 2)) ([int]$loginButton.top + [int]($loginButton.height / 2))
