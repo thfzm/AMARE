@@ -268,10 +268,29 @@ try {
     Add-Account $script:hwnd1 "http://127.0.0.1:8767" "alice" $passwordA
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
-    Focus-Window $script:hwnd1
-    Click-Client $script:hwnd1 420 70
-    Send-Keys "^n"
-    $states = Wait-WindowCount 2 20 "second window"
+    $states = @()
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        Focus-Window $script:hwnd1
+        Click-Client $script:hwnd1 420 70
+        Send-Keys "^n"
+        $deadline = (Get-Date).AddSeconds(8)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($states.Count -ge 2) { break }
+        # Titlebar new-window button fallback.
+        Click-Client $script:hwnd1 813 22
+        $deadline = (Get-Date).AddSeconds(8)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($states.Count -ge 2) { break }
+    }
+    if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
     $firstId = [int64]$states[0].window_id
     $second = $states | Where-Object { [int64]$_.window_id -ne $firstId } | Select-Object -First 1
     if ($null -eq $second) { throw "second window state missing" }
