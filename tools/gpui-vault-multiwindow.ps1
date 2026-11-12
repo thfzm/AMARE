@@ -469,6 +469,7 @@ try {
 
     Remove-Item $StatusDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $StatusDir | Out-Null
+    $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "0"
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-WindowCount 1 60 "restart window"
     $script:hwnd1 = [IntPtr][int64]$states[0].window_handle
