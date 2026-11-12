@@ -13,6 +13,7 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
 }
 '@
 }
@@ -49,9 +50,12 @@ function Force-AmareForeground([IntPtr]$hwnd) {
 
 function Send-GpuiShortcut([IntPtr]$hwnd, [int]$vk, [switch]$NoCtrl) {
     [void](Force-AmareForeground $hwnd)
+    $scan = [AmareTestFocus]::MapVirtualKey([uint32]$vk, 0)
+    $down = [int64](1 -bor ($scan -shl 16))
+    $up = [int64](0xC0000001 -bor ($scan -shl 16))
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero) }
-    [void][AmareTestFocus]::PostMessage($hwnd, 0x0100, [IntPtr]$vk, [IntPtr]1)
-    [void][AmareTestFocus]::PostMessage($hwnd, 0x0101, [IntPtr]$vk, [IntPtr]1)
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0100, [IntPtr]$vk, [IntPtr]$down)
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0101, [IntPtr]$vk, [IntPtr]$up)
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero) }
     Start-Sleep -Milliseconds 300
 }
