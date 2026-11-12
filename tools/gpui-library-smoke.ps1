@@ -118,7 +118,7 @@ function Ensure-LibraryTabs([int]$target) {
         if (@($state.tabs).Count -ge $target) { return $state }
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 50 30
-        Send-CtrlKey 0x54
+        Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(5)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -126,7 +126,7 @@ function Ensure-LibraryTabs([int]$target) {
             Start-Sleep -Milliseconds 250
         }
         Click-Client $script:hwnd 420 70
-        Send-CtrlKey 0x54
+        Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(10)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State

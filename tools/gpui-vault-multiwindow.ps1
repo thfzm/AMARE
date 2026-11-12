@@ -287,7 +287,19 @@ try {
     $states = @()
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         Focus-Window $script:hwnd1
-        Click-Client $script:hwnd1 813 30
+        foreach ($nx in 805, 813, 821) {
+            foreach ($ny in 22, 30, 38) {
+                Click-Client $script:hwnd1 $nx $ny
+                Start-Sleep -Milliseconds 400
+                $states = @(Read-AllStates)
+                if ($states.Count -ge 2) { break }
+            }
+            if ($states.Count -ge 2) { break }
+        }
+        if ($states.Count -ge 2) { break }
+        Click-Client $script:hwnd1 420 70
+        Send-Keys "^l"
+        Send-Keys "^n"
         $deadline = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $deadline) {
             $states = @(Read-AllStates)
@@ -296,8 +308,7 @@ try {
         }
         if ($states.Count -ge 2) { break }
         Click-Client $script:hwnd1 420 70
-        Send-Keys "^l"
-        Send-Keys "^n"
+        Send-Keys "^+n"
         $deadline = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $deadline) {
             $states = @(Read-AllStates)

@@ -131,7 +131,7 @@ function Ensure-Tabs([int]$target) {
         $count = @($state.tabs).Count
         if ($count -eq $target) { return $state }
         if ($count -gt $target) {
-            Send-CtrlKey 0x57
+            Send-Keys "^w"
             Start-Sleep -Milliseconds 700
             continue
         }
@@ -141,7 +141,7 @@ function Ensure-Tabs([int]$target) {
         Force-Focus $script:hwnd
         $origin = Get-Origin $script:hwnd
         Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
-        Send-CtrlKey 0x54
+        Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -150,7 +150,7 @@ function Ensure-Tabs([int]$target) {
         }
         if (@((Read-State).tabs).Count -ge $target) { continue }
         Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
-        Send-CtrlKey 0x54
+        Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -278,7 +278,7 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     $ctrlT = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        Send-CtrlKey 0x54
+        Send-Keys "^t"
         try {
             $two = Wait-Tabs 2 8 "second tab via Ctrl+T"
             $ctrlT = $true
