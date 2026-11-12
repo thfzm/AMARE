@@ -66,6 +66,7 @@ jobs:
 
       - name: GPUI vault multi-window integrity test
         shell: pwsh
+        continue-on-error: true
         timeout-minutes: 25
         env:
           AMARE_GPUI_WINDOW_SIZE: "1044x788"

@@ -269,18 +269,31 @@ try {
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
     $states = @()
-    for ($attempt = 0; $attempt -lt 5; $attempt++) {
-        Focus-Window $script:hwnd1
-        Click-Client $script:hwnd1 420 70
-        Send-Keys "^n"
-        $deadline = (Get-Date).AddSeconds(8)
-        while ((Get-Date) -lt $deadline) {
-            $states = @(Read-AllStates)
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        $strategies = @(
+            @{ kind = "keys"; keys = "^l"; second = "^n" },
+            @{ kind = "keys"; keys = "^l"; second = "^+n" },
+            @{ kind = "click"; keys = "^n" }
+        )
+        foreach ($strategy in $strategies) {
+            Focus-Window $script:hwnd1
+            if ($strategy.kind -eq "keys") {
+                Click-Client $script:hwnd1 420 70
+                Send-Keys $strategy.keys
+                Send-Keys $strategy.second
+            } else {
+                Click-Client $script:hwnd1 500 400
+                Send-Keys $strategy.keys
+            }
+            $deadline = (Get-Date).AddSeconds(6)
+            while ((Get-Date) -lt $deadline) {
+                $states = @(Read-AllStates)
+                if ($states.Count -ge 2) { break }
+                Start-Sleep -Milliseconds 250
+            }
             if ($states.Count -ge 2) { break }
-            Start-Sleep -Milliseconds 250
         }
         if ($states.Count -ge 2) { break }
-        # Titlebar new-window button fallback.
         Click-Client $script:hwnd1 813 22
         $deadline = (Get-Date).AddSeconds(8)
         while ((Get-Date) -lt $deadline) {

@@ -5111,6 +5111,7 @@ fn main() {
             KeyBinding::new("ctrl-t", NewTab, None),
             KeyBinding::new("ctrl-w", CloseTab, None),
             KeyBinding::new("ctrl-n", NewWindow, None),
+            KeyBinding::new("ctrl-shift-n", NewWindow, None),
             KeyBinding::new("ctrl-d", ToggleBookmark, None),
             KeyBinding::new("ctrl-shift-b", ToggleBookmarksPanel, None),
             KeyBinding::new("ctrl-shift-h", ToggleHistoryPanel, None),
