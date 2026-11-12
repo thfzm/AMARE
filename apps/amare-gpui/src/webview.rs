@@ -1063,7 +1063,14 @@ impl WebViewHost {
         let result = self
             .execute_script("[Math.round(window.scrollX), Math.round(window.scrollY)]")
             .ok()?;
-        let values: Vec<i64> = serde_json::from_str(&result).ok()?;
+        let values: Vec<i64> = serde_json::from_str(&result)
+            .or_else(|_| {
+                serde_json::from_str::<String>(&result)
+                    .ok()
+                    .and_then(|nested| serde_json::from_str(&nested).ok())
+                    .ok_or(())
+            })
+            .ok()?;
         if values.len() == 2 {
             Some((values[0], values[1]))
         } else {

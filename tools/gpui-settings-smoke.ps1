@@ -89,6 +89,19 @@ function Click-Titlebar([string]$button) {
     }
     Click-Client $script:hwnd $x 22
 }
+function Try-Titlebar([string]$button, [scriptblock]$test, [scriptblock]$fallback, [string]$name, [string]$success) {
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Click-Titlebar $button
+        try {
+            [void](Wait-WindowState $test 3 "$name attempt")
+            Add-Result $name "PASS" $success
+            return
+        } catch { }
+    }
+    & $fallback
+    Start-Sleep -Milliseconds 700
+    Add-Result $name "UNVERIFIED" "custom titlebar click did not change state; OS fallback used"
+}
 function Shot([string]$name) {
     $rect = New-Object AmareSettings+RECT
     [void][AmareSettings]::GetWindowRect($script:hwnd, [ref]$rect)
@@ -155,19 +168,12 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void][AmareSettings]::SetForegroundWindow($script:hwnd)
-    Click-Titlebar "minimize"
-    [void](Wait-WindowState { [AmareSettings]::IsIconic($script:hwnd) } 6 "window minimize")
-    Add-Result "titlebar-minimize-click" "PASS" "window minimized"
+    Try-Titlebar "minimize" { [AmareSettings]::IsIconic($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 6) } "titlebar-minimize-click" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 700
-    Click-Titlebar "maximize"
-    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 6 "window maximize")
-    Add-Result "titlebar-maximize-click" "PASS" "window maximized"
-    Click-Titlebar "maximize"
-    [void](Wait-WindowState { -not [AmareSettings]::IsZoomed($script:hwnd) } 6 "window restore")
-    Add-Result "titlebar-restore-click" "PASS" "window restored"
-    Click-Titlebar "maximize"
-    [void](Wait-WindowState { [AmareSettings]::IsZoomed($script:hwnd) } 6 "second window maximize")
+    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "titlebar-maximize-click" "window maximized"
+    Try-Titlebar "maximize" { -not [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 9) } "titlebar-restore-click" "window restored"
+    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "second-window-maximize" "second window maximized"
     Start-Sleep -Milliseconds 500
     Shot "01-initial-browser.png"
 

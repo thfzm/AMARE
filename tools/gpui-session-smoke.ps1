@@ -63,6 +63,9 @@ function Scroll-Page {
             if ($null -ne $state -and @($state.tabs).Count -gt 0) {
                 $firstTab = @($state.tabs)[0]
                 if ([int64]$firstTab.scroll_y -gt 100) { return $state }
+                if ([string]$state.title -match '^SCROLL:([0-9]+)') {
+                    if ([int64]$matches[1] -gt 100) { return $state }
+                }
             }
             Start-Sleep -Milliseconds 250
         }

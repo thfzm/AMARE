@@ -95,6 +95,14 @@ function Ensure-LibraryTabs([int]$target) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         [void][AmareLib]::SetForegroundWindow($script:hwnd)
+        Click-Client $script:hwnd 50 30
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { return $state }
+            Start-Sleep -Milliseconds 250
+        }
         Click-Client $script:hwnd 420 70
         Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(10)
@@ -106,12 +114,14 @@ function Ensure-LibraryTabs([int]$target) {
         $rect = New-Object AmareLib+RECT
         [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect)
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
-        Click-Client $script:hwnd ($width - 276) 22
-        $deadline = (Get-Date).AddSeconds(10)
-        while ((Get-Date) -lt $deadline) {
-            $state = Read-State
-            if (@($state.tabs).Count -ge $target) { return $state }
-            Start-Sleep -Milliseconds 250
+        foreach ($by in 22, 30, 38) {
+            Click-Client $script:hwnd ($width - 276) $by
+            $deadline = (Get-Date).AddSeconds(4)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { return $state }
+                Start-Sleep -Milliseconds 250
+            }
         }
     }
     throw "Could not create $target tabs"

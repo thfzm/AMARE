@@ -169,11 +169,13 @@ function Fill-VaultField([IntPtr]$hwnd, [string]$field, [string]$text, [int[]]$y
     return $false
 }
 function Save-Form([IntPtr]$hwnd) {
-    foreach ($y in 431, 443, 455, 467, 479) {
-        Click-Client $hwnd 994 $y
-        Start-Sleep -Milliseconds 500
-        $state = Read-State $hwnd
-        if ($null -ne $state -and (-not $state.password_vault.form_open -or $null -ne $state.password_vault.conflict)) { return $state }
+    foreach ($x in 994, 1004, 1014) {
+        foreach ($y in 405, 417, 429, 441, 453, 465, 477) {
+            Click-Client $hwnd $x $y
+            Start-Sleep -Milliseconds 400
+            $state = Read-State $hwnd
+            if ($null -ne $state -and (-not $state.password_vault.form_open -or $null -ne $state.password_vault.conflict)) { return $state }
+        }
     }
     throw "Could not submit password form"
 }

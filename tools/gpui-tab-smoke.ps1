@@ -120,6 +120,15 @@ function Ensure-Tabs([int]$target) {
         # key, so always establish a known focus first.
         [void][AmareTab]::SetForegroundWindow($script:hwnd)
         $origin = Get-Origin $script:hwnd
+        Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if (@($state.tabs).Count -ge $target) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if (@((Read-State).tabs).Count -ge $target) { continue }
         Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
         Send-Keys "^t"
         $deadline = (Get-Date).AddSeconds(10)
@@ -134,12 +143,15 @@ function Ensure-Tabs([int]$target) {
         $rect = Get-Rect $script:hwnd
         $origin = Get-Origin $script:hwnd
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
-        Click-At $script:hwnd ($origin.X + $width - 276) ($origin.Y + 22)
-        $deadline = (Get-Date).AddSeconds(12)
-        while ((Get-Date) -lt $deadline) {
-            $state = Read-State
-            if (@($state.tabs).Count -ge $target) { break }
-            Start-Sleep -Milliseconds 250
+        foreach ($by in 22, 30, 38) {
+            Click-At $script:hwnd ($origin.X + $width - 276) ($origin.Y + $by)
+            $deadline = (Get-Date).AddSeconds(4)
+            while ((Get-Date) -lt $deadline) {
+                $state = Read-State
+                if (@($state.tabs).Count -ge $target) { break }
+                Start-Sleep -Milliseconds 250
+            }
+            if (@((Read-State).tabs).Count -ge $target) { break }
         }
     }
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
