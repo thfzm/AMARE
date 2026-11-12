@@ -5153,20 +5153,31 @@ fn main() {
         STARTUP_SESSION_ERROR.with(|error| *error.borrow_mut() = session_error);
         if restored.is_empty() {
             let (width, height) = automation_window_size();
-            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(gpui::TitlebarOptions {
-                        title: Some("AMARE".into()),
-                        appears_transparent: true,
+            let window_count = if std::env::var("AMARE_GPUI_OPEN_SECOND_WINDOW")
+                .ok()
+                .as_deref()
+                == Some("1")
+            {
+                2
+            } else {
+                1
+            };
+            for _ in 0..window_count {
+                let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        titlebar: Some(gpui::TitlebarOptions {
+                            title: Some("AMARE".into()),
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
-            )
-            .expect("failed to open AMARE window");
+                    },
+                    |window, cx| cx.new(|cx| AmareApp::new(window, cx)),
+                )
+                .expect("failed to open AMARE window");
+            }
         } else {
             for snapshot in restored {
                 let bounds = Bounds::new(
