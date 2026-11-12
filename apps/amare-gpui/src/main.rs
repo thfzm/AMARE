@@ -2247,21 +2247,17 @@ impl AmareApp {
     }
 
     fn maybe_open_second_window(&mut self, cx: &mut Context<Self>) {
-        if self.second_window_started
-            || std::env::var("AMARE_GPUI_OPEN_SECOND_WINDOW")
-                .ok()
-                .as_deref()
-                != Some("1")
-            || self.window_id != 1
-        {
+        if self.second_window_started || self.window_id != 1 {
+            return;
+        }
+        let Ok(trigger) = std::env::var("AMARE_GPUI_SECOND_WINDOW_TRIGGER") else {
+            return;
+        };
+        if !std::path::Path::new(&trigger).exists() {
             return;
         }
         self.second_window_started = true;
-        cx.spawn(async move |this, cx| {
-            Timer::after(Duration::from_millis(1500)).await;
-            let _ = this.update(cx, |app, cx| app.open_new_window(cx));
-        })
-        .detach();
+        self.open_new_window(cx);
     }
 
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {

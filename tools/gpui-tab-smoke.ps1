@@ -59,6 +59,17 @@ function Wait-State([scriptblock]$condition, [int]$seconds, [string]$label) {
     throw "Timed out waiting for $label"
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 150 }
+function Force-Focus([IntPtr]$hwnd) {
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        [void][AmareTab]::SetForegroundWindow($hwnd)
+        if ([AmareTab]::GetForegroundWindow() -eq $hwnd) { return }
+        Start-Sleep -Milliseconds 150
+    }
+    [AmareTab]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [void][AmareTab]::SetForegroundWindow($hwnd)
+    [AmareTab]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 150
+}
 function Send-CtrlKey([int]$vk) {
     [AmareTab]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
     [AmareTab]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
@@ -126,7 +137,7 @@ function Ensure-Tabs([int]$target) {
         # Focus the GPUI toolbar before asking for a new tab. When the focus is
         # inside WebView2 the async accelerator forwarding can race the next
         # key, so always establish a known focus first.
-        [void][AmareTab]::SetForegroundWindow($script:hwnd)
+        Force-Focus $script:hwnd
         $origin = Get-Origin $script:hwnd
         Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
         Send-CtrlKey 0x54

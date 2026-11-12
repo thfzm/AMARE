@@ -255,7 +255,8 @@ $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
-$env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
+$trigger = Join-Path $DataDir "open-second-window.trigger"
+$env:AMARE_GPUI_SECOND_WINDOW_TRIGGER = $trigger
 $passwordA = "S3cret!Alice-59"
 $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
@@ -277,24 +278,13 @@ try {
     Add-Account $script:hwnd1 "http://127.0.0.1:8767" "alice" $passwordA
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
+    New-Item -ItemType File -Force -Path $trigger | Out-Null
     $states = @()
-    if ($env:AMARE_GPUI_OPEN_SECOND_WINDOW -eq "1") {
-        $deadline = (Get-Date).AddSeconds(25)
-        while ((Get-Date) -lt $deadline) {
-            $states = @(Read-AllStates)
-            if ($states.Count -ge 2) { break }
-            Start-Sleep -Milliseconds 250
-        }
-    } else {
-        Focus-Window $script:hwnd1
-        Click-Client $script:hwnd1 420 70
-        Send-Keys "^n"
-        $deadline = (Get-Date).AddSeconds(20)
-        while ((Get-Date) -lt $deadline) {
-            $states = @(Read-AllStates)
-            if ($states.Count -ge 2) { break }
-            Start-Sleep -Milliseconds 250
-        }
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        $states = @(Read-AllStates)
+        if ($states.Count -ge 2) { break }
+        Start-Sleep -Milliseconds 250
     }
     if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
     $firstId = [int64]$states[0].window_id
