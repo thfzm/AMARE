@@ -226,7 +226,6 @@ jobs:
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
-        env:
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
