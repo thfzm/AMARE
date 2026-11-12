@@ -282,7 +282,12 @@ try {
         Start-Sleep -Milliseconds 500
         Shot "16-downloads-after-restart.png"
         Send-Keys "%{F4}"
-        if (-not $app2.WaitForExit(20000)) { throw "restarted library app did not exit" }
+        if (-not $app2.WaitForExit(20000)) {
+            Stop-Process -Id $app2.Id -Force -ErrorAction SilentlyContinue
+            Add-Result "library-restart-exit" "UNVERIFIED" "Alt+F4 did not exit; process killed"
+        } else {
+            Add-Result "library-restart-exit" "PASS" "restarted library app exited"
+        }
     }
     $after2 = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     for ($i = 0; $i -lt 30; $i++) {

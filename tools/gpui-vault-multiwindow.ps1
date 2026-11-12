@@ -25,6 +25,7 @@ public static class AmareVaultWin {
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 }
 '@
 
@@ -74,15 +75,21 @@ function Wait-State([IntPtr]$hwnd, [scriptblock]$condition, [int]$seconds, [stri
     throw "Timed out waiting for $label"
 }
 function Focus-Window([IntPtr]$hwnd) {
-    [void][AmareVaultWin]::ShowWindow($hwnd, 9)
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        [void][AmareVaultWin]::SetForegroundWindow($hwnd)
+        if ([AmareVaultWin]::GetForegroundWindow() -eq $hwnd) { Start-Sleep -Milliseconds 150; return }
+        Start-Sleep -Milliseconds 150
+    }
+    [AmareVaultWin]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
     [void][AmareVaultWin]::SetForegroundWindow($hwnd)
-    Start-Sleep -Milliseconds 200
+    [AmareVaultWin]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 150
 }
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 180 }
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareVaultWin+POINT
     [void][AmareVaultWin]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmareVaultWin]::SetForegroundWindow($hwnd)
+    Focus-Window $hwnd
     [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmareVaultWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -221,7 +228,7 @@ function Close-Passwords([IntPtr]$hwnd) {
 function Click-Web([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareVaultWin+POINT
     [void][AmareVaultWin]::ClientToScreen($hwnd, [ref]$point)
-    [void][AmareVaultWin]::SetForegroundWindow($hwnd)
+    Focus-Window $hwnd
     [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + 88 + $y))
     Start-Sleep -Milliseconds 120
     [AmareVaultWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)

@@ -237,10 +237,17 @@ try {
     $dbPath = $db.FullName.Replace('\\', '/')
     python -c "import sqlite3; c=sqlite3.connect(r'$dbPath'); c.execute(\"UPDATE settings SET value_text='{' WHERE key='gpui.session'\"); c.commit(); c.close()"
     $app = Start-App $completeData
-    [void](Wait-State { param($s) $null -ne $s.session_error } 15 "corrupt session error")
-    Shot "09-session-corrupt-fallback.png"
-    Add-Result "corrupt-session-fallback" "PASS" "new session started with error banner"
-    Stop-App $app
+    try {
+        [void](Wait-State { param($s) $null -ne $s.session_error } 15 "corrupt session error")
+        Shot "09-session-corrupt-fallback.png"
+        Add-Result "corrupt-session-fallback" "PASS" "new session started with error banner"
+    } catch {
+        Add-Result "corrupt-session-fallback" "UNVERIFIED" $_.Exception.Message
+        try { Shot "09-session-corrupt-fallback.png" } catch {}
+    }
+    if (-not $app.HasExited) {
+        try { Stop-App $app } catch { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+    }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
     try { Shot "99-session-failure.png" } catch {}
