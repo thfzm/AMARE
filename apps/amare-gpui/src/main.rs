@@ -5094,6 +5094,7 @@ fn main() {
             KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
             KeyBinding::new("ctrl-shift-s", CapturePage, None),
+            KeyBinding::new("f9", CapturePage, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
             KeyBinding::new("ctrl-shift-tab", PreviousTab, None),
             KeyBinding::new("alt-left", BackPage, None),

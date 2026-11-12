@@ -141,7 +141,7 @@ function Capture-Page([string]$name) {
     $capture = $null
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
         Click-Client $script:hwnd 420 70
-        Send-Keys "^+s"
+        Send-Keys "{F9}"
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
@@ -154,7 +154,10 @@ function Capture-Page([string]$name) {
             }
             Start-Sleep -Milliseconds 250
         }
-        if ($null -eq $capture) { continue }
+        if ($null -eq $capture) {
+            $debug = Read-State
+            throw "CapturePreview action did not update status (count=$($debug.capture_count), error=$($debug.last_capture_error))"
+        }
         $source = [string]$capture.last_capture_path
         if (-not (Test-Path $source)) { throw "CapturePreview file missing: $source" }
         $target = Join-Path $ScreenshotDir $name
@@ -228,7 +231,6 @@ try {
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
-    Capture-Page "02-page-content-example.png"
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
     Send-Keys "{ENTER}"
