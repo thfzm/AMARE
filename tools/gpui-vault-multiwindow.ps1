@@ -168,6 +168,15 @@ function Fill-VaultField([IntPtr]$hwnd, [string]$field, [string]$text, [int[]]$y
     }
     return $false
 }
+function Save-Form([IntPtr]$hwnd) {
+    foreach ($y in 431, 443, 455, 467, 479) {
+        Click-Client $hwnd 994 $y
+        Start-Sleep -Milliseconds 500
+        $state = Read-State $hwnd
+        if ($null -ne $state -and (-not $state.password_vault.form_open -or $null -ne $state.password_vault.conflict)) { return $state }
+    }
+    throw "Could not submit password form"
+}
 function Add-Account([IntPtr]$hwnd, [string]$origin, [string]$user, [string]$password) {
     Open-Passwords $hwnd
     $before = Read-State $hwnd
@@ -177,7 +186,7 @@ function Add-Account([IntPtr]$hwnd, [string]$origin, [string]$user, [string]$pas
     if (-not (Fill-VaultField $hwnd "origin" $origin @(250,258,266,274,282,290))) { throw "origin field not focused" }
     if (-not (Fill-VaultField $hwnd "username" $user @(300,308,316,324,332,340,348))) { throw "username field not focused" }
     if (-not (Fill-VaultField $hwnd "password" $password @(358,366,374,382,390,398))) { throw "password field not focused" }
-    Click-Client $hwnd 994 431
+    [void](Save-Form $hwnd)
     [void](Wait-State $hwnd { param($s) -not $s.password_vault.form_open -and @($s.password_vault.entries).Count -eq $count + 1 } 12 "account save")
 }
 function Get-EntryIndex($state, [string]$user) {
@@ -283,9 +292,9 @@ try {
     [void](Fill-VaultField $script:hwnd1 "password" $passwordA @(358,366,374,382,390,398))
     [void](Click-EntryAction $script:hwnd2 "bob" "edit")
     [void](Fill-VaultField $script:hwnd2 "password" $passwordB @(358,366,374,382,390,398))
-    Click-Client $script:hwnd1 994 431
+    [void](Save-Form $script:hwnd1)
     [void](Wait-State $script:hwnd1 { param($s) -not $s.password_vault.form_open } 10 "alice independent edit")
-    Click-Client $script:hwnd2 994 431
+    [void](Save-Form $script:hwnd2)
     [void](Wait-State $script:hwnd2 { param($s) -not $s.password_vault.form_open } 10 "bob independent edit")
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries).Count -eq 2 } 10 "independent edits remain")
     Add-Result "independent-edit-preserved" "PASS" "alice and bob independent edits both saved"
@@ -294,10 +303,10 @@ try {
     [void](Click-EntryAction $script:hwnd2 "alice" "edit")
     [void](Click-EntryAction $script:hwnd1 "alice" "edit")
     [void](Fill-VaultField $script:hwnd1 "password" "S3cret!Alice-conflict-A" @(358,366,374,382,390,398))
-    Click-Client $script:hwnd1 994 431
+    [void](Save-Form $script:hwnd1)
     [void](Wait-State $script:hwnd1 { param($s) -not $s.password_vault.form_open -and $null -eq $s.password_vault.conflict } 10 "first conflict write")
     [void](Fill-VaultField $script:hwnd2 "password" "S3cret!Alice-conflict-B" @(358,366,374,382,390,398))
-    Click-Client $script:hwnd2 994 431
+    [void](Save-Form $script:hwnd2)
     $conflict = Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.conflict } 12 "stale write rejected"
     Add-Result "same-entry-conflict" "PASS" "second write rejected; conflict=$($conflict.password_vault.conflict)"
     Shot-Window $script:hwnd2 "07-conflict-ui.png"
@@ -315,7 +324,7 @@ try {
     Click-Client $script:hwnd1 925 $script:lastActionY
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "dave deleted")
     [void](Fill-VaultField $script:hwnd2 "password" "S3cret!Dave-stale" @(358,366,374,382,390,398))
-    Click-Client $script:hwnd2 994 431
+    [void](Save-Form $script:hwnd2)
     $deleteConflict = Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.conflict } 12 "modify-delete conflict"
     if (@($deleteConflict.password_vault.entries | Where-Object username -eq "dave").Count -ne 0) { throw "deleted dave reappeared after conflict" }
     Add-Result "modify-delete-conflict" "PASS" "stale dave edit rejected and reloaded without dave"
@@ -332,7 +341,7 @@ try {
     if (-not (Fill-VaultField $script:hwnd2 "origin" "http://127.0.0.1:8767" @(250,258,266,274,282,290))) { throw "stale origin field" }
     if (-not (Fill-VaultField $script:hwnd2 "username" "carol" @(300,308,316,324,332,340,348))) { throw "stale username field" }
     if (-not (Fill-VaultField $script:hwnd2 "password" $passwordC @(358,366,374,382,390,398))) { throw "stale password field" }
-    Click-Client $script:hwnd2 994 431
+    [void](Save-Form $script:hwnd2)
     [void](Wait-State $script:hwnd2 { param($s) -not $s.password_vault.form_open -and @($s.password_vault.entries | Where-Object username -eq "carol").Count -eq 1 } 12 "stale save with carol")
     $stale = Read-State $script:hwnd2
     if (@($stale.password_vault.entries | Where-Object username -eq "erin").Count -ne 0) { throw "stale erin reappeared" }

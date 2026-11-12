@@ -372,6 +372,8 @@ try {
     Click-Client $script:hwnd 82 167
     [void](Wait-State { param($s) $s.settings_category -eq "appearance" } 8 "appearance category")
     Shot "11-settings.png"
+    Send-Keys "^,"
+    [void](Wait-State { param($s) $s.panel -eq "none" } 6 "settings closed for max")
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     $maxDeadline = (Get-Date).AddSeconds(8)
     while (-not [AmarePassword]::IsZoomed($script:hwnd) -and (Get-Date) -lt $maxDeadline) { Start-Sleep -Milliseconds 200 }
