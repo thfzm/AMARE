@@ -59,3 +59,14 @@ function Send-GpuiShortcut([IntPtr]$hwnd, [int]$vk, [switch]$NoCtrl) {
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero) }
     Start-Sleep -Milliseconds 300
 }
+
+function Send-GpuiClick([IntPtr]$hwnd, [int]$x, [int]$y) {
+    [void](Force-AmareForeground $hwnd)
+    $lp = [IntPtr](($y -shl 16) -bor ($x -band 0xFFFF))
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0200, [IntPtr]0, $lp)
+    Start-Sleep -Milliseconds 60
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0201, [IntPtr]1, $lp)
+    Start-Sleep -Milliseconds 80
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0202, [IntPtr]0, $lp)
+    Start-Sleep -Milliseconds 350
+}

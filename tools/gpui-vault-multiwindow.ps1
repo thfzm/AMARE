@@ -263,7 +263,6 @@ $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
-$env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
 $passwordA = "S3cret!Alice-59"
 $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
@@ -286,11 +285,33 @@ try {
     Add-Result "multi-add-alice" "PASS" "alice added in window 1"
 
     $states = @()
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline) {
-        $states = @(Read-AllStates)
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        foreach ($nx in 805, 813, 821) {
+            foreach ($ny in 22, 30, 38) {
+                Send-GpuiClick $script:hwnd1 $nx $ny
+                Start-Sleep -Milliseconds 250
+                $states = @(Read-AllStates)
+                if ($states.Count -ge 2) { break }
+            }
+            if ($states.Count -ge 2) { break }
+        }
         if ($states.Count -ge 2) { break }
-        Start-Sleep -Milliseconds 250
+        Send-GpuiShortcut $script:hwnd1 0x4E
+        $deadline = (Get-Date).AddSeconds(6)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($states.Count -ge 2) { break }
+        Send-Keys "^n"
+        $deadline = (Get-Date).AddSeconds(6)
+        while ((Get-Date) -lt $deadline) {
+            $states = @(Read-AllStates)
+            if ($states.Count -ge 2) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($states.Count -ge 2) { break }
     }
     if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
     $firstId = [int64]$states[0].window_id
@@ -469,7 +490,6 @@ try {
 
     Remove-Item $StatusDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $StatusDir | Out-Null
-    $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "0"
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-WindowCount 1 60 "restart window"
     $script:hwnd1 = [IntPtr][int64]$states[0].window_handle

@@ -137,7 +137,7 @@ function Ensure-LibraryTabs([int]$target) {
         [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$rect)
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
         foreach ($by in 22, 30, 38) {
-            Click-Client $script:hwnd ($width - 276) $by
+            Send-GpuiClick $script:hwnd ($width - 276) $by
             $deadline = (Get-Date).AddSeconds(4)
             while ((Get-Date) -lt $deadline) {
                 $state = Read-State

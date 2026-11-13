@@ -164,7 +164,7 @@ function Ensure-Tabs([int]$target) {
         $origin = Get-Origin $script:hwnd
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
         foreach ($by in 22, 30, 38) {
-            Click-At $script:hwnd ($origin.X + $width - 276) ($origin.Y + $by)
+            Send-GpuiClick $script:hwnd ($width - 276) $by
             $deadline = (Get-Date).AddSeconds(10)
             while ((Get-Date) -lt $deadline) {
                 $state = Read-State
