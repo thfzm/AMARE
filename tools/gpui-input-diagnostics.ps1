@@ -76,7 +76,7 @@ try {
     # Real OS mouse click scan on the new-tab toolbar button.
     $beforeTabs = @((Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1).tabs).Count
     $tabHit = $null
-    foreach ($x in 735, 745, 755, 765, 775, 785) {
+    foreach ($x in 792, 800, 808, 816, 824) {
         foreach ($y in 22, 30, 38, 46) {
             Send-RealClientClick $hwnd $x $y
             Start-Sleep -Milliseconds 800
@@ -97,7 +97,7 @@ try {
 
     # Real OS mouse click scan on the new-window toolbar button.
     $windowHit = $null
-    foreach ($x in 795, 805, 815, 825, 835) {
+    foreach ($x in 828, 836, 844, 852, 860) {
         foreach ($y in 22, 30, 38, 46) {
             Send-RealClientClick $hwnd $x $y
             Start-Sleep -Milliseconds 900

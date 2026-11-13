@@ -286,9 +286,9 @@ try {
 
     $states = @()
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
-        foreach ($nx in 805, 813, 821) {
+        foreach ($nx in 828, 836, 844, 852) {
             foreach ($ny in 22, 30, 38) {
-                Send-GpuiClick $script:hwnd1 $nx $ny
+                Send-RealClientClick $script:hwnd1 $nx $ny
                 Start-Sleep -Milliseconds 250
                 $states = @(Read-AllStates)
                 if ($states.Count -ge 2) { break }

@@ -83,9 +83,9 @@ function Click-Titlebar([string]$button) {
     [void][AmareSettings]::GetClientRect($script:hwnd, [ref]$rect)
     $width = [Math]::Max(640, $rect.Right - $rect.Left)
     $x = switch ($button) {
-        "minimize" { $width - 162 }
-        "maximize" { $width - 128 }
-        "close" { $width - 50 }
+        "minimize" { $width - 133 }
+        "maximize" { $width - 99 }
+        "close" { $width - 23 }
         default { throw "unknown titlebar button: $button" }
     }
     Click-Client $script:hwnd $x 22
