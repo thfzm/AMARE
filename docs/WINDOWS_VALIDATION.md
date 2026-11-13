@@ -82,11 +82,11 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.61.0)
+## 5. 현재 실행 상태 (0.62.0)
 
-- Windows CI [43376017765](https://github.com/thfzm/AMARE/actions/runs/43376017765): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
-- Linux CI [43376017585](https://github.com/thfzm/AMARE/actions/runs/43376017585): **SUCCESS**.
-- GPUI CI [43376017640](https://github.com/thfzm/AMARE/actions/runs/43376017640): **FAILURE** — 실제 Ctrl+T/새 탭 4 tabs current=2, Ctrl+N/새 창 windows=1. 실제 입력/3회 반복 목표 **미달**.
+- Windows CI [43414011274](https://github.com/thfzm/AMARE/actions/runs/43414011274): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
+- Linux CI [43414011463](https://github.com/thfzm/AMARE/actions/runs/43414011463): **SUCCESS**.
+- GPUI CI [43414011192](https://github.com/thfzm/AMARE/actions/runs/43414011192): **FAILURE** — input diagnostics. Ctrl+T/Ctrl+N action 1회 도달, 반복 foreground/focus 실패, button hit-test 미확인. 실제 입력/3회 **미달**.
 - Vault unit 11/11, multiwindow 20/0/1, CapturePreview normal/active/max/restore **PASS**.
 - 새 탭/두 번째 창 실제 입력 반복, pending autofill 취소, titlebar 실제 click, multi-window session restore, per-tab capture, session scroll restore, corrupt-session banner, Korean IME, DPI는 **UNVERIFIED**다.
 - ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.
