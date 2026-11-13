@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.62.0)
+# AMARE GPUI Windows Shell (0.63.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.62.0)
+## Verified in Windows CI (0.63.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.63 added independent WinForms input harness and AMARE UIA diagnostics. SendInput returned 0 in CI, PostMessage delivered keys without modifiers, UIA exposed only the GPUI window and WebView2 panes (no toolbar buttons), and real button click scans did not trigger actions. Actual input E2E remains FAIL/BLOCKED.
 - 0.62 added input-pipeline diagnostics. Actual Ctrl+T and Ctrl+N each reached `action`/`open_new_window result=ok` once, but repeated runs lost foreground/focus; new-tab/new-window button scans produced no mouse trace. Input E2E and 3x stability goals are not met.
 - 0.61 removed test-only new-tab/second-window triggers, used direct HWND key/mouse input and deferred new-tab WebView2 attachment, but actual Ctrl+T/new-tab and Ctrl+N/new-window input still failed in repeated automation (`current=2`, `windows=1`). **0.61 real-input and 3x stability goals are not met.**
 - 0.60 repeated the same commit three times: attempt 1/2 reached **0 FAIL**; attempt 3 timed out in the tab step after 20 minutes and produced only a partial result JSON. **The 3x consecutive 0 FAIL criterion is not met.**
