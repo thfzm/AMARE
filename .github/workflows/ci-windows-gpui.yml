@@ -12,6 +12,8 @@ on:
       - 'tools/gpui-settings-smoke.ps1'
       - 'tools/gpui-session-smoke.ps1'
       - 'tools/gpui-password-smoke.ps1'
+      - 'tools/gpui-input-diagnostics.ps1'
+      - 'tools/gpui-test-focus.ps1'
       - 'tools/gpui-vault-multiwindow.ps1'
       - 'tools/slow_http_server.py'
       - 'tools/slow_session_server.py'
