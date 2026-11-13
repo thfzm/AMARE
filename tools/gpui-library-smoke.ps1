@@ -113,13 +113,14 @@ function Wait-Count([int]$count, [int]$seconds, [string]$label) {
     return Wait-State { param($s) @($s.tabs).Count -eq $count } $seconds $label
 }
 function Ensure-LibraryTabs([int]$target) {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
         $state = Read-State
         if (@($state.tabs).Count -ge $target) { return $state }
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 50 30
         Send-GpuiShortcut $script:hwnd 0x54
-        $deadline = (Get-Date).AddSeconds(5)
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { return $state }
@@ -127,7 +128,8 @@ function Ensure-LibraryTabs([int]$target) {
         }
         Click-Client $script:hwnd 420 70
         Send-GpuiShortcut $script:hwnd 0x54
-        $deadline = (Get-Date).AddSeconds(10)
+        Send-Keys "^t"
+        $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
             $state = Read-State
             if (@($state.tabs).Count -ge $target) { return $state }
@@ -138,7 +140,7 @@ function Ensure-LibraryTabs([int]$target) {
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
         foreach ($by in 22, 30, 38) {
             Send-RealClientClick $script:hwnd ($width - 235) $by
-            $deadline = (Get-Date).AddSeconds(4)
+            $deadline = (Get-Date).AddSeconds(10)
             while ((Get-Date) -lt $deadline) {
                 $state = Read-State
                 if (@($state.tabs).Count -ge $target) { return $state }
