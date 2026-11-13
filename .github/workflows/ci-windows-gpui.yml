@@ -13,6 +13,8 @@ on:
       - 'tools/gpui-session-smoke.ps1'
       - 'tools/gpui-password-smoke.ps1'
       - 'tools/gpui-input-diagnostics.ps1'
+      - 'tools/windows-input-harness.ps1'
+      - 'tools/gpui-uia-diagnostics.ps1'
       - 'tools/gpui-test-focus.ps1'
       - 'tools/gpui-vault-multiwindow.ps1'
       - 'tools/slow_http_server.py'
@@ -48,6 +50,33 @@ jobs:
         timeout-minutes: 8
         run: cargo test --manifest-path apps/amare-gpui/Cargo.toml --bin amare-gpui password_vault::tests -- --nocapture
 
+      - name: Windows input automation harness
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.63.0\input-harness.json"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
+          New-Item -ItemType Directory -Force -Path (Split-Path $diag -Parent), $shots | Out-Null
+          & "tools/windows-input-harness.ps1" -Output $diag -ScreenshotDir $shots
+          if (-not (Test-Path $diag)) { throw "input harness output missing" }
+          Write-Host "input harness: $diag"
+
+      - name: GPUI UIA diagnostics
+        shell: pwsh
+        timeout-minutes: 8
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-uia-status"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-uia-data"
+          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.63.0\uia-amare.json"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
+          New-Item -ItemType Directory -Force -Path (Split-Path $diag -Parent), $shots | Out-Null
+          & "tools/gpui-uia-diagnostics.ps1" -Exe $exe -StatusDir $status -DataDir $data -Output $diag -ScreenshotDir $shots
+          if (-not (Test-Path $diag)) { throw "UIA diagnostics output missing" }
+          Write-Host "UIA diagnostics: $diag"
+
       - name: GPUI input pipeline diagnostics
         shell: pwsh
         timeout-minutes: 8
@@ -57,7 +86,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-data"
-          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.62.0\input-diagnostics.json"
+          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.63.0\input-diagnostics.json"
           New-Item -ItemType Directory -Force -Path (Split-Path $diag -Parent) | Out-Null
           & "tools/gpui-input-diagnostics.ps1" -Exe $exe -StatusDir $status -DataDir $data -Output $diag
           if (-not (Test-Path $diag)) { throw "input diagnostics output missing" }
@@ -74,7 +103,7 @@ jobs:
             $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
             $status = Join-Path $env:RUNNER_TEMP "amare-gpui-password-status.json"
             $data = Join-Path $env:RUNNER_TEMP "amare-gpui-password-data"
-            $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+            $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
             & "tools/gpui-password-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -LoginUrl "http://127.0.0.1:8767/login.html?tab=PW"
             if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI password smoke failed with exit code $LASTEXITCODE" }
           } finally {
@@ -91,7 +120,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-vault-multiwindow-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-vault-multiwindow-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
           New-Item -ItemType Directory -Force -Path $shots | Out-Null
           & "tools/gpui-vault-multiwindow.ps1" -Exe $exe -StatusDir $status -DataDir $data -ScreenshotDir $shots -LoginUrl "http://127.0.0.1:8767/login.html?tab=PW"
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI vault multiwindow smoke failed with exit code $LASTEXITCODE" }
@@ -248,7 +277,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-library-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-library-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-downloads"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
           New-Item -ItemType Directory -Force -Path $shots, $downloads | Out-Null
           $downloadFile = Join-Path (Resolve-Path "apps/amare-gpui/test-page").Path "download-test.bin"
           [IO.File]::WriteAllBytes($downloadFile, (New-Object byte[] (5 * 1024 * 1024)))
@@ -272,7 +301,7 @@ jobs:
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-download-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-download-data"
           $downloads = Join-Path $env:RUNNER_TEMP "amare-gpui-download-files"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
           & "tools/gpui-download-smoke.ps1" -Exe $exe -Status $status -DataDir $data -DownloadDir $downloads -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI download smoke failed with exit code $LASTEXITCODE" }
 
@@ -286,7 +315,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-settings-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
           & "tools/gpui-settings-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI settings smoke failed with exit code $LASTEXITCODE" }
 
@@ -300,7 +329,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-session-status.json"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-session-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0"
           & "tools/gpui-session-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots -Port 8772
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI session smoke failed with exit code $LASTEXITCODE" }
 
@@ -371,11 +400,11 @@ jobs:
         run: |
           $paths = @(
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\handle-forensics\gpui-tab-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0\gpui-library-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0\gpui-settings-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0\gpui-session-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0\gpui-password-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.62.0\gpui-vault-multiwindow-results.json")
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0\gpui-library-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0\gpui-settings-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0\gpui-session-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0\gpui-password-results.json"),
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.63.0\gpui-vault-multiwindow-results.json")
           )
           $failed = 0
           $unverified = 0
@@ -411,14 +440,14 @@ jobs:
             ${{ runner.temp }}/amare-gpui-tab-status.json
             ${{ runner.temp }}/amare-gpui-library-status.json
             ${{ runner.temp }}/amare-gpui-download-status.json
-            artifacts/windows/screenshots/0.62.0/gpui-download-results.json
-            artifacts/windows/screenshots/0.62.0/*.png
-            artifacts/windows/screenshots/0.62.0/gpui-library-results.json
-            artifacts/windows/screenshots/0.62.0/gpui-settings-results.json
-            artifacts/windows/screenshots/0.62.0/gpui-password-results.json
-            artifacts/windows/screenshots/0.62.0/gpui-session-results.json
-            artifacts/windows/screenshots/0.62.0/gpui-vault-multiwindow-results.json
-            artifacts/windows/diagnostics/0.62.0/*.json
+            artifacts/windows/screenshots/0.63.0/gpui-download-results.json
+            artifacts/windows/screenshots/0.63.0/*.png
+            artifacts/windows/screenshots/0.63.0/gpui-library-results.json
+            artifacts/windows/screenshots/0.63.0/gpui-settings-results.json
+            artifacts/windows/screenshots/0.63.0/gpui-password-results.json
+            artifacts/windows/screenshots/0.63.0/gpui-session-results.json
+            artifacts/windows/screenshots/0.63.0/gpui-vault-multiwindow-results.json
+            artifacts/windows/diagnostics/0.63.0/*.json
             ${{ runner.temp }}/amare-gpui-address-status.json
             ${{ runner.temp }}/amare-gpui-input-status.json
             ${{ runner.temp }}/amare-gpui-ime.log
