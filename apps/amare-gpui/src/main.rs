@@ -2018,17 +2018,15 @@ impl AmareApp {
         cx: &mut Context<Self>,
         focus_address: bool,
     ) {
-        let (webview, error) = self.create_webview();
         let id = self.next_tab_id;
         self.next_tab_id += 1;
         self.activity_counter += 1;
-        let error = error.map(Into::into);
         self.tabs.push(TabState {
             id,
             title: "New Tab".into(),
             url: url.clone().into(),
             loading: true,
-            error,
+            error: None,
             can_go_back: false,
             can_go_forward: false,
             favicon: None,
@@ -2040,21 +2038,41 @@ impl AmareApp {
             #[cfg(target_os = "windows")]
             pending_scroll: None,
             #[cfg(target_os = "windows")]
-            webview,
+            webview: None,
         });
         self.active = self.tabs.len() - 1;
         self.set_address(url.clone(), cx);
-        #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.tabs[self.active].webview {
-            webview.navigate(&url);
-            webview.set_active(true);
-            if !focus_address {
-                webview.focus();
+        // WebView2 controller creation can take long enough to block the GPUI
+        // event loop when several tabs are opened back-to-back. Register the
+        // tab immediately and attach its controller after the current effect
+        // cycle so Ctrl+T/button clicks always update the tab strip first.
+        cx.defer_in(window, move |this, window, cx| {
+            let (webview, error) = this.create_webview();
+            let Some(index) = this.tabs.iter().position(|tab| tab.id == id) else {
+                return;
+            };
+            this.tabs[index].error = error.map(Into::into);
+            #[cfg(target_os = "windows")]
+            {
+                this.tabs[index].webview = webview;
+                if let Some(view) = &this.tabs[index].webview {
+                    view.navigate(&url);
+                    view.set_active(this.active_tab().map(|tab| tab.id) == Some(id));
+                    if !focus_address {
+                        view.focus();
+                    }
+                }
             }
-        }
-        if focus_address {
-            self.focus_address_input(window, cx);
-        }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = webview;
+                this.tabs[index].error = error.map(Into::into);
+            }
+            if focus_address && this.active_tab().map(|tab| tab.id) == Some(id) {
+                this.focus_address_input(window, cx);
+            }
+            cx.notify();
+        });
         cx.notify();
     }
 
@@ -2240,17 +2258,6 @@ impl AmareApp {
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
         self.open_new_window(cx);
-    }
-
-    fn maybe_test_new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Ok(trigger) = std::env::var("AMARE_GPUI_NEW_TAB_TRIGGER") else {
-            return;
-        };
-        if !std::path::Path::new(&trigger).exists() {
-            return;
-        }
-        let _ = std::fs::remove_file(&trigger);
-        self.new_tab(window, cx);
     }
 
     fn maybe_auto_capture(&mut self, cx: &mut Context<Self>) {
@@ -4464,7 +4471,6 @@ impl Render for AmareApp {
         self.poll_login_captures(cx);
         self.sync_vault_lock(cx);
         self.sync_password_vault(cx);
-        self.maybe_test_new_tab(window, cx);
         self.process_popup_requests(window, cx);
         self.refresh_tabs(window, cx);
         self.update_session(window);
