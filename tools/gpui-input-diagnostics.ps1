@@ -35,6 +35,7 @@ function Snapshot([string]$label) {
     return [pscustomobject]@{
         label = $label
         windows = $states.Count
+        foreground_hwnd = ([AmareTestFocus]::GetForegroundWindow()).ToInt64()
         states = $states
         captured_at = (Get-Date).ToUniversalTime().ToString("o")
     }
@@ -59,9 +60,12 @@ try {
     $initial = Wait-Initial
     $hwnd = [IntPtr][int64]$initial.window_handle
     if ($hwnd -eq [IntPtr]::Zero) { throw "window handle missing" }
-    [void](Force-AmareForeground $hwnd)
+    $focusOk = Force-AmareForeground $hwnd
     Start-Sleep -Milliseconds 500
     $steps.Add((Snapshot "initial"))
+    if (-not $focusOk -and ([AmareTestFocus]::GetForegroundWindow() -ne $hwnd)) {
+        Write-Host "foreground activation failed; recording diagnostics without input"
+    }
 
     # OS-level keyboard Ctrl+T.
     [void](Force-AmareForeground $hwnd)

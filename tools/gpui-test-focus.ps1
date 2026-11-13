@@ -14,6 +14,11 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
 }
 '@
 }
@@ -45,6 +50,23 @@ function Force-AmareForeground([IntPtr]$hwnd) {
     [void][AmareTestFocus]::SetForegroundWindow($hwnd)
     [AmareTestFocus]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 150
+    if ([AmareTestFocus]::GetForegroundWindow() -eq $hwnd) { return $true }
+
+    # A real mouse click supplies the user-input token Windows requires for
+    # foreground activation. PostMessage clicks do not.
+    [void][AmareTestFocus]::ShowWindow($hwnd, 9)
+    $rect = New-Object AmareTestFocus+RECT
+    if ([AmareTestFocus]::GetWindowRect($hwnd, [ref]$rect)) {
+        $x = [int](($rect.Left + $rect.Right) / 2)
+        $y = $rect.Top + 12
+        [void][AmareTestFocus]::SetCursorPos($x, $y)
+        Start-Sleep -Milliseconds 80
+        [AmareTestFocus]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 60
+        [AmareTestFocus]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 250
+        [void][AmareTestFocus]::SetForegroundWindow($hwnd)
+    }
     return ([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)
 }
 
