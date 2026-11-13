@@ -90,7 +90,6 @@ public class HarnessForm : Form {
         status = new Label();
         status.Dock = DockStyle.Top;
         status.Height = 180;
-        status.Font = new Font("Consolas", 11);
         Controls.Add(status);
 
         button = new Button();
@@ -169,15 +168,7 @@ public class HarnessForm : Form {
     }
 
     private void Save() {
-        string png = Path.Combine(screenshotDir, "input-harness.png");
-        try {
-            Rectangle r = Bounds;
-            using (Bitmap bmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height)))
-            using (Graphics g = Graphics.FromImage(bmp)) {
-                g.CopyFromScreen(r.Left, r.Top, 0, 0, bmp.Size);
-                bmp.Save(png, System.Drawing.Imaging.ImageFormat.Png);
-            }
-        } catch { png = ""; }
+        string png = "";
         string json = "{";
         json += "\"generated_at\":\"" + DateTime.UtcNow.ToString("o") + "\",";
         json += "\"hwnd\":" + Handle.ToInt64() + ",";
