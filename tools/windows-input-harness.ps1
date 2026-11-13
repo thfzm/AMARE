@@ -204,7 +204,8 @@ Add-Type -TypeDefinition $code -ReferencedAssemblies @(
     [System.Windows.Forms.Form].Assembly.Location,
     [System.Drawing.Bitmap].Assembly.Location,
     [System.Drawing.Graphics].Assembly.Location,
-    [System.ComponentModel.Component].Assembly.Location
+    [System.ComponentModel.Component].Assembly.Location,
+    [System.Drawing.Point].Assembly.Location
 )
 
 $form = New-Object HarnessForm($Output, $ScreenshotDir)
