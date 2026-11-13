@@ -82,11 +82,11 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.60.0)
+## 5. 현재 실행 상태 (0.61.0)
 
-- Windows CI [43306852071](https://github.com/thfzm/AMARE/actions/runs/43306852071): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
-- Linux CI [43306851963](https://github.com/thfzm/AMARE/actions/runs/43306851963): **SUCCESS**.
-- GPUI CI [43324378220](https://github.com/thfzm/AMARE/actions/runs/43324378220): attempt 1/2 **0 FAIL**, attempt 3 **password autofill FAIL** — **3회 연속 0 FAIL 미달**.
+- Windows CI [43376017765](https://github.com/thfzm/AMARE/actions/runs/43376017765): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI GUI **42/42**.
+- Linux CI [43376017585](https://github.com/thfzm/AMARE/actions/runs/43376017585): **SUCCESS**.
+- GPUI CI [43376017640](https://github.com/thfzm/AMARE/actions/runs/43376017640): **FAILURE** — 실제 Ctrl+T/새 탭 4 tabs current=2, Ctrl+N/새 창 windows=1. 실제 입력/3회 반복 목표 **미달**.
 - Vault unit 11/11, multiwindow 20/0/1, CapturePreview normal/active/max/restore **PASS**.
 - 새 탭/두 번째 창 실제 입력 반복, pending autofill 취소, titlebar 실제 click, multi-window session restore, per-tab capture, session scroll restore, corrupt-session banner, Korean IME, DPI는 **UNVERIFIED**다.
 - ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.
