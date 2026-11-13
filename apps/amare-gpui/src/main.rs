@@ -406,9 +406,45 @@ struct AmareApp {
     last_capture_error: Option<String>,
     last_capture_size: Option<(u32, u32)>,
     last_auto_capture_source: String,
+    diagnostics: Vec<String>,
+    next_input_id: u64,
+    pending_input_id: Option<u64>,
 }
 
 impl AmareApp {
+    fn diagnostics_enabled() -> bool {
+        std::env::var("AMARE_GPUI_DIAGNOSTICS").ok().as_deref() == Some("1")
+    }
+
+    fn trace_event(&mut self, message: impl Into<String>) {
+        if !Self::diagnostics_enabled() {
+            return;
+        }
+        let elapsed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let message = message.into();
+        self.diagnostics
+            .push(format!("{elapsed} window={} {message}", self.window_id));
+        if self.diagnostics.len() > 256 {
+            self.diagnostics.remove(0);
+        }
+    }
+
+    fn begin_input(&mut self, kind: &str) -> u64 {
+        let id = self.next_input_id;
+        self.next_input_id += 1;
+        self.pending_input_id = Some(id);
+        self.trace_event(format!("input={id} {kind}"));
+        id
+    }
+
+    fn trace_action(&mut self, action: &str) {
+        let input = self.pending_input_id.take();
+        self.trace_event(format!("action={action} input={input:?}"));
+    }
+
     fn new(window: &mut Window, cx: &mut App) -> Self {
         let (_, settings) = library::browser_settings_cached()
             .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
@@ -541,6 +577,9 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            diagnostics: Vec::new(),
+            next_input_id: 1,
+            pending_input_id: None,
         };
         apply_platform_settings(&app.settings);
 
@@ -628,6 +667,9 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            diagnostics: Vec::new(),
+            next_input_id: 1,
+            pending_input_id: None,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -781,6 +823,9 @@ impl AmareApp {
             last_capture_error: None,
             last_capture_size: None,
             last_auto_capture_source: String::new(),
+            diagnostics: Vec::new(),
+            next_input_id: 1,
+            pending_input_id: None,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -992,6 +1037,8 @@ impl AmareApp {
             "settings_generation": self.settings_generation,
             "site_data_cleared": self.site_data_cleared,
             "confirm_clear_site_data": self.confirm_clear_site_data,
+            "diagnostics": self.diagnostics,
+            "pending_input_id": self.pending_input_id,
             "capture_count": self.capture_count,
             "last_capture_path": self.last_capture_path,
             "last_capture_error": self.last_capture_error,
@@ -2041,6 +2088,11 @@ impl AmareApp {
             webview: None,
         });
         self.active = self.tabs.len() - 1;
+        self.trace_event(format!(
+            "new_tab id={id} tabs={} active={} url={url}",
+            self.tabs.len(),
+            self.active
+        ));
         self.set_address(url.clone(), cx);
         // WebView2 controller creation can take long enough to block the GPUI
         // event loop when several tabs are opened back-to-back. Register the
@@ -2096,9 +2148,10 @@ impl AmareApp {
     fn open_new_window(&mut self, cx: &mut Context<Self>) {
         let url = std::env::var("AMARE_GPUI_NEW_WINDOW_URL")
             .unwrap_or_else(|_| self.settings.home_page.clone());
+        let url_for_log = url.clone();
         let (width, height) = automation_window_size();
         let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
-        let _ = cx.open_window(
+        let result = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(gpui::TitlebarOptions {
@@ -2110,6 +2163,13 @@ impl AmareApp {
             },
             move |window, cx| cx.new(|cx| AmareApp::new_with_url(window, cx, url, false)),
         );
+        self.trace_event(format!(
+            "open_new_window requested_url={url_for_log} result={}",
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("err:{error:?}"),
+            }
+        ));
         cx.activate(true);
     }
 
@@ -2249,6 +2309,7 @@ impl AmareApp {
     }
 
     fn new_tab_action(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.trace_action("NewTab");
         self.new_tab(window, cx);
     }
 
@@ -2257,6 +2318,7 @@ impl AmareApp {
     }
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
+        self.trace_action("NewWindow");
         self.open_new_window(cx);
     }
 
@@ -4616,6 +4678,17 @@ impl Render for AmareApp {
 
         div()
             .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(|this: &mut Self, event: &gpui::KeyDownEvent, _, cx| {
+                if this.pending_input_id.is_none() {
+                    let id = this.next_input_id;
+                    this.next_input_id += 1;
+                    this.pending_input_id = Some(id);
+                    this.trace_event(format!("keydown input={id} keystroke={}", event.keystroke));
+                } else {
+                    this.trace_event(format!("keydown-held keystroke={}", event.keystroke));
+                }
+                cx.notify();
+            }))
             .on_action(cx.listener(Self::focus_address))
             .on_action(cx.listener(Self::submit_address))
             .on_action(cx.listener(Self::cancel_address))
@@ -4674,6 +4747,7 @@ impl Render for AmareApp {
                             .text_lg()
                             .child("+")
                             .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                this.begin_input("click:new-tab");
                                 this.new_tab(window, cx);
                                 cx.notify();
                             })),
@@ -4692,6 +4766,7 @@ impl Render for AmareApp {
                             .text_sm()
                             .child("▣")
                             .on_click(cx.listener(|this: &mut Self, _, _, cx| {
+                                this.begin_input("click:new-window");
                                 this.open_new_window(cx);
                             })),
                     )
