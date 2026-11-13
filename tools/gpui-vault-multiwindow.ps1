@@ -286,8 +286,12 @@ try {
 
     $states = @()
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
-        foreach ($nx in 828, 836, 844, 852) {
-            foreach ($ny in 22, 30, 38) {
+        $layout = (Read-State $script:hwnd1).layout_bounds
+        $newWindowBounds = if ($null -ne $layout) { $layout.toolbar_children.new_window } else { $null }
+        $scanX = if ($null -ne $newWindowBounds) { @([int]($newWindowBounds.x + $newWindowBounds.width / 2)) } else { @(828, 836, 844, 852) }
+        $scanY = if ($null -ne $newWindowBounds) { @([int]($newWindowBounds.y + $newWindowBounds.height / 2)) } else { @(22, 30, 38) }
+        foreach ($nx in $scanX) {
+            foreach ($ny in $scanY) {
                 Send-RealClientClick $script:hwnd1 $nx $ny
                 Start-Sleep -Milliseconds 250
                 $states = @(Read-AllStates)

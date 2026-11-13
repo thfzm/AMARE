@@ -409,6 +409,7 @@ struct AmareApp {
     diagnostics: Vec<String>,
     next_input_id: u64,
     pending_input_id: Option<u64>,
+    layout_bounds: Option<serde_json::Value>,
 }
 
 impl AmareApp {
@@ -438,6 +439,45 @@ impl AmareApp {
         self.pending_input_id = Some(id);
         self.trace_event(format!("input={id} {kind}"));
         id
+    }
+
+    fn record_layout(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>, window: &Window) {
+        if !Self::diagnostics_enabled() {
+            return;
+        }
+        let names = [
+            "tab_strip",
+            "new_tab",
+            "new_window",
+            "window_min",
+            "window_max",
+            "window_close",
+        ];
+        let mut children = serde_json::Map::new();
+        for (index, name) in names.iter().enumerate() {
+            if let Some(bounds) = bounds.get(index) {
+                children.insert(
+                    (*name).to_string(),
+                    serde_json::json!({
+                        "x": f32::from(bounds.origin.x),
+                        "y": f32::from(bounds.origin.y),
+                        "width": f32::from(bounds.size.width),
+                        "height": f32::from(bounds.size.height),
+                    }),
+                );
+            }
+        }
+        let window_bounds = window.bounds();
+        self.layout_bounds = Some(serde_json::json!({
+            "window": {
+                "x": f32::from(window_bounds.origin.x),
+                "y": f32::from(window_bounds.origin.y),
+                "width": f32::from(window_bounds.size.width),
+                "height": f32::from(window_bounds.size.height),
+            },
+            "scale_factor": window.scale_factor(),
+            "toolbar_children": children,
+        }));
     }
 
     fn trace_action(&mut self, action: &str) {
@@ -580,6 +620,7 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            layout_bounds: None,
         };
         apply_platform_settings(&app.settings);
 
@@ -670,6 +711,7 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            layout_bounds: None,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -826,6 +868,7 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            layout_bounds: None,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -1038,6 +1081,7 @@ impl AmareApp {
             "site_data_cleared": self.site_data_cleared,
             "confirm_clear_site_data": self.confirm_clear_site_data,
             "diagnostics": self.diagnostics,
+            "layout_bounds": self.layout_bounds,
             "pending_input_id": self.pending_input_id,
             "capture_count": self.capture_count,
             "last_capture_path": self.last_capture_path,
@@ -4815,7 +4859,15 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .window_control_area(WindowControlArea::Close)
                             .child("×"),
-                    ),
+                    )
+                    .on_children_prepainted({
+                        let weak = cx.weak_entity();
+                        move |bounds, window, cx| {
+                            let _ = weak.update(cx, |this, _cx| {
+                                this.record_layout(bounds, window);
+                            });
+                        }
+                    }),
             )
             .child(
                 div()

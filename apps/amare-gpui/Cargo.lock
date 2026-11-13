@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "amare-gpui"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "amare-core",
  "amare-platform",

@@ -73,19 +73,19 @@ try {
     Start-Sleep -Seconds 3
     $steps.Add((Snapshot "os-ctrl-t"))
 
-    # Real OS mouse click scan on the new-tab toolbar button.
+    # Click the actual GPUI layout bounds for the new-tab button.
+    $layout = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1).layout_bounds
     $beforeTabs = @((Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1).tabs).Count
     $tabHit = $null
-    foreach ($x in 792, 800, 808, 816, 824) {
-        foreach ($y in 22, 30, 38, 46) {
-            Send-RealClientClick $hwnd $x $y
-            Start-Sleep -Milliseconds 800
-            $now = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1)
-            if ($null -ne $now -and @($now.tabs).Count -gt $beforeTabs) { $tabHit = "$x,$y"; break }
-        }
-        if ($null -ne $tabHit) { break }
+    if ($null -ne $layout -and $null -ne $layout.toolbar_children.new_tab) {
+        $b = $layout.toolbar_children.new_tab
+        $tabHit = "layout:$($b.x + $b.width / 2),$($b.y + $b.height / 2)"
+        Send-RealClientClick $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+        Start-Sleep -Seconds 2
     }
-    $steps.Add((Snapshot ("button-new-tab hit=$tabHit")))
+    $now = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1)
+    $tabCreated = ($null -ne $now -and @($now.tabs).Count -gt $beforeTabs)
+    $steps.Add([pscustomobject]@{ label="button-new-tab"; windows=@(Read-AllStates).Count; tab_created=$tabCreated; hit=$tabHit; layout_bounds=$layout; states=@(Read-AllStates); captured_at=(Get-Date).ToUniversalTime().ToString("o") })
 
     # Move focus out of the address text field before Ctrl+N.
     Send-RealClientClick $hwnd 50 30
@@ -95,17 +95,17 @@ try {
     Start-Sleep -Seconds 5
     $steps.Add((Snapshot "os-ctrl-n"))
 
-    # Real OS mouse click scan on the new-window toolbar button.
+    # Click the actual GPUI layout bounds for the new-window button.
+    $layoutWindow = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1).layout_bounds
     $windowHit = $null
-    foreach ($x in 828, 836, 844, 852, 860) {
-        foreach ($y in 22, 30, 38, 46) {
-            Send-RealClientClick $hwnd $x $y
-            Start-Sleep -Milliseconds 900
-            if (@(Read-AllStates).Count -ge 2) { $windowHit = "$x,$y"; break }
-        }
-        if ($null -ne $windowHit) { break }
+    if ($null -ne $layoutWindow -and $null -ne $layoutWindow.toolbar_children.new_window) {
+        $b = $layoutWindow.toolbar_children.new_window
+        $windowHit = "layout:$($b.x + $b.width / 2),$($b.y + $b.height / 2)"
+        Send-RealClientClick $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+        Start-Sleep -Seconds 4
     }
-    $steps.Add((Snapshot ("button-new-window hit=$windowHit")))
+    $windowCreated = (@(Read-AllStates).Count -ge 2)
+    $steps.Add([pscustomobject]@{ label="button-new-window"; windows=@(Read-AllStates).Count; window_created=$windowCreated; hit=$windowHit; layout_bounds=$layoutWindow; states=@(Read-AllStates); captured_at=(Get-Date).ToUniversalTime().ToString("o") })
 
     # Record foreground/focus at end.
     $foreground = [AmareTestFocus]::GetForegroundWindow()

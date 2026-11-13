@@ -163,8 +163,14 @@ function Ensure-Tabs([int]$target) {
         $rect = Get-Rect $script:hwnd
         $origin = Get-Origin $script:hwnd
         $width = [Math]::Max(1, $rect.Right - $rect.Left)
+        $layout = (Read-State).layout_bounds
+        $tabBounds = if ($null -ne $layout) { $layout.toolbar_children.new_tab } else { $null }
         foreach ($by in 22, 30, 38) {
-            Send-RealClientClick $script:hwnd ($width - 235) $by
+            if ($null -ne $tabBounds) {
+                Send-RealClientClick $script:hwnd ([int]($tabBounds.x + $tabBounds.width / 2)) ([int]($tabBounds.y + $tabBounds.height / 2))
+            } else {
+                Send-RealClientClick $script:hwnd ($width - 235) $by
+            }
             $deadline = (Get-Date).AddSeconds(10)
             while ((Get-Date) -lt $deadline) {
                 $state = Read-State
