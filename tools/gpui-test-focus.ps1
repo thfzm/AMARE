@@ -19,6 +19,8 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
 }
 '@
 }
@@ -91,4 +93,16 @@ function Send-GpuiClick([IntPtr]$hwnd, [int]$x, [int]$y) {
     Start-Sleep -Milliseconds 80
     [void][AmareTestFocus]::PostMessage($hwnd, 0x0202, [IntPtr]0, $lp)
     Start-Sleep -Milliseconds 350
+}
+
+function Send-RealClientClick([IntPtr]$hwnd, [int]$x, [int]$y) {
+    [void](Force-AmareForeground $hwnd)
+    $point = New-Object AmareTestFocus+POINT
+    [void][AmareTestFocus]::ClientToScreen($hwnd, [ref]$point)
+    [void][AmareTestFocus]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+    Start-Sleep -Milliseconds 120
+    [AmareTestFocus]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+    [AmareTestFocus]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 400
 }

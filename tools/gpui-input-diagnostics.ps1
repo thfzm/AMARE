@@ -73,12 +73,19 @@ try {
     Start-Sleep -Seconds 3
     $steps.Add((Snapshot "os-ctrl-t"))
 
-    # Direct HWND mouse click on the new-tab toolbar button.
-    $state = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1)
-    if ($null -ne $state -and $state.source) { }
-    Send-GpuiClick $hwnd 768 30
-    Start-Sleep -Seconds 3
-    $steps.Add((Snapshot "button-new-tab"))
+    # Real OS mouse click scan on the new-tab toolbar button.
+    $beforeTabs = @((Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1).tabs).Count
+    $tabHit = $null
+    foreach ($x in 735, 745, 755, 765, 775, 785) {
+        foreach ($y in 22, 30, 38, 46) {
+            Send-RealClientClick $hwnd $x $y
+            Start-Sleep -Milliseconds 800
+            $now = (Read-AllStates | Where-Object { $_.window_id -eq $initial.window_id } | Select-Object -First 1)
+            if ($null -ne $now -and @($now.tabs).Count -gt $beforeTabs) { $tabHit = "$x,$y"; break }
+        }
+        if ($null -ne $tabHit) { break }
+    }
+    $steps.Add((Snapshot ("button-new-tab hit=$tabHit")))
 
     # OS-level keyboard Ctrl+N.
     [void](Force-AmareForeground $hwnd)
@@ -86,10 +93,17 @@ try {
     Start-Sleep -Seconds 5
     $steps.Add((Snapshot "os-ctrl-n"))
 
-    # Direct HWND mouse click on the new-window toolbar button.
-    Send-GpuiClick $hwnd 813 30
-    Start-Sleep -Seconds 5
-    $steps.Add((Snapshot "button-new-window"))
+    # Real OS mouse click scan on the new-window toolbar button.
+    $windowHit = $null
+    foreach ($x in 795, 805, 815, 825, 835) {
+        foreach ($y in 22, 30, 38, 46) {
+            Send-RealClientClick $hwnd $x $y
+            Start-Sleep -Milliseconds 900
+            if (@(Read-AllStates).Count -ge 2) { $windowHit = "$x,$y"; break }
+        }
+        if ($null -ne $windowHit) { break }
+    }
+    $steps.Add((Snapshot ("button-new-window hit=$windowHit")))
 
     # Record foreground/focus at end.
     $foreground = [AmareTestFocus]::GetForegroundWindow()
