@@ -203,7 +203,8 @@ public class HarnessForm : Form {
 Add-Type -TypeDefinition $code -ReferencedAssemblies @(
     [System.Windows.Forms.Form].Assembly.Location,
     [System.Drawing.Bitmap].Assembly.Location,
-    [System.Drawing.Graphics].Assembly.Location
+    [System.Drawing.Graphics].Assembly.Location,
+    [System.ComponentModel.Component].Assembly.Location
 )
 
 $form = New-Object HarnessForm($Output, $ScreenshotDir)
