@@ -46,6 +46,21 @@ jobs:
         timeout-minutes: 8
         run: cargo test --manifest-path apps/amare-gpui/Cargo.toml --bin amare-gpui password_vault::tests -- --nocapture
 
+      - name: GPUI input pipeline diagnostics
+        shell: pwsh
+        timeout-minutes: 8
+        env:
+          AMARE_GPUI_WINDOW_SIZE: "1044x788"
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-status"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-data"
+          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.62.0\input-diagnostics.json"
+          New-Item -ItemType Directory -Force -Path (Split-Path $diag -Parent) | Out-Null
+          & "tools/gpui-input-diagnostics.ps1" -Exe $exe -StatusDir $status -DataDir $data -Output $diag
+          if (-not (Test-Path $diag)) { throw "input diagnostics output missing" }
+          Write-Host "GPUI input diagnostics: $diag"
+
       - name: GPUI password vault test
         shell: pwsh
         timeout-minutes: 20
@@ -202,21 +217,6 @@ jobs:
           Write-Host "GPUI test page: $baseUrl"
           & "tools/gpui-input-smoke.ps1" -Exe $exe -Status $status -BaseUrl $baseUrl -ArtifactDir $dir
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI input smoke failed with exit code $LASTEXITCODE" }
-
-      - name: GPUI input pipeline diagnostics
-        shell: pwsh
-        timeout-minutes: 8
-        env:
-          AMARE_GPUI_WINDOW_SIZE: "1044x788"
-        run: |
-          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
-          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-status"
-          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-diagnostics-data"
-          $diag = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.62.0\input-diagnostics.json"
-          New-Item -ItemType Directory -Force -Path (Split-Path $diag -Parent) | Out-Null
-          & "tools/gpui-input-diagnostics.ps1" -Exe $exe -StatusDir $status -DataDir $data -Output $diag
-          if (-not (Test-Path $diag)) { throw "input diagnostics output missing" }
-          Write-Host "GPUI input diagnostics: $diag"
 
       - name: GPUI multi-tab lifecycle test
         shell: pwsh
