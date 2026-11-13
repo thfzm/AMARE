@@ -12,7 +12,7 @@
 - GPUI 동일 commit 3회:
   - 1회: **0 FAIL / 17 UNVERIFIED**
   - 2회: **0 FAIL / 16 UNVERIFIED**
-  - 3회: tab step이 20분 timeout, 일부 결과만 기록되어 **3회 연속 0 FAIL 기준 미달**
+  - 3회: password autofill FAIL (11/1/0), 이후 suite skipped — **3회 연속 0 FAIL 기준 미달**
 - 최종 판정: **반복 안정성 3/3 미달**. 2회 연속 0 FAIL만으로 안정성을 주장하지 않는다.
 
 ## 유지된 Vault v2 동작
@@ -35,6 +35,7 @@
 
 ## 남은 문제
 
+- password autofill suggestion hit-test가 반복 run에서 간헐적으로 form을 채우지 못함
 - 새 탭 생성이 일부 run에서 2 tabs 이후 진행되지 않고 step timeout 발생
 - 두 번째 창을 사용자 Ctrl+N/버튼 입력만으로 여는 경로가 불안정해 test-only startup env를 사용했다. 제품 `open_new_window` 경로를 사용하지만 사용자 입력 경로의 안정성은 **UNVERIFIED**다.
 - 반복 새 탭 자동화는 test-only new-tab trigger를 사용했다. 제품 `new_tab` 경로를 사용하지만 실제 Ctrl+T/버튼 입력 반복성은 **UNVERIFIED**다.
