@@ -4678,6 +4678,10 @@ impl Render for AmareApp {
 
         div()
             .track_focus(&self.focus_handle)
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseDownEvent, _, cx| {
+                this.trace_event(format!("mouse_down x={:.1} y={:.1}", f32::from(event.position.x), f32::from(event.position.y)));
+                cx.notify();
+            }))
             .on_key_down(cx.listener(|this: &mut Self, event: &gpui::KeyDownEvent, _, cx| {
                 if this.pending_input_id.is_none() {
                     let id = this.next_input_id;

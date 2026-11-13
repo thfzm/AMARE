@@ -87,7 +87,9 @@ try {
     }
     $steps.Add((Snapshot ("button-new-tab hit=$tabHit")))
 
-    # OS-level keyboard Ctrl+N.
+    # Move focus out of the address text field before Ctrl+N.
+    Send-RealClientClick $hwnd 50 30
+    Start-Sleep -Milliseconds 300
     [void](Force-AmareForeground $hwnd)
     [System.Windows.Forms.SendKeys]::SendWait("^n")
     Start-Sleep -Seconds 5
