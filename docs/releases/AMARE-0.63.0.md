@@ -99,7 +99,7 @@ GPUI custom toolbar 요소는 없었다:
 
 ## 스크린샷 / 진단 로그
 
-- `artifacts/windows/screenshots/0.63.0/` — PNG **52개**
+- `artifacts/windows/screenshots/0.63.0/` — PNG **58개**
 - `artifacts/windows/diagnostics/0.63.0/input-harness.json`
 - `artifacts/windows/diagnostics/0.63.0/uia-amare.json`
 - `artifacts/windows/diagnostics/0.63.0/input-diagnostics.json`
