@@ -1561,6 +1561,7 @@ internal static class Program
         WaitFor(() => CountTabs() >= 6, TimeSpan.FromSeconds(8), "six tabs");
         started.Stop();
         _process!.Refresh();
+        PrepareScreenshotWindow();
         CaptureWindow("03-multiple-tabs");
         return $"tabs={CountTabs()} working_set_mb={_process.WorkingSet64 / 1024 / 1024} create5_ms={started.ElapsedMilliseconds}";
     }
