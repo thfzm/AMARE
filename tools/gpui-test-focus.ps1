@@ -73,9 +73,16 @@ function Force-AmareForeground([IntPtr]$hwnd) {
 }
 
 function Send-GpuiShortcut([IntPtr]$hwnd, [int]$vk, [switch]$NoCtrl) {
-    # Use real keyboard input rather than PostMessage. PostMessage does not
-    # update the thread modifier state, so GPUI could see Ctrl+T without Ctrl.
+    # SendKeys is the input path proven to reach this GPUI build in the Windows
+    # runner (raw keybd_event sometimes loses the Ctrl state before GPUI reads it).
     [void](Force-AmareForeground $hwnd)
+    $named = @{ 0x54 = "t"; 0x4E = "n"; 0x57 = "w"; 0x52 = "r"; 0x4C = "l" }
+    if ($named.ContainsKey($vk)) {
+        if ($NoCtrl) { [System.Windows.Forms.SendKeys]::SendWait($named[$vk]) }
+        else { [System.Windows.Forms.SendKeys]::SendWait("^" + $named[$vk]) }
+        Start-Sleep -Milliseconds 350
+        return
+    }
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero) }
     [AmareTestFocus]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 80

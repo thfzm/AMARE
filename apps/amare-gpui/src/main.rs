@@ -2250,11 +2250,15 @@ impl AmareApp {
         ));
         if let Ok(handle) = result {
             let url = url_for_log.clone();
-            cx.defer(move |cx| {
+            // Let the new window draw and write its status before WebView2
+            // controller creation, which pumps Win32 messages and can block.
+            cx.spawn(async move |_this, cx| {
+                Timer::after(Duration::from_millis(400)).await;
                 let _ = handle.update(cx, |app, window, cx| {
                     app.attach_initial_webview(url, window, cx);
                 });
-            });
+            })
+            .detach();
         }
         cx.activate(true);
     }
