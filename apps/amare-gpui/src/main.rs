@@ -2167,6 +2167,9 @@ impl AmareApp {
             self.active
         ));
         self.set_address(url.clone(), cx);
+        // Publish the new tab count before the deferred controller creation so a
+        // slow WebView2 attach cannot hide the tab from session/status readers.
+        self.write_status(cx);
         // WebView2 controller creation can take long enough to block the GPUI
         // event loop when several tabs are opened back-to-back. Register the
         // tab immediately and attach its controller after the current effect
@@ -2255,6 +2258,7 @@ impl AmareApp {
             cx.spawn(async move |_this, cx| {
                 Timer::after(Duration::from_millis(400)).await;
                 let _ = handle.update(cx, |app, window, cx| {
+                    window.activate_window();
                     app.attach_initial_webview(url, window, cx);
                 });
             })

@@ -74,17 +74,26 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     Start-Sleep -Milliseconds 350
 }
 function Shot([string]$name) {
-    $r = New-Object AmareLib+RECT
-    [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$r)
-    $w = [Math]::Max(1, $r.Right - $r.Left); $h = [Math]::Max(1, $r.Bottom - $r.Top)
-    $bmp = New-Object System.Drawing.Bitmap($w, $h)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
     $path = Join-Path $ScreenshotDir $name
-    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
-    if ((Get-Item $path).Length -lt 1000) { throw "screenshot empty: $path" }
-    Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        try { [void][AmareLib]::ShowWindow($script:hwnd, 9) } catch {}
+        Force-Focus $script:hwnd
+        Start-Sleep -Milliseconds 400
+        $r = New-Object AmareLib+RECT
+        [void][AmareLib]::GetWindowRect($script:hwnd, [ref]$r)
+        $w = [Math]::Max(1, $r.Right - $r.Left); $h = [Math]::Max(1, $r.Bottom - $r.Top)
+        $bmp = New-Object System.Drawing.Bitmap($w, $h)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+        $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+        if ((Get-Item $path).Length -ge 1000) {
+            Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+            return
+        }
+        Start-Sleep -Milliseconds 700
+    }
+    throw "screenshot empty: $path"
 }
 function ShotFull([string]$name) {
     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds

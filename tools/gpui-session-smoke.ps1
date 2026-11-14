@@ -95,17 +95,26 @@ function Scroll-Page {
     throw "Timed out waiting for scroll position capture"
 }
 function Shot([string]$name) {
-    $rect = New-Object AmareSession+RECT
-    [void][AmareSession]::GetWindowRect($script:hwnd, [ref]$rect)
-    $w = [Math]::Max(1, $rect.Right - $rect.Left); $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    $bmp = New-Object System.Drawing.Bitmap($w, $h)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
     $path = Join-Path $ScreenshotDir $name
-    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
-    if ((Get-Item $path).Length -lt 1000) { throw "screenshot empty: $path" }
-    Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        try { [void][AmareSession]::ShowWindow($script:hwnd, 9) } catch {}
+        Force-Focus $script:hwnd
+        Start-Sleep -Milliseconds 400
+        $rect = New-Object AmareSession+RECT
+        [void][AmareSession]::GetWindowRect($script:hwnd, [ref]$rect)
+        $w = [Math]::Max(1, $rect.Right - $rect.Left); $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
+        $bmp = New-Object System.Drawing.Bitmap($w, $h)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
+        $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+        if ((Get-Item $path).Length -ge 1000) {
+            Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+            return
+        }
+        Start-Sleep -Milliseconds 700
+    }
+    throw "screenshot empty: $path"
 }
 function Navigate([string]$url, [int]$timeout = 20) {
     Send-Keys "^l"; Start-Sleep -Milliseconds 180

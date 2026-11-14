@@ -142,8 +142,14 @@ function Shot-Both([IntPtr]$left, [IntPtr]$right, [string]$name) {
 }
 function Open-Passwords([IntPtr]$hwnd) {
     $state = Read-State $hwnd
-    if ($null -eq $state -or $state.panel -ne "passwords") { Click-Client $hwnd 105 66 }
-    [void](Wait-State $hwnd { param($s) $s.panel -eq "passwords" } 8 "password panel")
+    if ($null -ne $state -and $state.panel -eq "passwords") { return }
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Click-Client $hwnd 105 66
+        Start-Sleep -Milliseconds 400
+        $state = Read-State $hwnd
+        if ($null -ne $state -and $state.panel -eq "passwords") { return }
+    }
+    throw "Timed out waiting for password panel"
 }
 function Unlock-Vault([IntPtr]$hwnd) {
     $state = Read-State $hwnd
@@ -333,6 +339,12 @@ try {
     if ($null -eq $second) { throw "second window state missing" }
     $script:hwnd2 = [IntPtr][int64]$second.window_handle
     if ($script:hwnd2 -eq [IntPtr]::Zero) { throw "second window handle missing" }
+    # Wait for the deferred second-window WebView2 attach to settle before
+    # clicking its toolbar. The window status file exists before the controller.
+    [void](Wait-State $script:hwnd2 {
+        param($s)
+        @($s.tabs).Count -ge 1 -and [string]$s.source -ne ""
+    } 20 "second window ready")
     Focus-Window $script:hwnd2
     Open-Passwords $script:hwnd2
     Unlock-Vault $script:hwnd2
