@@ -448,7 +448,7 @@ try {
     [void](Wait-State $script:hwnd2 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 1 } 12 "window2 sees dave")
     [void](Click-EntryAction $script:hwnd2 "dave" "edit")
     [void](Click-EntryAction $script:hwnd1 "dave" "delete")
-    Click-Client $script:hwnd1 925 $script:lastActionY
+    [void](Click-EntryAction $script:hwnd1 "dave" "delete")
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "dave deleted")
     [void](Fill-VaultField $script:hwnd2 "password" "S3cret!Dave-stale" @(358,366,374,382,390,398))
     [void](Save-Form $script:hwnd2)
@@ -463,7 +463,7 @@ try {
     Click-Client $script:hwnd2 990 159
     [void](Wait-State $script:hwnd2 { param($s) $s.password_vault.form_open } 8 "stale add form")
     [void](Click-EntryAction $script:hwnd1 "erin" "delete")
-    Click-Client $script:hwnd1 925 $script:lastActionY
+    [void](Click-EntryAction $script:hwnd1 "erin" "delete")
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "erin").Count -eq 0 } 12 "erin deleted")
     if (-not (Fill-VaultField $script:hwnd2 "origin" "http://127.0.0.1:8767" @(250,258,266,274,282,290))) { throw "stale origin field" }
     if (-not (Fill-VaultField $script:hwnd2 "username" "carol" @(300,308,316,324,332,340,348))) { throw "stale username field" }

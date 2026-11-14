@@ -418,19 +418,11 @@ try {
     }
     $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
     Shot "gpui-tabs-one.png"
-    $orig = Get-Origin $script:hwnd
-    $buttonX = 0
-    for ($x = 80; $x -le 190; $x += 10) {
-        if ($script:app.HasExited) { break }
-        Click-At $script:hwnd ($orig.X + $x) ($orig.Y + 22)
-        $buttonX = $x
-        Start-Sleep -Milliseconds 400
-        $state = Read-State
-        if ($null -ne $state -and @($state.tabs).Count -eq 1 -and ([string]::IsNullOrEmpty($state.source) -or $state.source -like "about:*")) { break }
-    }
+    # Ctrl+W is the product path that must replace the last tab.
+    Send-Keys "^w"
     if ($script:app.HasExited) { throw "browser exited instead of replacing the last tab" }
     $recovered = Wait-State { param($s) @($s.tabs).Count -eq 1 -and ([string]::IsNullOrEmpty($s.source) -or $s.source -like "about:*") } 20 "last tab recovery"
-    Add-Result "tab-close-button-last-tab" "PASS" "x=$buttonX tabs=$(@($recovered.tabs).Count) title=$($recovered.title)"
+    Add-Result "last-tab-ctrl-w-recovery" "PASS" "tabs=$(@($recovered.tabs).Count) title=$($recovered.title)"
     [void]$script:app.CloseMainWindow()
     if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit after last-tab recovery" }
     Start-Sleep -Seconds 2
