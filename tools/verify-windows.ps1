@@ -583,6 +583,7 @@ Invoke-Step "webview2_probe_run" {
     $uiLog = Join-Path $OutputDir "winui_ui_smoke.log"
     $uiResults = Join-Path $OutputDir "winui_ui_smoke_results.json"
     $env:AMARE_UI_SMOKE_RESULTS = $uiResults
+    $env:AMARE_UI_SCREENSHOT_DIR = Join-Path (Get-Location) "artifacts\windows\screenshots\$Version"
     $uiExit = 1
     try {
         & dotnet run -c Release --project tools/windows-ui-smoke/WindowsUiSmoke.csproj -- $appExe *>&1 |

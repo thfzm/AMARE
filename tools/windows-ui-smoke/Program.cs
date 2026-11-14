@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -296,6 +298,9 @@ internal static class Program
     private static extern bool ShowWindow(IntPtr hWnd, int command);
 
     [DllImport("user32.dll")]
+    private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int width, int height, bool repaint);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
 
     private sealed record Result(string Name, bool Passed, string Detail);
@@ -326,6 +331,7 @@ internal static class Program
             Check("window_created", () =>
             {
                 Require(_window is not null, "main window not found");
+                PrepareScreenshotWindow();
                 return $"AutomationElement main window found; startup_ms={_startupMs}";
             });
             Check("initial_ui", () =>
@@ -458,6 +464,7 @@ internal static class Program
         var tabsRect = list.Current.BoundingRectangle;
         var delta = tabsRect.Top - windowRect.Top;
         Require(delta < 20, $"native title bar still occupies {delta:F1}px above the tab strip");
+        CaptureWindow("01-initial-custom-titlebar");
         return $"tab strip starts {delta:F1}px below the window top; native title bar removed";
     }
 
@@ -1011,6 +1018,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Settings");
         WaitFor(() => FindByName("Settings") is not null, TimeSpan.FromSeconds(5), "Settings dialog");
+        CaptureWindow("02-settings");
         EscapeDialog("Settings");
         return "Settings dialog opened";
     }
@@ -1079,8 +1087,11 @@ internal static class Program
         {
             throw new InvalidOperationException("window did not maximize");
         }
+        Thread.Sleep(400);
+        CaptureWindow("06-maximized");
         ShowWindow(handle, 9);
         Thread.Sleep(800);
+        CaptureWindow("07-restored");
         return "maximized and restored";
     }
 
@@ -1121,6 +1132,8 @@ internal static class Program
             return created is not null;
         }, TimeSpan.FromSeconds(10), "new window");
         if (created is null) throw new InvalidOperationException("new window not found");
+        Thread.Sleep(800);
+        CaptureDesktop("04-two-windows");
         if (created.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
         {
             ((WindowPattern)pattern).Close();
@@ -1200,6 +1213,7 @@ internal static class Program
         Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
         WaitFor(() => _process.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
             TimeSpan.FromSeconds(20), "recovered last tab navigation");
+        CaptureWindow("05-last-tab-recovered");
         return "last tab reset to a navigable New Tab";
     }
 
@@ -1543,6 +1557,7 @@ internal static class Program
         WaitFor(() => CountTabs() >= 6, TimeSpan.FromSeconds(8), "six tabs");
         started.Stop();
         _process!.Refresh();
+        CaptureWindow("03-multiple-tabs");
         return $"tabs={CountTabs()} working_set_mb={_process.WorkingSet64 / 1024 / 1024} create5_ms={started.ElapsedMilliseconds}";
     }
 
@@ -1804,6 +1819,69 @@ internal static class Program
 
     private static AutomationElement? FindByName(string name) =>
         AutomationElement.RootElement.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, name));
+
+    private static void PrepareScreenshotWindow()
+    {
+        if (_process is null)
+        {
+            return;
+        }
+        try
+        {
+            MoveWindow(_process.MainWindowHandle, 20, 20, 1044, 788, true);
+            Thread.Sleep(800);
+        }
+        catch
+        {
+            // Screenshot window sizing is best effort and must not fail the suite.
+        }
+    }
+
+    private static void CaptureWindow(string name)
+    {
+        try
+        {
+            var directory = Environment.GetEnvironmentVariable("AMARE_UI_SCREENSHOT_DIR");
+            if (string.IsNullOrWhiteSpace(directory) || _window is null)
+            {
+                return;
+            }
+            Directory.CreateDirectory(directory);
+            var bounds = _window.Current.BoundingRectangle;
+            var width = Math.Max(1, (int)Math.Round(bounds.Width));
+            var height = Math.Max(1, (int)Math.Round(bounds.Height));
+            using var bitmap = new Bitmap(width, height);
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.CopyFromScreen((int)Math.Round(bounds.X), (int)Math.Round(bounds.Y), 0, 0, bitmap.Size);
+            bitmap.Save(Path.Combine(directory, name + ".png"), ImageFormat.Png);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"WARN screenshot {name}: {exception.Message}");
+        }
+    }
+
+    private static void CaptureDesktop(string name)
+    {
+        try
+        {
+            var directory = Environment.GetEnvironmentVariable("AMARE_UI_SCREENSHOT_DIR");
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                return;
+            }
+            Directory.CreateDirectory(directory);
+            var bounds = SystemInformation.VirtualScreen;
+            using var bitmap = new Bitmap(Math.Max(1, bounds.Width), Math.Max(1, bounds.Height));
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bitmap.Size);
+            bitmap.Save(Path.Combine(directory, name + ".png"), ImageFormat.Png);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"WARN screenshot {name}: {exception.Message}");
+        }
+    }
 
     private static void EscapeDialog(params string[] titles)
     {
