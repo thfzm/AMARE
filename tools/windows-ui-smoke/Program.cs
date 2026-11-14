@@ -375,6 +375,7 @@ internal static class Program
             Check("reader_mode", OpenAndCloseReader);
             Check("ai_panel", OpenAndCloseAiPanel);
             Check("settings_dialog", OpenAndCloseSettings);
+            Check("settings_shortcut_actions", SettingsShortcutActions);
             Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
             Check("api_ai_no_key", OpenAndCloseApiAiNoKey);
             Check("update_check_dialog", OpenAndCloseUpdateCheck);
@@ -1023,6 +1024,35 @@ internal static class Program
         CaptureWindow("02-settings");
         EscapeDialog("Settings");
         return "Settings dialog opened";
+    }
+
+    private static string SettingsShortcutActions()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Settings");
+        WaitFor(() => FindByName("Settings") is not null, TimeSpan.FromSeconds(5), "Settings dialog");
+        var tabsBefore = CountTabs();
+        SendKeys.SendWait("^t");
+        WaitFor(() => CountTabs() > tabsBefore, TimeSpan.FromSeconds(8), "ctrl+t in settings");
+        var windowsBefore = WindowsForProcess(_process.Id).Length;
+        SendKeys.SendWait("^n");
+        WaitFor(() => WindowsForProcess(_process.Id).Length > windowsBefore,
+            TimeSpan.FromSeconds(10), "ctrl+n in settings");
+        foreach (var candidate in WindowsForProcess(_process.Id))
+        {
+            if (candidate.Current.NativeWindowHandle == _process.MainWindowHandle.ToInt64()) continue;
+            if (candidate.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+            {
+                ((WindowPattern)pattern).Close();
+            }
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= windowsBefore,
+            TimeSpan.FromSeconds(10), "settings ctrl+n window close");
+        SetForegroundWindow(_process.MainWindowHandle);
+        Thread.Sleep(250);
+        EscapeDialog("Settings");
+        return $"settings ctrl+t tabs {tabsBefore}->{CountTabs()}, ctrl+n window";
     }
 
     private static string OpenAndCloseApiAiSettings()
