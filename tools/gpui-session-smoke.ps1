@@ -134,6 +134,7 @@ function Start-App([string]$data, [string]$restore = "1") {
     $env:AMARE_GPUI_STATUS = $Status
     $env:AMARE_GPUI_START_URL = "about:blank"
     $env:AMARE_GPUI_SELF_TEST = "0"
+$env:AMARE_GPUI_DIAGNOSTICS = "1"
     $env:AMARE_GPUI_RESTORE = $restore
     $process = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
@@ -236,6 +237,10 @@ try {
     }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    try {
+        $trace = (Read-State).diagnostics
+        if ($null -ne $trace) { $trace | Select-Object -Last 40 | ForEach-Object { Write-Host "TRACE $_" } }
+    } catch {}
     try { Shot "99-session-failure.png" } catch {}
 } finally {
     if ($null -ne $app -and -not $app.HasExited) { try { $app.Kill() } catch {} }

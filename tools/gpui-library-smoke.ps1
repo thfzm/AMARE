@@ -167,6 +167,7 @@ $env:AMARE_GPUI_DATA_DIR = $DataDir
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
+$env:AMARE_GPUI_DIAGNOSTICS = "1"
 try {
     $app = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "initial library app")
@@ -297,6 +298,10 @@ try {
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    try {
+        $trace = (Read-State).diagnostics
+        if ($null -ne $trace) { $trace | Select-Object -Last 40 | ForEach-Object { Write-Host "TRACE $_" } }
+    } catch {}
     try { Shot "99-library-failure.png" } catch {}
 }
 finally {

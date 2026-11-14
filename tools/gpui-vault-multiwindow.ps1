@@ -261,6 +261,7 @@ Remove-Item Env:AMARE_GPUI_STATUS_WINDOW -ErrorAction SilentlyContinue
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
+$env:AMARE_GPUI_DIAGNOSTICS = "1"
 $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $passwordA = "S3cret!Alice-59"
@@ -268,7 +269,9 @@ $passwordB = "S3cret!Bob-59"
 $passwordC = "S3cret!Carol-59"
 $passwordD = "S3cret!Dave-59"
 try {
-    $script:app = Start-Process $Exe -PassThru
+    $stdout = Join-Path $StatusDir "multiwindow-stdout.log"
+    $stderr = Join-Path $StatusDir "multiwindow-stderr.log"
+    $script:app = Start-Process $Exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $states = @()
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline) {
@@ -317,7 +320,14 @@ try {
         }
         if ($states.Count -ge 2) { break }
     }
-    if ($states.Count -lt 2) { throw "Timed out waiting for second window (windows=$($states.Count))" }
+    if ($states.Count -lt 2) {
+        try {
+            $trace = (Read-State $script:hwnd1).diagnostics
+            if ($null -ne $trace) { $trace | Select-Object -Last 40 | ForEach-Object { Write-Host "TRACE $_" } }
+        } catch {}
+        try { if (Test-Path $stderr) { Get-Content $stderr -Tail 40 | ForEach-Object { Write-Host "STDERR $_" } } } catch {}
+        throw "Timed out waiting for second window (windows=$($states.Count))"
+    }
     $firstId = [int64]$states[0].window_id
     $second = $states | Where-Object { [int64]$_.window_id -ne $firstId } | Select-Object -First 1
     if ($null -eq $second) { throw "second window state missing" }
@@ -527,6 +537,10 @@ try {
     if (-not $script:app.WaitForExit(25000)) { throw "restart app did not exit" }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    try {
+        $trace = (Read-State $script:hwnd1).diagnostics
+        if ($null -ne $trace) { $trace | Select-Object -Last 40 | ForEach-Object { Write-Host "TRACE $_" } }
+    } catch {}
     try { Shot-Window $script:hwnd1 "99-vault-multiwindow-failure.png" } catch {}
 } finally {
     if ($null -ne $script:app -and -not $script:app.HasExited) { try { $script:app.Kill() } catch {} }
