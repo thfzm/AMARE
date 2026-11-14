@@ -44,7 +44,10 @@ function Read-AllStates {
     foreach ($file in Get-StatusFiles) {
         try {
             $state = Get-Content $file.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
-            if ($null -ne $state -and $state.pid -eq $script:app.Id) { $states += $state }
+            if ($null -ne $state -and $state.pid -eq $script:app.Id) {
+                $handle = [IntPtr][int64]$state.window_handle
+                if ($handle -eq [IntPtr]::Zero -or [AmareVaultWin]::IsWindow($handle)) { $states += $state }
+            }
         } catch { }
     }
     return $states

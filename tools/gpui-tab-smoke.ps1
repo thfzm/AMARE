@@ -410,13 +410,12 @@ try {
 
     Add-Result "cross-window-tab-move" "UNVERIFIED" "SetParentWindow transfer to an existing window is not automated"
     Add-Result "tab-detach" "UNVERIFIED" "drag-outside detach watcher did not produce a verified new window"
-    # Reduce to one tab via Ctrl+W, then use the tab close button to exit.
+    # Reduce to one tab via Ctrl+W, then use the tab close button. Since 0.66
+    # the last tab must be replaced by a usable New Tab instead of exiting.
     while (@((Read-State).tabs).Count -gt 1) {
         Send-Keys "^w"
         Start-Sleep -Milliseconds 700
     }
-    $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
-    # Close the last remaining source tab via the tab close button.
     $oneState = Wait-State { param($s) @($s.tabs).Count -eq 1 } 20 "one tab remaining"
     Shot "gpui-tabs-one.png"
     $orig = Get-Origin $script:hwnd
@@ -426,12 +425,18 @@ try {
         Click-At $script:hwnd ($orig.X + $x) ($orig.Y + 22)
         $buttonX = $x
         Start-Sleep -Milliseconds 400
+        $state = Read-State
+        if ($null -ne $state -and @($state.tabs).Count -eq 1 -and ([string]::IsNullOrEmpty($state.source) -or $state.source -like "about:*")) { break }
     }
-    if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit from tab close button on last tab" }
+    if ($script:app.HasExited) { throw "browser exited instead of replacing the last tab" }
+    $recovered = Wait-State { param($s) @($s.tabs).Count -eq 1 -and ([string]::IsNullOrEmpty($s.source) -or $s.source -like "about:*") } 20 "last tab recovery"
+    Add-Result "tab-close-button-last-tab" "PASS" "x=$buttonX tabs=$(@($recovered.tabs).Count) title=$($recovered.title)"
+    [void]$script:app.CloseMainWindow()
+    if (-not $script:app.WaitForExit(20000)) { throw "browser did not exit after last-tab recovery" }
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt $before) { throw "WebView2 processes remained after all tabs closed" }
-    Add-Result "tab-close-button-last-tab" "PASS" "x=$buttonX exit=$($script:app.ExitCode) webview2=$before->$after"
+    Add-Result "webview2-cleanup-after-last-tab" "PASS" "webview2=$before->$after"
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message

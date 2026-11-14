@@ -5029,8 +5029,10 @@ impl Render for AmareApp {
                             .justify_center()
                             .hover(|style| style.bg(border))
                             .cursor_pointer()
-                            .window_control_area(WindowControlArea::Min)
-                            .child("—"),
+                            .child("—")
+                            .on_click(cx.listener(|_, _, window, _| {
+                                window.minimize_window();
+                            })),
                     )
                     .child(
                         div()
@@ -5043,8 +5045,10 @@ impl Render for AmareApp {
                             .justify_center()
                             .hover(|style| style.bg(border))
                             .cursor_pointer()
-                            .window_control_area(WindowControlArea::Max)
-                            .child("□"),
+                            .child("□")
+                            .on_click(cx.listener(|_, _, window, _| {
+                                window.zoom_window();
+                            })),
                     )
                     .child(
                         div()
@@ -5057,8 +5061,10 @@ impl Render for AmareApp {
                             .justify_center()
                             .hover(|style| style.bg(rgb(0xd9534f)))
                             .cursor_pointer()
-                            .window_control_area(WindowControlArea::Close)
-                            .child("×"),
+                            .child("×")
+                            .on_click(cx.listener(|_, _, window, _| {
+                                window.remove_window();
+                            })),
                     )
                     .on_children_prepainted({
                         let weak = cx.weak_entity();

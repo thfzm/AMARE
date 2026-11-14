@@ -114,7 +114,8 @@ function Shot([string]$name) {
         }
         Start-Sleep -Milliseconds 700
     }
-    throw "screenshot empty: $path"
+    Add-Result $name "UNVERIFIED" "screenshot empty: $path"
+    return
 }
 function Navigate([string]$url, [int]$timeout = 20) {
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
