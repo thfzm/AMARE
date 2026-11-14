@@ -613,18 +613,37 @@ impl WebViewHost {
                                         .lock()
                                         .unwrap_or_else(|e| e.into_inner());
                                     let _ = SetFocus(Some(parent));
-                                    let _ = PostMessageW(
-                                        Some(parent),
-                                        WM_KEYDOWN,
-                                        WPARAM(key as usize),
-                                        LPARAM(lparam as isize),
-                                    );
-                                    let _ = PostMessageW(
-                                        Some(parent),
-                                        WM_KEYUP,
-                                        WPARAM(key as usize),
-                                        LPARAM(lparam as isize),
-                                    );
+                                    // Forward the modifier state explicitly. Relying
+                                    // on GetKeyState alone made Ctrl+T/L/N depend on
+                                    // which HWND had focus when Ctrl was pressed.
+                                    let post = |message: u32, vk: u16, lp: i32| {
+                                        let _ = PostMessageW(
+                                            Some(parent),
+                                            message,
+                                            WPARAM(vk as usize),
+                                            LPARAM(lp as isize),
+                                        );
+                                    };
+                                    if control {
+                                        post(WM_KEYDOWN, VK_CONTROL.0, 1);
+                                    }
+                                    if shift {
+                                        post(WM_KEYDOWN, VK_SHIFT.0, 1);
+                                    }
+                                    if alt {
+                                        post(WM_KEYDOWN, VK_MENU.0, 1);
+                                    }
+                                    post(WM_KEYDOWN, key, lparam);
+                                    post(WM_KEYUP, key, lparam);
+                                    if alt {
+                                        post(WM_KEYUP, VK_MENU.0, 1);
+                                    }
+                                    if shift {
+                                        post(WM_KEYUP, VK_SHIFT.0, 1);
+                                    }
+                                    if control {
+                                        post(WM_KEYUP, VK_CONTROL.0, 1);
+                                    }
                                 }
                                 args.SetHandled(true)?;
                             }
