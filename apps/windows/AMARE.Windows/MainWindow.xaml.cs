@@ -16,6 +16,9 @@ using Microsoft.UI.Input;
 using Microsoft.Web.WebView2.Core;
 using Windows.System;
 using WinRT.Interop;
+using RectInt32 = Windows.Graphics.RectInt32;
+using WinColor = Windows.UI.Color;
+using WinRect = Windows.Foundation.Rect;
 
 namespace Amare.Windows;
 
