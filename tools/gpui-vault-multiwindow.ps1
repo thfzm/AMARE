@@ -222,15 +222,26 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
     $index = Get-EntryIndex $state $user
     if ($index -lt 0) { throw "entry not found: $user" }
     $entry = @($state.password_vault.entries | Where-Object username -eq $user)[0]
+    $actionInfo = $null
     if ($null -ne $entry) {
-        $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
+        for ($wait = 0; $wait -lt 20; $wait++) {
+            $state = Read-State $hwnd
+            $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
+            if ($null -ne $actionInfo -and $null -ne $actionInfo.edit) { break }
+            Start-Sleep -Milliseconds 250
+        }
         if ($null -ne $actionInfo) {
             $b = if ($action -eq "edit") { $actionInfo.edit } else { $actionInfo.delete }
             if ($null -ne $b) {
-                Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
-                $state = Read-State $hwnd
-                if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
-                if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+                for ($attempt = 0; $attempt -lt 4; $attempt++) {
+                    Focus-Window $hwnd
+                    Start-Sleep -Milliseconds 250
+                    Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+                    Start-Sleep -Milliseconds 300
+                    $state = Read-State $hwnd
+                    if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
+                    if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+                }
             }
         }
     }
