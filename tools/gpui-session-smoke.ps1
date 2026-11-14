@@ -117,10 +117,19 @@ function Shot([string]$name) {
     throw "screenshot empty: $path"
 }
 function Navigate([string]$url, [int]$timeout = 20) {
-    Send-Keys "^l"; Start-Sleep -Milliseconds 180
-    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    Send-Keys $url; Send-Keys "{ENTER}"
-    return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        Force-Focus $script:hwnd
+        Click-Client $script:hwnd 420 70
+        Send-Keys "^l"; Start-Sleep -Milliseconds 180
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        Send-Keys $url; Send-Keys "{ENTER}"
+        try {
+            return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
+        } catch {
+            if ($attempt -eq 1) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
 }
 function Ensure-Tabs([int]$target) {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
@@ -173,7 +182,13 @@ Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $completeData, $failureData, $corruptData, $ScreenshotDir | Out-Null
 $server = Start-Process python -ArgumentList @("tools/slow_session_server.py", $Port) -PassThru
 try {
-    Start-Sleep -Seconds 2
+    for ($i = 0; $i -lt 40; $i++) {
+        try {
+            $probe = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/fast" -UseBasicParsing -TimeoutSec 2
+            if ($probe.StatusCode -eq 200) { break }
+        } catch { }
+        Start-Sleep -Milliseconds 300
+    }
     $fast = "http://127.0.0.1:$Port/fast"
     $scroll = "http://127.0.0.1:$Port/scroll"
     $slow = "http://127.0.0.1:$Port/slow"

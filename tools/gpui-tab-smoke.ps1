@@ -140,7 +140,7 @@ function Ensure-Tabs([int]$target) {
         # key, so always establish a known focus first.
         Force-Focus $script:hwnd
         $origin = Get-Origin $script:hwnd
-        Click-At $script:hwnd ($origin.X + 50) ($origin.Y + 30)
+        Click-At $script:hwnd ($origin.X + 420) ($origin.Y + 70)
         Send-GpuiShortcut $script:hwnd 0x54
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {

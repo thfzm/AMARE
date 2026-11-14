@@ -106,12 +106,21 @@ function ShotFull([string]$name) {
     Add-Result $name "PASS" "$path ($($bounds.Width) x $($bounds.Height), $((Get-Item $path).Length) bytes)"
 }
 function Navigate([string]$url, [int]$timeout = 20) {
-    Send-Keys "^l"
-    Start-Sleep -Milliseconds 200
-    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    Send-Keys $url
-    Send-Keys "{ENTER}"
-    return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        Force-Focus $script:hwnd
+        Click-Client $script:hwnd 420 70
+        Send-Keys "^l"
+        Start-Sleep -Milliseconds 200
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        Send-Keys $url
+        Send-Keys "{ENTER}"
+        try {
+            return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
+        } catch {
+            if ($attempt -eq 1) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
 }
 function Get-PageState {
     $state = Read-State
@@ -178,6 +187,13 @@ $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
+for ($i = 0; $i -lt 40; $i++) {
+    try {
+        $probe = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing -TimeoutSec 2
+        if ($probe.StatusCode -eq 200) { break }
+    } catch { }
+    Start-Sleep -Milliseconds 300
+}
 try {
     $app = Start-Process $Exe -PassThru
     [void](Wait-State { param($s) $null -ne $s.address } 60 "initial library app")

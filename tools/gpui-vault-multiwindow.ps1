@@ -90,7 +90,9 @@ function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($k
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareVaultWin+POINT
     [void][AmareVaultWin]::ClientToScreen($hwnd, [ref]$point)
+    try { [void][AmareVaultWin]::ShowWindow($hwnd, 9) } catch {}
     Focus-Window $hwnd
+    Start-Sleep -Milliseconds 200
     [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + $y))
     Start-Sleep -Milliseconds 120
     [AmareVaultWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
@@ -216,8 +218,9 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
     $state = Read-State $hwnd
     $index = Get-EntryIndex $state $user
     if ($index -lt 0) { throw "entry not found: $user" }
-    $baseY = 340 + ($index * 100)
-    $xs = if ($action -eq "edit") { 960, 970, 980 } else { 990, 1002, 1012 }
+    $baseY = 341 + ($index * 100)
+    # First try the exact visual position of 수정/삭제, then a small grid.
+    $xs = if ($action -eq "edit") { 975, 970, 980 } else { 1000, 990, 1010 }
     foreach ($x in $xs) {
         foreach ($dy in -12, 0, 12, 24, 36, 48) {
             $script:lastActionY = $baseY + $dy
@@ -355,6 +358,42 @@ try {
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries).Count -eq 2 } 12 "first window sees bob")
     Add-Result "independent-add-sync" "PASS" "window1/window2 both see alice+bob"
     Add-Result "same-process-windows" "PASS" "pid=$($script:app.Id) hwnd1=$($script:hwnd1.ToInt64()) hwnd2=$($script:hwnd2.ToInt64())"
+
+    # Window/tab independence: a new tab in window 1 must not change window 2.
+    $tabs2Before = @((Read-State $script:hwnd2).tabs).Count
+    Send-GpuiShortcut $script:hwnd1 0x54
+    [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -ge 2 } 12 "window1 extra tab")
+    $tabs2After = @((Read-State $script:hwnd2).tabs).Count
+    if ($tabs2After -ne $tabs2Before) { throw "window2 tab count changed: $tabs2Before -> $tabs2After" }
+    Add-Result "window-tab-independence" "PASS" "window1 extra tab; window2 tabs=$tabs2After"
+    Send-GpuiShortcut $script:hwnd1 0x57
+    [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -eq 1 } 12 "window1 extra tab close")
+
+    # Third window, then close it while the first two remain.
+    $states = @(Read-AllStates)
+    $beforeThird = $states.Count
+    Send-GpuiShortcut $script:hwnd2 0x4E
+    $third = $null
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline) {
+        $states = @(Read-AllStates)
+        if ($states.Count -ge 3) {
+            $third = $states | Where-Object { [int64]$_.window_id -notin @([int64]$states[0].window_id, [int64]$second.window_id) } | Select-Object -First 1
+            if ($null -ne $third) { break }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($null -eq $third) { throw "third window not created (windows=$($states.Count))" }
+    Add-Result "third-window" "PASS" "window_id=$($third.window_id)"
+    $thirdHandle = [IntPtr][int64]$third.window_handle
+    Close-Window $thirdHandle
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline) {
+        if (@(Read-AllStates).Count -le 2) { break }
+        Start-Sleep -Milliseconds 250
+    }
+    if (@(Read-AllStates).Count -gt 2) { throw "third window did not close" }
+    Add-Result "close-third-window" "PASS" "two windows remain"
     Shot-Both $script:hwnd1 $script:hwnd2 "06-two-window-sync.png"
 
     # Independent edits in both windows while the forms are open together.

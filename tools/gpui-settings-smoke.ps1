@@ -79,13 +79,23 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     Start-Sleep -Milliseconds 350
 }
 function Click-Titlebar([string]$button) {
+    $state = Read-State
+    $layout = if ($null -ne $state) { $state.layout_bounds } else { $null }
+    $name = switch ($button) { "minimize" { "window_min" } "maximize" { "window_max" } "close" { "window_close" } default { "" } }
+    if ($null -ne $layout -and $null -ne $layout.toolbar_children -and $name -ne "") {
+        $b = $layout.toolbar_children.$name
+        if ($null -ne $b) {
+            Click-Client $script:hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+            return
+        }
+    }
     $rect = New-Object AmareSettings+RECT
     [void][AmareSettings]::GetClientRect($script:hwnd, [ref]$rect)
     $width = [Math]::Max(640, $rect.Right - $rect.Left)
     $x = switch ($button) {
-        "minimize" { $width - 133 }
-        "maximize" { $width - 99 }
-        "close" { $width - 23 }
+        "minimize" { $width - 143 }
+        "maximize" { $width - 89 }
+        "close" { $width - 43 }
         default { throw "unknown titlebar button: $button" }
     }
     Click-Client $script:hwnd $x 22

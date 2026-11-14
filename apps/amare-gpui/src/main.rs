@@ -732,7 +732,11 @@ impl AmareApp {
         app
     }
 
-    fn new_restored(window: &mut Window, cx: &mut App, snapshot: SessionWindowSnapshot) -> Self {
+    fn new_restored(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        snapshot: SessionWindowSnapshot,
+    ) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
         let (settings_generation, settings) = library::browser_settings_cached()
@@ -752,32 +756,17 @@ impl AmareApp {
         let webview_env = webview::shared_environment().ok();
         let mut tabs = Vec::new();
         for (index, restored) in snapshot.tabs.iter().enumerate() {
-            #[cfg(target_os = "windows")]
-            let webview = match (webview_env.as_ref(), parent) {
-                (Some(env), Some(parent)) => webview::WebViewHost::create(env, parent).ok(),
-                _ => None,
-            };
-            #[cfg(not(target_os = "windows"))]
-            let webview = ();
-            #[cfg(target_os = "windows")]
-            let restore_error = if webview.is_none() {
-                Some("WebView2 controller unavailable for restored tab".into())
-            } else {
-                None
-            };
-            #[cfg(not(target_os = "windows"))]
-            let restore_error: Option<SharedString> = None;
             let pending_scroll = if restored.scroll_x != 0 || restored.scroll_y != 0 {
                 Some((restored.scroll_x, restored.scroll_y))
             } else {
                 None
             };
-            let tab = TabState {
+            tabs.push(TabState {
                 id: index as u64 + 1,
                 title: restored.title.clone().into(),
                 url: restored.url.clone().into(),
                 loading: true,
-                error: restore_error,
+                error: None,
                 can_go_back: false,
                 can_go_forward: false,
                 favicon: None,
@@ -789,14 +778,8 @@ impl AmareApp {
                 #[cfg(target_os = "windows")]
                 pending_scroll,
                 #[cfg(target_os = "windows")]
-                webview,
-            };
-            #[cfg(target_os = "windows")]
-            if let Some(view) = &tab.webview {
-                view.navigate(&restored.url);
-                view.set_active(false);
-            }
-            tabs.push(tab);
+                webview: None,
+            });
         }
         if tabs.is_empty() {
             tabs.push(TabState {
@@ -886,8 +869,37 @@ impl AmareApp {
             visible_until: Instant::now() + Duration::from_secs(8),
         });
         #[cfg(target_os = "windows")]
-        if let Some(webview) = app.active_webview() {
-            webview.set_active(true);
+        {
+            let meta = app
+                .tabs
+                .iter()
+                .map(|tab| (tab.id, tab.url.to_string()))
+                .collect::<Vec<_>>();
+            let active_id = app.tabs.get(app.active).map(|tab| tab.id);
+            // Restored controllers are created after the window has rendered so
+            // a slow WebView2 attach cannot prevent session status/UI startup.
+            cx.defer_in(window, move |this, window, cx| {
+                let mut ordered = meta;
+                if let Some(active_id) = active_id {
+                    ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
+                }
+                for (id, url) in ordered {
+                    let (webview, error) = this.create_webview();
+                    if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
+                        tab.webview = webview;
+                        tab.error = error.map(Into::into);
+                        if let Some(view) = &tab.webview {
+                            view.navigate(&url);
+                            view.set_active(active_id == Some(id));
+                            if active_id == Some(id) {
+                                view.focus();
+                            }
+                        }
+                    }
+                }
+                this.sync_webview_bounds(window);
+                cx.notify();
+            });
         }
         let address_focus = app.address_input.read(cx).focus_handle(cx);
         window.focus(&address_focus);
@@ -996,6 +1008,10 @@ impl AmareApp {
             .tabs
             .iter()
             .map(|tab| {
+                #[cfg(target_os = "windows")]
+                let webview_attached = tab.webview.is_some();
+                #[cfg(not(target_os = "windows"))]
+                let webview_attached = false;
                 serde_json::json!({
                     "id": tab.id,
                     "title": tab.title,
@@ -1007,7 +1023,8 @@ impl AmareApp {
                     "last_active": tab.last_active,
                     "scroll_x": tab.scroll_x,
                     "scroll_y": tab.scroll_y,
-                    "restored": tab.restored
+                    "restored": tab.restored,
+                    "webview": webview_attached
                 })
             })
             .collect::<Vec<_>>();
@@ -1067,6 +1084,8 @@ impl AmareApp {
         let window_handle = 0usize;
         let (lock_epoch, globally_locked) = password_vault::lock_state();
         let payload = serde_json::json!({
+            "platform": "gpui",
+            "version": env!("CARGO_PKG_VERSION"),
             "address": address,
             "marked_range": marked,
             "selected_range": [selected.start, selected.end],
