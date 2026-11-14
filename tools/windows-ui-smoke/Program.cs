@@ -1293,8 +1293,10 @@ internal static class Program
         {
             ShowWindow(targetHandle, 9); // SW_RESTORE
             ShowWindow(sourceHandle, 9);
-            SetWindowPos(sourceHandle, IntPtr.Zero, 40, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
-            SetWindowPos(targetHandle, IntPtr.Zero, 900, 80, 0, 0, 0x0001 | 0x0004 | 0x0040);
+            var screenWidth = GetSystemMetrics(0);
+            var paneWidth = Math.Max(380, (screenWidth - 80) / 2);
+            MoveWindow(sourceHandle, 20, 40, paneWidth, 640, true);
+            MoveWindow(targetHandle, 20 + paneWidth + 20, 40, paneWidth, 640, true);
             Thread.Sleep(900);
             targetWindow = AutomationElement.FromHandle(targetHandle);
             sourceWindow = AutomationElement.FromHandle(sourceHandle);
@@ -1415,7 +1417,7 @@ internal static class Program
         WaitFor(() => CountTabs() >= 3, TimeSpan.FromSeconds(8), "tear-off tabs");
         NavigateToExample();
         var sourceHandle = _process.MainWindowHandle;
-        SetWindowPos(sourceHandle, IntPtr.Zero, 40, 80, 700, 620, 0x0001 | 0x0004 | 0x0040);
+        MoveWindow(sourceHandle, 20, 40, 640, 620, true);
         ShowWindow(sourceHandle, 9);
         SetForegroundWindow(sourceHandle);
         Thread.Sleep(500);
