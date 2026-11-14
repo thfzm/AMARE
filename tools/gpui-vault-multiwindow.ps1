@@ -225,6 +225,8 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
     $actionInfo = $null
     if ($null -ne $entry) {
         for ($wait = 0; $wait -lt 20; $wait++) {
+            Focus-Window $hwnd
+            Start-Sleep -Milliseconds 150
             $state = Read-State $hwnd
             $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
             if ($null -ne $actionInfo -and $null -ne $actionInfo.edit) { break }
