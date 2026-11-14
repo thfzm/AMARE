@@ -1496,6 +1496,15 @@ internal static class Program
             var targetHandle = (IntPtr)created.Current.NativeWindowHandle;
             var sourceWindowForMerge = AutomationElement.FromHandle(sourceHandle);
             var targetWindowForMerge = AutomationElement.FromHandle(targetHandle);
+            // Place both windows side by side so the target tab is not hidden
+            // under the tear-off window during the re-merge drag.
+            var screenWidth = GetSystemMetrics(0);
+            var mergeWidth = Math.Max(380, (screenWidth - 80) / 2);
+            MoveWindow(sourceHandle, 20, 40, mergeWidth, 600, true);
+            MoveWindow(targetHandle, 20 + mergeWidth + 20, 40, mergeWidth, 600, true);
+            Thread.Sleep(700);
+            sourceWindowForMerge = AutomationElement.FromHandle(sourceHandle);
+            targetWindowForMerge = AutomationElement.FromHandle(targetHandle);
             DragTabBetweenWindows(targetWindowForMerge, sourceWindowForMerge);
             WaitFor(() => CountTabs(sourceWindowForMerge) == 3, TimeSpan.FromSeconds(15), "tear-off re-merge source");
             WaitFor(() => CountTabs(targetWindowForMerge) <= 1, TimeSpan.FromSeconds(15), "tear-off re-merge target");
