@@ -215,10 +215,6 @@ public sealed partial class MainWindow : Window
                 UpdateTitleBarInsets();
                 SetTitleBarRegions();
             };
-            _tabs.Tabs.CollectionChanged += (_, _) =>
-                _dispatcher.TryEnqueue(SetTitleBarRegions);
-            TabList.ContainerContentChanging += (_, _) =>
-                _dispatcher.TryEnqueue(SetTitleBarRegions);
             RootGrid.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
             Activated += (_, _) =>
             {
@@ -284,15 +280,10 @@ public sealed partial class MainWindow : Window
         {
             var scale = AppTitleBar.XamlRoot.RasterizationScale;
             var rects = new List<RectInt32>();
-            for (var index = 0; index < _tabs.Tabs.Count; index++)
-            {
-                if (TabList.ContainerFromIndex(index) is FrameworkElement item
-                    && item.ActualWidth > 0
-                    && item.ActualHeight > 0)
-                {
-                    AddPassthroughRect(rects, item, scale);
-                }
-            }
+            // Mark the complete interactive controls, not individual tab items:
+            // item rectangles can change between layout passes, and a stale rect
+            // turns a tab drag into a window move.
+            AddPassthroughRect(rects, TabList, scale);
             AddPassthroughRect(rects, TitleBarButtons, scale);
 
             var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);

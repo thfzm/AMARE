@@ -1011,11 +1011,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Settings");
         WaitFor(() => FindByName("Settings") is not null, TimeSpan.FromSeconds(5), "Settings dialog");
-        var cancel = FindByName("Cancel");
-        if (cancel is not null)
-        {
-            Invoke(cancel);
-        }
+        EscapeDialog("Settings");
         return "Settings dialog opened";
     }
 
@@ -1024,12 +1020,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("API AI settings…");
         WaitFor(() => FindByName("API AI settings") is not null, TimeSpan.FromSeconds(8), "API AI settings dialog");
-        var cancel = FindByName("Cancel");
-        if (cancel is not null)
-        {
-            Invoke(cancel);
-        }
-        WaitFor(() => FindByName("API AI settings") is null, TimeSpan.FromSeconds(8), "API AI settings dialog close");
+        EscapeDialog("API AI settings");
         return "API AI settings dialog opened";
     }
 
@@ -1041,9 +1032,7 @@ internal static class Program
         {
             return FindByName("API AI") is not null || FindByName("Ask API AI") is not null;
         }, TimeSpan.FromSeconds(8), "API AI no-key dialog");
-        var close = FindByName("Close") ?? FindByName("Cancel");
-        if (close is not null) Invoke(close);
-        SendKeys.SendWait("{ESC}");
+        EscapeDialog("API AI", "Ask API AI");
         return "API AI no-key guard opened";
     }
 
@@ -1052,8 +1041,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("History");
         WaitFor(() => FindByName("History") is not null, TimeSpan.FromSeconds(8), "History dialog");
-        var close = FindByName("Close");
-        if (close is not null) Invoke(close);
+        EscapeDialog("History");
         return "History dialog opened";
     }
 
@@ -1104,12 +1092,7 @@ internal static class Program
         var detail = FindByName("AMARE is up to date.") is not null
             ? "manual check: up to date (GitHub Releases empty)"
             : "manual check dialog opened";
-        var close = FindByName("Close");
-        if (close is not null)
-        {
-            Invoke(close);
-        }
-        WaitFor(() => FindByName("Update check") is null, TimeSpan.FromSeconds(8), "update check dialog close");
+        EscapeDialog("Update check");
         return detail;
     }
 
@@ -1118,12 +1101,7 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Diagnostics…");
         WaitFor(() => FindByName("Diagnostics") is not null, TimeSpan.FromSeconds(8), "diagnostics dialog");
-        var close = FindByName("Close");
-        if (close is not null)
-        {
-            Invoke(close);
-        }
-        WaitFor(() => FindByName("Diagnostics") is null, TimeSpan.FromSeconds(8), "diagnostics dialog close");
+        EscapeDialog("Diagnostics");
         return "diagnostics dialog opened";
     }
 
@@ -1826,6 +1804,15 @@ internal static class Program
 
     private static AutomationElement? FindByName(string name) =>
         AutomationElement.RootElement.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, name));
+
+    private static void EscapeDialog(params string[] titles)
+    {
+        SendKeys.SendWait("{ESC}");
+        WaitFor(
+            () => titles.All(title => FindByName(title) is null),
+            TimeSpan.FromSeconds(8),
+            $"dialog close ({string.Join(", ", titles)})");
+    }
 
     private static void InvokeMenu(string name)
     {
