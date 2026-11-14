@@ -876,30 +876,36 @@ impl AmareApp {
                 .map(|tab| (tab.id, tab.url.to_string()))
                 .collect::<Vec<_>>();
             let active_id = app.tabs.get(app.active).map(|tab| tab.id);
-            // Restored controllers are created after the current effect cycle so
-            // a slow WebView2 attach cannot prevent session UI/status startup.
-            cx.defer_in(window, move |this, window, cx| {
-                let mut ordered = meta;
-                if let Some(active_id) = active_id {
-                    ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
-                }
-                for (id, url) in ordered {
-                    let (webview, error) = this.create_webview();
-                    if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
-                        tab.webview = webview;
-                        tab.error = error.map(Into::into);
-                        if let Some(view) = &tab.webview {
-                            view.navigate(&url);
-                            view.set_active(active_id == Some(id));
-                            if active_id == Some(id) {
-                                view.focus();
+            // Restored controllers are created after the effect/paint flush so a
+            // slow WebView2 attach cannot re-enter GPUI or block session startup.
+            if let Some(handle) = window.to_async(cx).window_handle().downcast::<AmareApp>() {
+                cx.spawn(async move |_this, cx| {
+                    Timer::after(Duration::from_millis(16)).await;
+                    let _ = handle.update(cx, |this, window, cx| {
+                        let mut ordered = meta;
+                        if let Some(active_id) = active_id {
+                            ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
+                        }
+                        for (id, url) in ordered {
+                            let (webview, error) = this.create_webview();
+                            if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
+                                tab.webview = webview;
+                                tab.error = error.map(Into::into);
+                                if let Some(view) = &tab.webview {
+                                    view.navigate(&url);
+                                    view.set_active(active_id == Some(id));
+                                    if active_id == Some(id) {
+                                        view.focus();
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-                this.sync_webview_bounds(window);
-                cx.notify();
-            });
+                        this.sync_webview_bounds(window);
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
         }
         let address_focus = app.address_input.read(cx).focus_handle(cx);
         window.focus(&address_focus);
@@ -2275,12 +2281,16 @@ impl AmareApp {
             // Attach after the new window's first frame. A fixed delay is not a
             // lifecycle guarantee; this callback runs only after the window has
             // rendered and is ready to host a WebView2 child window.
-            let _ = handle.update(cx, |_app, window, cx| {
-                cx.defer_in(window, move |app, window, cx| {
+            // Run after the current effect/paint flush. Creating a controller
+            // inside defer_in re-enters GPUI while the app RefCell is borrowed.
+            cx.spawn(async move |_this, cx| {
+                Timer::after(Duration::from_millis(16)).await;
+                let _ = handle.update(cx, |app, window, cx| {
                     window.activate_window();
                     app.attach_initial_webview(url, window, cx);
                 });
-            });
+            })
+            .detach();
         }
         cx.activate(true);
     }
