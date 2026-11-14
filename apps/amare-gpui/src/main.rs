@@ -876,29 +876,32 @@ impl AmareApp {
                 .map(|tab| (tab.id, tab.url.to_string()))
                 .collect::<Vec<_>>();
             let active_id = app.tabs.get(app.active).map(|tab| tab.id);
-            // Restored controllers are created after the window has rendered so
-            // a slow WebView2 attach cannot prevent session status/UI startup.
-            cx.defer_in(window, move |this, window, cx| {
-                let mut ordered = meta;
-                if let Some(active_id) = active_id {
-                    ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
-                }
-                for (id, url) in ordered {
-                    let (webview, error) = this.create_webview();
-                    if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
-                        tab.webview = webview;
-                        tab.error = error.map(Into::into);
-                        if let Some(view) = &tab.webview {
-                            view.navigate(&url);
-                            view.set_active(active_id == Some(id));
-                            if active_id == Some(id) {
-                                view.focus();
+            let entity = cx.entity();
+            // Restored controllers are created after the window's first frame so
+            // a slow WebView2 attach cannot prevent session UI/status startup.
+            window.on_next_frame(move |window, cx| {
+                let _ = entity.update(cx, |this, cx| {
+                    let mut ordered = meta;
+                    if let Some(active_id) = active_id {
+                        ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
+                    }
+                    for (id, url) in ordered {
+                        let (webview, error) = this.create_webview();
+                        if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
+                            tab.webview = webview;
+                            tab.error = error.map(Into::into);
+                            if let Some(view) = &tab.webview {
+                                view.navigate(&url);
+                                view.set_active(active_id == Some(id));
+                                if active_id == Some(id) {
+                                    view.focus();
+                                }
                             }
                         }
                     }
-                }
-                this.sync_webview_bounds(window);
-                cx.notify();
+                    this.sync_webview_bounds(window);
+                    cx.notify();
+                });
             });
         }
         let address_focus = app.address_input.read(cx).focus_handle(cx);
@@ -2272,16 +2275,17 @@ impl AmareApp {
         ));
         if let Ok(handle) = result {
             let url = url_for_log.clone();
-            // Let the new window draw and write its status before WebView2
-            // controller creation, which pumps Win32 messages and can block.
-            cx.spawn(async move |_this, cx| {
-                Timer::after(Duration::from_millis(400)).await;
-                let _ = handle.update(cx, |app, window, cx| {
-                    window.activate_window();
-                    app.attach_initial_webview(url, window, cx);
+            // Attach after the new window's first frame. A fixed delay is not a
+            // lifecycle guarantee; this callback runs only after the window has
+            // rendered and is ready to host a WebView2 child window.
+            let _ = handle.update(cx, |_app, window, cx| {
+                window.on_next_frame(move |window, cx| {
+                    let _ = handle.update(cx, |app, window, cx| {
+                        window.activate_window();
+                        app.attach_initial_webview(url, window, cx);
+                    });
                 });
-            })
-            .detach();
+            });
         }
         cx.activate(true);
     }

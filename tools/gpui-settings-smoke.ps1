@@ -270,7 +270,15 @@ try {
     Add-Result "multi-window-graceful-exit" "PASS" "both windows closed in sequence"
     Start-Sleep -Seconds 2
 
-    $app = Start-Process $Exe -PassThru
+    Remove-Item $Status -Force -ErrorAction SilentlyContinue
+    $restartErr = Join-Path $env:TEMP "amare-gpui-settings-restart-stderr.log"
+    $app = Start-Process $Exe -PassThru -RedirectStandardError $restartErr
+    Start-Sleep -Seconds 2
+    $app.Refresh()
+    if ($app.HasExited) {
+        if (Test-Path $restartErr) { Get-Content $restartErr -Tail 40 | ForEach-Object { Write-Host "STDERR $_" } }
+        throw "restored settings app exited during startup"
+    }
     [void](Wait-State { param($s) $null -ne $s.address } 60 "restored settings app")
     $restoredMulti = $true
     try {
