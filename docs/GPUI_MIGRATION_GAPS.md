@@ -3,6 +3,16 @@
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
+## 0.69.0 status
+
+- Session Restore: metadata/controller/window/multi-window recovery **PASS**;
+  active navigation source, scroll, corrupt fallback **UNVERIFIED**.
+- Titlebar: minimize/maximize **PASS (real mouse)**; restore/close **UNVERIFIED**.
+- Tab: 21 PASS / 0 FAIL / 6 UNVERIFIED; library 20/0/0; settings 21/0/4.
+- Multiwindow: 12/1; one late Vault delete action fails.
+- Three repeats: 1/2/2 FAIL — 3 consecutive 0 FAIL not achieved.
+- AI/updater/site permissions remain not implemented.
+
 ## Status rules
 
 - **Implemented/verified**: code exists and a Windows check passed.

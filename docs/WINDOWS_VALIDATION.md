@@ -82,13 +82,13 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.68.0)
+## 5. 현재 실행 상태 (0.69.0)
 
 - Windows CI [43575072487](https://github.com/thfzm/AMARE/actions/runs/43575072487): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
 - Linux CI [43575072515](https://github.com/thfzm/AMARE/actions/runs/43575072515): **SUCCESS**.
 - GPUI CI [43566952547](https://github.com/thfzm/AMARE/actions/runs/43566952547): **FAILURE** — password **51/0/1**, input **25/0/4**, aggregate **FAIL=4/UNVERIFIED=11**; **실제 Windows 11 사용자 검증 UNVERIFIED**.
 - WinUI UI smoke **48/48**: custom title strip, WebView2 focus Ctrl+T/L/N, Ctrl+N/New Window, last-tab recovery, tab reorder/tear-off/cross-window, settings/history/downloads, session restore, maximize/restore **PASS**.
-- GPUI 최종: password **51/0/1**, input **25/0/4**, multiwindow **6/1**, settings **13/1/4**; tab 4번째 생성, local navigation, session restore, titlebar control은 **FAIL/UNVERIFIED**다.
+- GPUI 최종: password **51/0/1**, input **25/0/4**, multiwindow **12/1**, tab **21/0/6**, library **20/0/0**, settings **21/0/4**, session **10/0/4**; session active/scroll, titlebar restore/close, multiwindow dave delete는 **UNVERIFIED/FAIL**이다.
 - 실제 Windows 11 사용자 키보드/창 chrome 검증, Snap, Alt+Tab, 작업 표시줄, Korean IME, DPI, 다중 모니터는 **UNVERIFIED**다.
 - ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.
 - Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**다.

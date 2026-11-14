@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.68.0)
+# AMARE GPUI Windows Shell (0.69.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.68.0)
+## Verified in Windows CI (0.69.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.69 creates WebView2 controllers outside GPUI entity borrows, restoring tab/library/session stability and Session Restore metadata/controller/window recovery. Best repeat is 1 FAIL/15 UNVERIFIED; three repeats are 1/2/2 FAIL, so GPUI is not the default build.
 - 0.68 moves WebView2 controller creation outside the GPUI effect/paint flush and lazily attaches restored tabs; second/third window and tab independence reach 6 PASS, but three repeated runs still have 5 FAIL. GPUI is not the default build.
 - 0.67 defers the first WebView2 attach for new windows until after the window renders, activates the new window, and publishes tab status before controller creation. GPUI CI still reports 4 FAIL, so GPUI is not the default build.
 - 0.66 delivers WebView2 accelerator shortcuts synchronously to GPUI (`SetFocus` + `SendMessageW`) so Ctrl+L and immediately typed characters reach the address bar, and creates a fresh tab when the last tab is closed. The GPUI password smoke now passes 51/0/1; Windows 11 user verification is still UNVERIFIED.
