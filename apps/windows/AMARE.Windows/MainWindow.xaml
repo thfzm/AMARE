@@ -28,18 +28,19 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="44" />
+            <RowDefinition Height="48" />
             <RowDefinition Height="46" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="24" />
         </Grid.RowDefinitions>
 
-        <!-- Top tabs -->
-        <Grid Grid.Row="0" Background="{ThemeResource LayerFillColorDefaultBrush}">
+        <!-- AMARE title bar: tab strip + window controls live in the extended title bar. -->
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="{ThemeResource LayerFillColorDefaultBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="CaptionSpacer" Width="0" />
             </Grid.ColumnDefinitions>
             <ListView
                 x:Name="TabList" AutomationProperties.AutomationId="TabList"
@@ -94,18 +95,32 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <Button
+            <StackPanel
+                x:Name="TitleBarButtons"
                 Grid.Column="1"
-                Margin="0,0,8,0"
-                Width="36"
-                Height="34"
+                Orientation="Horizontal"
                 VerticalAlignment="Center"
-                Style="{StaticResource ToolbarButtonStyle}"
-                AutomationProperties.AutomationId="NewTabButton"
-                Click="NewTab_Click"
-                ToolTipService.ToolTip="New tab">
-                <FontIcon Glyph="&#xE710;" />
-            </Button>
+                Margin="0,0,8,0"
+                Spacing="2">
+                <Button
+                    Width="36"
+                    Height="34"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    AutomationProperties.AutomationId="NewTabButton"
+                    Click="NewTab_Click"
+                    ToolTipService.ToolTip="New tab (Ctrl+T)">
+                    <FontIcon Glyph="&#xE710;" />
+                </Button>
+                <Button
+                    Width="36"
+                    Height="34"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    AutomationProperties.AutomationId="NewWindowButton"
+                    Click="NewWindow_Click"
+                    ToolTipService.ToolTip="New window (Ctrl+N)">
+                    <FontIcon Glyph="&#xE8A7;" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Toolbar -->

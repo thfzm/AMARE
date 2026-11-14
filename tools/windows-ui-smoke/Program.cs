@@ -343,6 +343,7 @@ internal static class Program
                     throw;
                 }
             });
+            Check("custom_title_bar", CustomTitleBar);
             Check("address_navigation", NavigateToExample);
             Check("new_tab", CreateNewTab);
             Check("tab_switch_shortcut", SwitchTabShortcut);
@@ -377,6 +378,10 @@ internal static class Program
             Check("downloads_menu", OpenAndCloseDownloads);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
+            Check("new_window_button", OpenAndCloseNewWindowButton);
+            Check("new_window_shortcut", OpenAndCloseNewWindowShortcut);
+            Check("last_tab_recovery", LastTabRecovery);
+            Check("webview_focus_shortcuts", WebViewFocusShortcuts);
             Check("cross_window_tab_move", CrossWindowTabMove);
             Check("tear_off_tab", TearOffTab);
             Check("tab_churn", TabChurn);
@@ -443,6 +448,17 @@ internal static class Program
         {
             Results.Add(new Result(name, false, exception.Message));
         }
+    }
+
+    private static string CustomTitleBar()
+    {
+        if (_window is null) throw new InvalidOperationException("window missing");
+        var windowRect = _window.Current.BoundingRectangle;
+        var list = WaitFindById("TabList", TimeSpan.FromSeconds(10));
+        var tabsRect = list.Current.BoundingRectangle;
+        var delta = tabsRect.Top - windowRect.Top;
+        Require(delta < 20, $"native title bar still occupies {delta:F1}px above the tab strip");
+        return $"tab strip starts {delta:F1}px below the window top; native title bar removed";
     }
 
     private static string NavigateToExample()
@@ -1142,6 +1158,123 @@ internal static class Program
             .Cast<AutomationElement>()
             .Where(window => window.Current.ControlType == ControlType.Window)
             .ToArray();
+
+    private static string OpenAndCloseNewWindowButton()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        var before = WindowsForProcess(_process.Id).Length;
+        SetForegroundWindow(_process.MainWindowHandle);
+        Invoke(WaitFindById("NewWindowButton", TimeSpan.FromSeconds(8)));
+        WaitFor(() => WindowsForProcess(_process.Id).Length > before, TimeSpan.FromSeconds(10), "new window button");
+        var windows = WindowsForProcess(_process.Id);
+        foreach (var candidate in windows)
+        {
+            if (candidate.Current.NativeWindowHandle == _process.MainWindowHandle.ToInt64()) continue;
+            if (candidate.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+            {
+                ((WindowPattern)pattern).Close();
+            }
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= before, TimeSpan.FromSeconds(10), "new window button close");
+        SetForegroundWindow(_process.MainWindowHandle);
+        return "NewWindowButton opened and closed a window";
+    }
+
+    private static string OpenAndCloseNewWindowShortcut()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        var before = WindowsForProcess(_process.Id).Length;
+        SetForegroundWindow(_process.MainWindowHandle);
+        SendKeys.SendWait("^n");
+        WaitFor(() => WindowsForProcess(_process.Id).Length > before, TimeSpan.FromSeconds(10), "ctrl+n new window");
+        var windows = WindowsForProcess(_process.Id);
+        foreach (var candidate in windows)
+        {
+            if (candidate.Current.NativeWindowHandle == _process.MainWindowHandle.ToInt64()) continue;
+            if (candidate.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+            {
+                ((WindowPattern)pattern).Close();
+            }
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= before, TimeSpan.FromSeconds(10), "ctrl+n window close");
+        SetForegroundWindow(_process.MainWindowHandle);
+        return "Ctrl+N opened and closed a window";
+    }
+
+    private static string LastTabRecovery()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        SetForegroundWindow(_process.MainWindowHandle);
+        var guard = 0;
+        while (CountTabs() > 1 && guard++ < 20)
+        {
+            var before = CountTabs();
+            SendKeys.SendWait("^w");
+            WaitFor(() => CountTabs() < before, TimeSpan.FromSeconds(5), "close extra tab");
+            Thread.Sleep(150);
+        }
+        Require(CountTabs() == 1, "expected exactly one tab before last-tab close");
+        SendKeys.SendWait("^w");
+        Thread.Sleep(1500);
+        Require(CountTabs() == 1, "last tab close must leave one tab");
+        var edit = FindAddressEdit();
+        SetValue(edit, "https://example.com/");
+        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+        WaitFor(() => _process.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(20), "recovered last tab navigation");
+        return "last tab reset to a navigable New Tab";
+    }
+
+    private static void ClickWebViewContent()
+    {
+        if (_process is null || _window is null) throw new InvalidOperationException("window missing");
+        var rect = _window.Current.BoundingRectangle;
+        SetForegroundWindow(_process.MainWindowHandle);
+        SetCursorPos((int)(rect.X + rect.Width / 2), (int)(rect.Y + 260));
+        Thread.Sleep(250);
+        mouse_event(MouseLeftDown, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(80);
+        mouse_event(MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(500);
+    }
+
+    private static string WebViewFocusShortcuts()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        NavigateToExample();
+        var before = CountTabs();
+        ClickWebViewContent();
+        SendKeys.SendWait("^t");
+        WaitFor(() => CountTabs() > before, TimeSpan.FromSeconds(8), "ctrl+t from webview");
+        var afterTab = CountTabs();
+        ClickWebViewContent();
+        SendKeys.SendWait("^l");
+        WaitFor(() =>
+        {
+            var address = FindAddressEdit();
+            return address is not null && address.Current.HasKeyboardFocus;
+        }, TimeSpan.FromSeconds(5), "ctrl+l from webview");
+        var windowsBefore = WindowsForProcess(_process.Id).Length;
+        ClickWebViewContent();
+        SendKeys.SendWait("^n");
+        WaitFor(() => WindowsForProcess(_process.Id).Length > windowsBefore, TimeSpan.FromSeconds(10), "ctrl+n from webview");
+        foreach (var candidate in WindowsForProcess(_process.Id))
+        {
+            if (candidate.Current.NativeWindowHandle == _process.MainWindowHandle.ToInt64()) continue;
+            if (candidate.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+            {
+                ((WindowPattern)pattern).Close();
+            }
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= windowsBefore, TimeSpan.FromSeconds(10), "ctrl+n webview window close");
+        SetForegroundWindow(_process.MainWindowHandle);
+        while (CountTabs() > 1)
+        {
+            SendKeys.SendWait("^w");
+            Thread.Sleep(250);
+        }
+        return $"webview focus ctrl+t tabs {before}->{afterTab}, ctrl+l focus, ctrl+n window";
+    }
 
     private static string CrossWindowTabMove()
     {

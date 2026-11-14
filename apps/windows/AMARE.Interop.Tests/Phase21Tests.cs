@@ -281,6 +281,8 @@ internal static class Phase21Tests
         {
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "l") == BrowserCommand.FocusAddressBar, "ctrl+l");
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "T") == BrowserCommand.NewTab, "ctrl+t");
+            Assert(BrowserShortcutPolicy.Resolve(true, false, false, "N") == BrowserCommand.NewWindow, "ctrl+n");
+            Assert(BrowserShortcutPolicy.Resolve(true, true, false, "N") == BrowserCommand.NewWindow, "ctrl+shift+n");
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "w") == BrowserCommand.CloseTab, "ctrl+w");
             Assert(BrowserShortcutPolicy.Resolve(true, true, false, "T") == BrowserCommand.RestoreClosedTab, "ctrl+shift+t");
             Assert(BrowserShortcutPolicy.Resolve(true, false, false, "r") == BrowserCommand.Reload, "ctrl+r");
@@ -302,6 +304,7 @@ internal static class Phase21Tests
             Assert(BrowserShortcutPolicy.Resolve(false, false, true, "Left") == BrowserCommand.Back, "alt+left");
             Assert(BrowserShortcutPolicy.Resolve(false, false, true, "Right") == BrowserCommand.Forward, "alt+right");
             Assert(BrowserShortcutPolicy.Resolve(true, false, true, "L") is null, "ctrl+alt conflict");
+            Assert(BrowserShortcutPolicy.Resolve(true, false, true, "N") is null, "ctrl+alt+n conflict");
             Assert(BrowserShortcutPolicy.Resolve(false, false, false, "L") is null, "plain key");
             Assert(BrowserShortcutPolicy.Resolve(true, true, false, "R") is null, "ctrl+shift+r unsupported");
             return "alt/conflicts";

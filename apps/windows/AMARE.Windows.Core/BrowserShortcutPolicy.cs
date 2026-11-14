@@ -4,6 +4,7 @@ public enum BrowserCommand
 {
     FocusAddressBar,
     NewTab,
+    NewWindow,
     CloseTab,
     RestoreClosedTab,
     Reload,
@@ -25,6 +26,8 @@ public static class BrowserShortcutPolicy
             {
                 (false, "L") => BrowserCommand.FocusAddressBar,
                 (false, "T") => BrowserCommand.NewTab,
+                (false, "N") => BrowserCommand.NewWindow,
+                (true, "N") => BrowserCommand.NewWindow,
                 (false, "W") => BrowserCommand.CloseTab,
                 (true, "T") => BrowserCommand.RestoreClosedTab,
                 (false, "R") => BrowserCommand.Reload,

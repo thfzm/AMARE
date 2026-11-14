@@ -381,6 +381,12 @@ struct AmareApp {
     webview_env: Option<std::sync::Arc<webview::WebViewEnvironment>>,
     #[cfg(target_os = "windows")]
     webview_error: Option<String>,
+    #[cfg(target_os = "windows")]
+    shortcut_tx: flume::Sender<webview::Shortcut>,
+    #[cfg(target_os = "windows")]
+    shortcut_rx: flume::Receiver<webview::Shortcut>,
+    #[cfg(target_os = "windows")]
+    shortcut_pump_started: bool,
     status_poll_started: bool,
     last_session_save: Instant,
     settings: library::BrowserSettings,
@@ -525,14 +531,18 @@ impl AmareApp {
         };
 
         #[cfg(target_os = "windows")]
+        let (shortcut_tx, shortcut_rx) = flume::unbounded();
+        #[cfg(target_os = "windows")]
         let first_webview = match (webview_env.as_ref(), parent) {
-            (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
-                Ok(webview) => Some(webview),
-                Err(error) => {
-                    webview_error = Some(error);
-                    None
+            (Some(env), Some(parent)) => {
+                match webview::WebViewHost::create(env, parent, shortcut_tx.clone()) {
+                    Ok(webview) => Some(webview),
+                    Err(error) => {
+                        webview_error = Some(error);
+                        None
+                    }
                 }
-            },
+            }
             _ => None,
         };
         #[cfg(not(target_os = "windows"))]
@@ -592,6 +602,12 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error,
+            #[cfg(target_os = "windows")]
+            shortcut_tx,
+            #[cfg(target_os = "windows")]
+            shortcut_rx,
+            #[cfg(target_os = "windows")]
+            shortcut_pump_started: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
             settings,
@@ -660,6 +676,8 @@ impl AmareApp {
             });
         #[cfg(target_os = "windows")]
         let webview_env = webview::shared_environment().ok();
+        #[cfg(target_os = "windows")]
+        let (shortcut_tx, shortcut_rx) = flume::unbounded();
         let address = seed.url.to_string();
         let mut app = Self {
             tabs: vec![seed],
@@ -683,6 +701,12 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error: None,
+            #[cfg(target_os = "windows")]
+            shortcut_tx,
+            #[cfg(target_os = "windows")]
+            shortcut_rx,
+            #[cfg(target_os = "windows")]
+            shortcut_pump_started: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
             settings,
@@ -742,11 +766,15 @@ impl AmareApp {
             });
         #[cfg(target_os = "windows")]
         let webview_env = webview::shared_environment().ok();
+        #[cfg(target_os = "windows")]
+        let (shortcut_tx, shortcut_rx) = flume::unbounded();
         let mut tabs = Vec::new();
         for (index, restored) in snapshot.tabs.iter().enumerate() {
             #[cfg(target_os = "windows")]
             let webview = match (webview_env.as_ref(), parent) {
-                (Some(env), Some(parent)) => webview::WebViewHost::create(env, parent).ok(),
+                (Some(env), Some(parent)) => {
+                    webview::WebViewHost::create(env, parent, shortcut_tx.clone()).ok()
+                }
                 _ => None,
             };
             #[cfg(not(target_os = "windows"))]
@@ -840,6 +868,12 @@ impl AmareApp {
             webview_env,
             #[cfg(target_os = "windows")]
             webview_error: None,
+            #[cfg(target_os = "windows")]
+            shortcut_tx,
+            #[cfg(target_os = "windows")]
+            shortcut_rx,
+            #[cfg(target_os = "windows")]
+            shortcut_pump_started: false,
             status_poll_started: false,
             last_session_save: Instant::now(),
             settings,
@@ -897,6 +931,29 @@ impl AmareApp {
                     app.maybe_auto_capture(cx);
                     app.write_status(cx);
                     cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn start_shortcut_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shortcut_pump_started {
+            return;
+        }
+        self.shortcut_pump_started = true;
+        let rx = self.shortcut_rx.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            while let Ok(shortcut) = rx.recv_async().await {
+                if this.upgrade().is_none() {
+                    break;
+                }
+                let parsed = gpui::Keystroke::parse(shortcut.keystroke());
+                let _ = cx.update(|window, cx| {
+                    if let Ok(keystroke) = parsed {
+                        window.dispatch_keystroke(keystroke, cx);
+                    }
                 });
             }
         })
@@ -2085,10 +2142,12 @@ impl AmareApp {
         #[cfg(target_os = "windows")]
         {
             match (self.webview_env.as_ref(), self.parent) {
-                (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
-                    Ok(webview) => (Some(webview), None),
-                    Err(error) => (None, Some(error)),
-                },
+                (Some(env), Some(parent)) => {
+                    match webview::WebViewHost::create(env, parent, self.shortcut_tx.clone()) {
+                        Ok(webview) => (Some(webview), None),
+                        Err(error) => (None, Some(error)),
+                    }
+                }
                 _ => (None, self.webview_error.clone()),
             }
         }
@@ -2251,12 +2310,21 @@ impl AmareApp {
         }
     }
 
-    fn close_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+    fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
             return;
         };
         if self.tabs.len() == 1 {
-            cx.quit();
+            // Closing the last tab must always leave one usable tab with a live
+            // WebView2 controller. Quitting here left the user on a dead tab
+            // whose controller had already been deactivated.
+            #[cfg(target_os = "windows")]
+            if let Some(webview) = &self.tabs[index].webview {
+                webview.set_active(false);
+            }
+            let old = self.tabs.remove(0);
+            drop(old);
+            self.new_tab(window, cx);
             return;
         }
         #[cfg(target_os = "windows")]
@@ -2288,10 +2356,10 @@ impl AmareApp {
         cx.notify();
     }
 
-    fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+    fn close_active_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(tab) = self.active_tab() {
             let id = tab.id;
-            self.close_tab(id, cx);
+            self.close_tab(id, window, cx);
         }
     }
 
@@ -2357,8 +2425,8 @@ impl AmareApp {
         self.new_tab(window, cx);
     }
 
-    fn close_tab_action(&mut self, _: &CloseTab, _window: &mut Window, cx: &mut Context<Self>) {
-        self.close_active_tab(cx);
+    fn close_tab_action(&mut self, _: &CloseTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_active_tab(window, cx);
     }
 
     fn new_window_action(&mut self, _: &NewWindow, _window: &mut Window, cx: &mut Context<Self>) {
@@ -4572,6 +4640,8 @@ impl Render for AmareApp {
             self.status_poll_started = true;
             self.start_status_poll(cx);
         }
+        #[cfg(target_os = "windows")]
+        self.start_shortcut_pump(window, cx);
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
@@ -4646,9 +4716,10 @@ impl Render for AmareApp {
                     cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
                         this.select_tab_by_id(id, window, cx);
                     });
-                let close = cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, _, cx| {
-                    this.close_tab(id, cx);
-                });
+                let close =
+                    cx.listener(move |this: &mut Self, _: &gpui::ClickEvent, window, cx| {
+                        this.close_tab(id, window, cx);
+                    });
                 let drag_info = TabDragInfo { id };
                 let drop = cx.listener(move |this: &mut Self, info: &TabDragInfo, _, cx| {
                     this.move_tab_before(info.id, id, cx);

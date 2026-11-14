@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Input;
 using Microsoft.Web.WebView2.Core;
 using Windows.System;
 using WinRT.Interop;
@@ -131,6 +132,9 @@ public sealed partial class MainWindow : Window
         LoadDownloads();
         RegisterKeyboardAccelerators();
         RegisterWindow(this);
+        ConfigureTitleBar();
+        AppLog.Info("Keyboard shortcut router: " +
+                    KeyboardShortcutRouter.Install(WindowNative.GetWindowHandle(this), this));
         Closed += MainWindow_Closed;
     }
 
@@ -174,10 +178,190 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private bool _titleBarConfigured;
+
+    /// <summary>
+    /// Replaces the default Windows title bar with the AMARE tab strip and moves
+    /// the system minimize/maximize/close buttons into the same visual row.
+    /// </summary>
+    private void ConfigureTitleBar()
+    {
+        try
+        {
+            if (!AppWindowTitleBar.IsCustomizationSupported())
+            {
+                AppLog.Warn("Custom title bar is not supported on this Windows version; native chrome kept");
+                return;
+            }
+
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+            var titleBar = AppWindow.TitleBar;
+            titleBar.ExtendsContentIntoTitleBar = true;
+            titleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+            titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
+            _titleBarConfigured = true;
+
+            AppTitleBar.Loaded += (_, _) =>
+            {
+                UpdateTitleBarInsets();
+                SetTitleBarRegions();
+            };
+            AppTitleBar.SizeChanged += (_, _) =>
+            {
+                UpdateTitleBarInsets();
+                SetTitleBarRegions();
+            };
+            _tabs.Tabs.CollectionChanged += (_, _) =>
+                _dispatcher.TryEnqueue(SetTitleBarRegions);
+            TabList.ContainerContentChanging += (_, _) =>
+                _dispatcher.TryEnqueue(SetTitleBarRegions);
+            RootGrid.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
+            Activated += (_, _) =>
+            {
+                UpdateTitleBarInsets();
+                UpdateTitleBarColors();
+            };
+            AppWindow.Changed += (_, args) =>
+            {
+                if (args.DidSizeChange)
+                {
+                    UpdateTitleBarInsets();
+                }
+            };
+
+            UpdateTitleBarColors();
+            UpdateTitleBarInsets();
+            AppLog.Info("Custom title bar enabled");
+        }
+        catch (Exception exception)
+        {
+            _titleBarConfigured = false;
+            AppLog.Error("Custom title bar setup failed; native chrome kept", exception);
+        }
+    }
+
+    private void UpdateTitleBarInsets()
+    {
+        if (!_titleBarConfigured)
+        {
+            return;
+        }
+        try
+        {
+            var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
+            var inset = AppWindow.TitleBar.RightInset;
+            if (inset <= 0)
+            {
+                // Before the first layout pass the system has not reported the
+                // caption-button reserve yet; use the standard Windows 11 width.
+                inset = (int)Math.Round(140 * scale);
+            }
+            var logical = Math.Clamp(inset / scale, 0, 320);
+            CaptionSpacer.Width = new GridLength(logical);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Title bar inset update failed", exception);
+        }
+    }
+
+    /// <summary>
+    /// The extended title bar is a non-client drag region by default. Tab items and
+    /// the New Tab / New Window buttons must be declared as passthrough regions or
+    /// the system would treat clicks on them as window drags.
+    /// </summary>
+    private void SetTitleBarRegions()
+    {
+        if (!_titleBarConfigured || AppTitleBar.XamlRoot is null)
+        {
+            return;
+        }
+        try
+        {
+            var scale = AppTitleBar.XamlRoot.RasterizationScale;
+            var rects = new List<RectInt32>();
+            for (var index = 0; index < _tabs.Tabs.Count; index++)
+            {
+                if (TabList.ContainerFromIndex(index) is FrameworkElement item
+                    && item.ActualWidth > 0
+                    && item.ActualHeight > 0)
+                {
+                    AddPassthroughRect(rects, item, scale);
+                }
+            }
+            AddPassthroughRect(rects, TitleBarButtons, scale);
+
+            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            source.SetRegionRects(
+                NonClientRegionKind.Passthrough,
+                rects.Count == 0 ? Array.Empty<RectInt32>() : rects.ToArray());
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Title bar passthrough regions failed", exception);
+        }
+    }
+
+    private static void AddPassthroughRect(
+        List<RectInt32> rects, FrameworkElement element, double scale)
+    {
+        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return;
+        }
+        var transform = element.TransformToVisual(null);
+        var bounds = transform.TransformBounds(
+            new WinRect(0, 0, element.ActualWidth, element.ActualHeight));
+        rects.Add(new RectInt32(
+            _X: (int)Math.Round(bounds.X * scale),
+            _Y: (int)Math.Round(bounds.Y * scale),
+            _Width: (int)Math.Round(bounds.Width * scale),
+            _Height: (int)Math.Round(bounds.Height * scale)));
+    }
+
+    private void UpdateTitleBarColors()
+    {
+        if (!_titleBarConfigured)
+        {
+            return;
+        }
+        try
+        {
+            var dark = RootGrid.ActualTheme == ElementTheme.Dark;
+            var titleBar = AppWindow.TitleBar;
+            var transparent = WinColor.FromArgb(0, 0, 0, 0);
+            titleBar.ButtonBackgroundColor = transparent;
+            titleBar.ButtonInactiveBackgroundColor = transparent;
+            titleBar.ButtonForegroundColor = dark
+                ? WinColor.FromArgb(255, 0xF5, 0xF7, 0xFB)
+                : WinColor.FromArgb(255, 0x16, 0x1A, 0x22);
+            titleBar.ButtonInactiveForegroundColor = dark
+                ? WinColor.FromArgb(255, 0x8A, 0x90, 0xA0)
+                : WinColor.FromArgb(255, 0x70, 0x76, 0x86);
+            titleBar.ButtonHoverBackgroundColor = dark
+                ? WinColor.FromArgb(255, 0x30, 0x35, 0x43)
+                : WinColor.FromArgb(255, 0xE7, 0xEA, 0xF1);
+            titleBar.ButtonPressedBackgroundColor = dark
+                ? WinColor.FromArgb(255, 0x3B, 0x41, 0x52)
+                : WinColor.FromArgb(255, 0xD8, 0xDD, 0xE8);
+            titleBar.ButtonHoverForegroundColor = dark
+                ? WinColor.FromArgb(255, 0xFF, 0xFF, 0xFF)
+                : WinColor.FromArgb(255, 0x00, 0x00, 0x00);
+            titleBar.ButtonPressedForegroundColor = titleBar.ButtonHoverForegroundColor;
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Title bar color update failed", exception);
+        }
+    }
+
     private void RegisterKeyboardAccelerators()
     {
         AddAccelerator(VirtualKey.L, VirtualKeyModifiers.Control, BrowserCommand.FocusAddressBar);
         AddAccelerator(VirtualKey.T, VirtualKeyModifiers.Control, BrowserCommand.NewTab);
+        AddAccelerator(VirtualKey.N, VirtualKeyModifiers.Control, BrowserCommand.NewWindow);
+        AddAccelerator(VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, BrowserCommand.NewWindow);
         AddAccelerator(VirtualKey.W, VirtualKeyModifiers.Control, BrowserCommand.CloseTab);
         AddAccelerator(VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, BrowserCommand.RestoreClosedTab);
         AddAccelerator(VirtualKey.R, VirtualKeyModifiers.Control, BrowserCommand.Reload);
@@ -210,6 +394,9 @@ public sealed partial class MainWindow : Window
                     break;
                 case BrowserCommand.NewTab:
                     await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
+                    break;
+                case BrowserCommand.NewWindow:
+                    OpenNewWindow();
                     break;
                 case BrowserCommand.CloseTab:
                     if (_tabs.ActiveTab is { } active)
@@ -249,6 +436,28 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             StatusText.Text = $"Shortcut failed: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Entry point used by <see cref="KeyboardShortcutRouter"/> for shortcuts that
+    /// were pressed while a WebView2 child window owned the keyboard focus.
+    /// </summary>
+    internal void HandleShortcut(BrowserCommand command) => _ = ExecuteShortcutAsync(command);
+
+    private void NewWindow_Click(object sender, RoutedEventArgs e) => OpenNewWindow();
+
+    private void OpenNewWindow()
+    {
+        try
+        {
+            var window = new MainWindow();
+            window.Activate();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Could not open a new window: {exception.Message}";
+            AppLog.Error("Open new window failed", exception);
         }
     }
 
@@ -398,6 +607,7 @@ public sealed partial class MainWindow : Window
             "dark" => ElementTheme.Dark,
             _ => ElementTheme.Default
         };
+        UpdateTitleBarColors();
     }
 
     private async Task RefreshBookmarkCacheAsync()
@@ -681,29 +891,48 @@ public sealed partial class MainWindow : Window
         };
         _hosts[model.Id] = host;
         WebViewHost.Children.Add(webView);
-        await WaitForLoadedAsync(webView);
-        if (_environment is null)
+        try
         {
-            throw new InvalidOperationException("WebView2 environment is not ready.");
+            await WaitForLoadedAsync(webView);
+            if (_environment is null)
+            {
+                throw new InvalidOperationException("WebView2 environment is not ready.");
+            }
+            await webView.EnsureCoreWebView2Async(_environment);
+            AttachWebViewEvents(host);
+            if (url.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(url))
+            {
+                await ShowNewTabPageAsync(host);
+            }
+            else
+            {
+                Navigate(host, url);
+            }
+            if (activate)
+            {
+                SelectTab(model);
+            }
+            UpdateWebViewVisibility();
+            LogTabDiagnostics("created");
+            ScheduleSessionSave();
+            return model;
         }
-        await webView.EnsureCoreWebView2Async(_environment);
-        AttachWebViewEvents(host);
-        if (url.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(url))
+        catch
         {
-            await ShowNewTabPageAsync(host);
+            // Never leave a tab model in the strip without a live WebView2; such a
+            // tab shows a title but cannot navigate from the address bar.
+            CloseHost(host);
+            _hosts.Remove(model.Id);
+            _tabs.Close(model.Id);
+            if (_tabs.ActiveTab is { } fallback)
+            {
+                SelectTab(fallback);
+            }
+            UpdateWebViewVisibility();
+            UpdateToolbar();
+            LogTabDiagnostics("create-failed");
+            throw;
         }
-        else
-        {
-            Navigate(host, url);
-        }
-        if (activate)
-        {
-            SelectTab(model);
-        }
-        UpdateWebViewVisibility();
-        LogTabDiagnostics("created");
-        ScheduleSessionSave();
-        return model;
     }
 
     private static Task WaitForLoadedAsync(FrameworkElement element)
@@ -983,33 +1212,52 @@ public sealed partial class MainWindow : Window
     {
         if (!_hosts.TryGetValue(id, out var host))
         {
+            // A legacy/unhosted tab must not survive a close and leave the address
+            // bar pointing at a model that has no WebView2 controller.
+            if (_tabs.Tabs.Count == 1)
+            {
+                await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
+            }
+            _tabs.Close(id);
+            if (_tabs.ActiveTab is { } fallback)
+            {
+                SelectTab(fallback);
+            }
+            UpdateWindowTitle();
             return;
         }
+
         var wasLast = _tabs.Tabs.Count == 1;
         if (!host.Model.IsNewTabPage && !string.IsNullOrWhiteSpace(host.Model.Url))
         {
             _closedTabs.Push(new TabSnapshot(host.Model.Url, host.Model.Title, host.Model.IsPinned));
         }
+
+        if (wasLast)
+        {
+            // Closing the final tab keeps one usable tab. Reusing the live
+            // controller avoids the unhosted "New Tab N" placeholder that was
+            // created when the old controller was torn down before the
+            // replacement WebView2 finished initializing.
+            await ShowNewTabPageAsync(host);
+            host.Model.Title = "New Tab";
+            host.Model.Url = "";
+            host.Model.IsPinned = false;
+            SelectTab(host.Model);
+            UpdateWebViewVisibility();
+            UpdateToolbar();
+            UpdateWindowTitle();
+            LogTabDiagnostics("last-tab-reset");
+            ScheduleSessionSave();
+            return;
+        }
+
         CloseHost(host);
         _hosts.Remove(id);
-        var madeReplacement = _tabs.Close(id);
-        if (madeReplacement && _tabs.ActiveTab is { } replacement)
-        {
-            await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
-            // TabManager created a model as a placeholder; remove it now that a
-            // fully hosted replacement exists.
-            if (replacement != _tabs.ActiveTab)
-            {
-                _tabs.Tabs.Remove(replacement);
-            }
-        }
-        else if (_tabs.ActiveTab is { } active)
+        _tabs.Close(id);
+        if (_tabs.ActiveTab is { } active)
         {
             SelectTab(active);
-        }
-        if (wasLast && _tabs.Tabs.Count == 0)
-        {
-            await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
         }
         UpdateWebViewVisibility();
         UpdateToolbar();
@@ -1861,7 +2109,7 @@ public sealed partial class MainWindow : Window
     {
         var menu = new MenuFlyout();
         AddMenu(menu, "New tab", "Ctrl+T", () => _ = CreateTabAsync("amare://newtab", "New Tab", false, true));
-        AddMenu(menu, "New window", "", () => new MainWindow().Activate());
+        AddMenu(menu, "New window", "Ctrl+N", OpenNewWindow);
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenu(menu, "History", "", () => ShowHistoryAsync());
         AddMenu(menu, "Bookmarks", "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
@@ -1901,7 +2149,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string CurrentAppVersion =>
-        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.65.0";
+        typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.66.0";
 
     private string UpdatePreferencesPath => Path.Combine(_appDataRoot, "update-preferences.json");
     private string AiApiSettingsPath => Path.Combine(_appDataRoot, "ai-api-settings.json");
