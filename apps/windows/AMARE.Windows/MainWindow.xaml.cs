@@ -195,13 +195,13 @@ public sealed partial class MainWindow : Window
             }
 
             ExtendsContentIntoTitleBar = true;
-            // Only the small grip area is a window-drag region. The tab strip and
-            // buttons stay normal client content so tab drag/tear-off are not
-            // swallowed by the non-client title bar.
-            SetTitleBar(TitleBarDragArea);
+            // The dedicated 32px AMARE strip is the only non-client drag region.
+            // The tab strip is a separate client row so drag/tear-off behave as
+            // they did before the native title bar was removed.
+            SetTitleBar(AppTitleBar);
             var titleBar = AppWindow.TitleBar;
             titleBar.ExtendsContentIntoTitleBar = true;
-            titleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+            titleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             _titleBarConfigured = true;
 
@@ -1489,7 +1489,9 @@ public sealed partial class MainWindow : Window
 
     private void UpdateWindowTitle()
     {
-        Title = $"{_tabs.ActiveTab?.Title ?? "AMARE"} — AMARE";
+        var title = _tabs.ActiveTab?.Title ?? "AMARE";
+        Title = $"{title} — AMARE";
+        TitleBarTitle.Text = $"AMARE · {title}";
     }
 
     private void UpdateAddressIfActive(BrowserTab? host)

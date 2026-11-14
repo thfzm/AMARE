@@ -460,12 +460,14 @@ internal static class Program
     {
         if (_window is null) throw new InvalidOperationException("window missing");
         var windowRect = _window.Current.BoundingRectangle;
+        var title = WaitFindById("TitleBarTitle", TimeSpan.FromSeconds(10));
+        var titleTop = title.Current.BoundingRectangle.Top - windowRect.Top;
+        Require(titleTop < 12, $"AMARE title strip is not at the window top (offset={titleTop:F1}px)");
         var list = WaitFindById("TabList", TimeSpan.FromSeconds(10));
-        var tabsRect = list.Current.BoundingRectangle;
-        var delta = tabsRect.Top - windowRect.Top;
-        Require(delta < 20, $"native title bar still occupies {delta:F1}px above the tab strip");
+        var tabsTop = list.Current.BoundingRectangle.Top - windowRect.Top;
+        Require(tabsTop < 50, $"native title bar still occupies {tabsTop:F1}px above the tab strip");
         CaptureWindow("01-initial-custom-titlebar");
-        return $"tab strip starts {delta:F1}px below the window top; native title bar removed";
+        return $"AMARE title strip at {titleTop:F1}px; tab strip at {tabsTop:F1}px; native title bar removed";
     }
 
     private static string NavigateToExample()

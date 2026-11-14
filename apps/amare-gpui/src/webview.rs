@@ -30,74 +30,29 @@ use webview2_com::{
 #[cfg(target_os = "windows")]
 use windows::{
     Win32::{
-        Foundation::{E_POINTER, HWND, RECT},
+        Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::{
             Com::{COINIT_APARTMENTTHREADED, CoInitializeEx},
             Threading::GetCurrentThreadId,
         },
-        UI::Input::{
-            Ime::{
-                HIMC, IACE_DEFAULT, IME_CONVERSION_MODE, IME_SENTENCE_MODE, ImmAssociateContext,
-                ImmAssociateContextEx, ImmCreateContext, ImmGetContext, ImmReleaseContext,
-                ImmSetConversionStatus, ImmSetOpenStatus,
+        UI::{
+            Input::{
+                Ime::{
+                    HIMC, IACE_DEFAULT, IME_CONVERSION_MODE, IME_SENTENCE_MODE,
+                    ImmAssociateContext, ImmAssociateContextEx, ImmCreateContext, ImmGetContext,
+                    ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
+                },
+                KeyboardAndMouse::{
+                    GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
+                    VK_LEFT, VK_MENU, VK_N, VK_OEM_COMMA, VK_P, VK_R, VK_RIGHT, VK_S, VK_SHIFT,
+                    VK_T, VK_TAB, VK_W,
+                },
             },
-            KeyboardAndMouse::{
-                GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
-                VK_LEFT, VK_MENU, VK_N, VK_OEM_COMMA, VK_P, VK_R, VK_RIGHT, VK_S, VK_SHIFT, VK_T,
-                VK_TAB, VK_W,
-            },
+            WindowsAndMessaging::{SendMessageW, WM_KEYDOWN, WM_KEYUP},
         },
     },
     core::{HSTRING, Interface},
 };
-
-/// Keyboard shortcuts that arrive while a WebView2 child window owns the
-/// keyboard focus. They are replayed into GPUI's normal key pipeline on the
-/// window that owns the WebView2 instead of synthesising Win32 key messages.
-#[cfg(target_os = "windows")]
-#[derive(Clone, Copy, Debug)]
-pub enum Shortcut {
-    FocusAddress,
-    NewTab,
-    NewWindow,
-    CloseTab,
-    Reload,
-    NextTab,
-    PreviousTab,
-    ToggleBookmark,
-    ToggleBookmarks,
-    ToggleHistory,
-    ToggleDownloads,
-    ToggleSettings,
-    TogglePasswords,
-    CapturePage,
-    Back,
-    Forward,
-}
-
-#[cfg(target_os = "windows")]
-impl Shortcut {
-    pub fn keystroke(self) -> &'static str {
-        match self {
-            Self::FocusAddress => "ctrl-l",
-            Self::NewTab => "ctrl-t",
-            Self::NewWindow => "ctrl-n",
-            Self::CloseTab => "ctrl-w",
-            Self::Reload => "ctrl-r",
-            Self::NextTab => "ctrl-tab",
-            Self::PreviousTab => "ctrl-shift-tab",
-            Self::ToggleBookmark => "ctrl-d",
-            Self::ToggleBookmarks => "ctrl-shift-b",
-            Self::ToggleHistory => "ctrl-shift-h",
-            Self::ToggleDownloads => "ctrl-shift-d",
-            Self::ToggleSettings => "ctrl-,",
-            Self::TogglePasswords => "ctrl-shift-p",
-            Self::CapturePage => "ctrl-shift-s",
-            Self::Back => "alt-left",
-            Self::Forward => "alt-right",
-        }
-    }
-}
 
 #[cfg(target_os = "windows")]
 #[derive(Default)]
@@ -370,7 +325,6 @@ pub struct WebViewHost {
     downloads: Arc<Mutex<Vec<DownloadState>>>,
     login_captures: Arc<Mutex<Vec<LoginCapture>>>,
     navigation_id: Arc<AtomicU64>,
-    shortcut_sender: flume::Sender<Shortcut>,
 }
 
 #[cfg(target_os = "windows")]
@@ -378,7 +332,6 @@ impl WebViewHost {
     pub fn create(
         environment: &WebViewEnvironment,
         parent: HWND,
-        shortcut_sender: flume::Sender<Shortcut>,
     ) -> std::result::Result<Self, String> {
         unsafe {
             let ime_context = ImmCreateContext();
@@ -612,7 +565,7 @@ impl WebViewHost {
             );
 
             let accelerator_token = {
-                let accelerator_sender = shortcut_sender.clone();
+                let accelerator_parent = parent_handle.clone();
                 let accelerator_handler = AcceleratorKeyPressedEventHandler::create(Box::new(
                     move |_controller, args| {
                         let Some(args) = args else { return Ok(()) };
@@ -624,56 +577,64 @@ impl WebViewHost {
                             let control = GetKeyState(VK_CONTROL.0 as i32) < 0;
                             let alt = GetKeyState(VK_MENU.0 as i32) < 0;
                             let shift = GetKeyState(VK_SHIFT.0 as i32) < 0;
-                            let shortcut = match (control, shift, alt, vk) {
-                                (true, false, false, v) if v == VK_TAB.0 as u32 => {
-                                    Some(Shortcut::NextTab)
-                                }
-                                (true, true, false, v) if v == VK_TAB.0 as u32 => {
-                                    Some(Shortcut::PreviousTab)
-                                }
-                                (true, false, false, v) if v == VK_L.0 as u32 => {
-                                    Some(Shortcut::FocusAddress)
-                                }
-                                (true, false, false, v) if v == VK_R.0 as u32 => {
-                                    Some(Shortcut::Reload)
-                                }
-                                (true, false, false, v) if v == VK_T.0 as u32 => {
-                                    Some(Shortcut::NewTab)
-                                }
-                                (true, false, false, v) if v == VK_N.0 as u32 => {
-                                    Some(Shortcut::NewWindow)
-                                }
-                                (true, false, false, v) if v == VK_W.0 as u32 => {
-                                    Some(Shortcut::CloseTab)
-                                }
-                                (true, false, false, v) if v == VK_D.0 as u32 => {
-                                    Some(Shortcut::ToggleBookmark)
-                                }
-                                (true, false, false, v) if v == VK_OEM_COMMA.0 as u32 => {
-                                    Some(Shortcut::ToggleSettings)
-                                }
-                                (true, true, false, v) if v == VK_B.0 as u32 => {
-                                    Some(Shortcut::ToggleBookmarks)
-                                }
-                                (true, true, false, v) if v == VK_H.0 as u32 => {
-                                    Some(Shortcut::ToggleHistory)
-                                }
-                                (true, true, false, v) if v == VK_S.0 as u32 => {
-                                    Some(Shortcut::CapturePage)
-                                }
-                                (true, true, false, v) if v == VK_P.0 as u32 => {
-                                    Some(Shortcut::TogglePasswords)
-                                }
-                                (false, false, true, v) if v == VK_LEFT.0 as u32 => {
-                                    Some(Shortcut::Back)
-                                }
-                                (false, false, true, v) if v == VK_RIGHT.0 as u32 => {
-                                    Some(Shortcut::Forward)
-                                }
-                                _ => None,
+                            let forwarded = if control && !shift && vk == VK_TAB.0 as u32 {
+                                Some(VK_TAB.0)
+                            } else if control && shift && vk == VK_TAB.0 as u32 {
+                                Some(VK_TAB.0)
+                            } else if control && vk == VK_L.0 as u32 {
+                                Some(VK_L.0)
+                            } else if control && vk == VK_R.0 as u32 {
+                                Some(VK_R.0)
+                            } else if control && vk == VK_T.0 as u32 {
+                                Some(VK_T.0)
+                            } else if control && vk == VK_N.0 as u32 {
+                                Some(VK_N.0)
+                            } else if control && vk == VK_D.0 as u32 {
+                                Some(VK_D.0)
+                            } else if control && vk == VK_OEM_COMMA.0 as u32 {
+                                Some(VK_OEM_COMMA.0)
+                            } else if control && shift && vk == VK_S.0 as u32 {
+                                Some(VK_S.0)
+                            } else if control && shift && vk == VK_B.0 as u32 {
+                                Some(VK_B.0)
+                            } else if control && shift && vk == VK_H.0 as u32 {
+                                Some(VK_H.0)
+                            } else if control && shift && vk == VK_P.0 as u32 {
+                                Some(VK_P.0)
+                            } else if control && vk == VK_W.0 as u32 {
+                                Some(VK_W.0)
+                            } else if alt && vk == VK_LEFT.0 as u32 {
+                                Some(VK_LEFT.0)
+                            } else if alt && vk == VK_RIGHT.0 as u32 {
+                                Some(VK_RIGHT.0)
+                            } else {
+                                None
                             };
-                            if let Some(shortcut) = shortcut {
-                                let _ = accelerator_sender.send(shortcut);
+                            if let Some(key) = forwarded {
+                                let mut lparam = 0i32;
+                                args.KeyEventLParam(&mut lparam)?;
+                                unsafe {
+                                    let parent = *accelerator_parent
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner());
+                                    // Deliver the shortcut to GPUI synchronously. A
+                                    // posted message could be processed after the
+                                    // next typed characters, which made Ctrl+L
+                                    // focus the address bar too late.
+                                    let _ = SetFocus(Some(parent));
+                                    let _ = SendMessageW(
+                                        parent,
+                                        WM_KEYDOWN,
+                                        Some(WPARAM(key as usize)),
+                                        Some(LPARAM(lparam as isize)),
+                                    );
+                                    let _ = SendMessageW(
+                                        parent,
+                                        WM_KEYUP,
+                                        Some(WPARAM(key as usize)),
+                                        Some(LPARAM(lparam as isize)),
+                                    );
+                                }
                                 args.SetHandled(true)?;
                             }
                         }
@@ -702,7 +663,6 @@ impl WebViewHost {
                 downloads,
                 login_captures,
                 navigation_id: starting_navigation_id,
-                shortcut_sender,
             })
         }
     }
