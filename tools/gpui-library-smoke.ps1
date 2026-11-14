@@ -187,12 +187,19 @@ $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
+$serverReady = $false
 for ($i = 0; $i -lt 40; $i++) {
     try {
         $probe = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing -TimeoutSec 2
-        if ($probe.StatusCode -eq 200) { break }
+        if ($probe.StatusCode -eq 200) { $serverReady = $true; break }
     } catch { }
     Start-Sleep -Milliseconds 300
+}
+if ($serverReady) {
+    Add-Result "local-server-ready" "PASS" "$BaseUrl status=200"
+} else {
+    Add-Result "local-server-ready" "FAIL" "$BaseUrl did not return 200"
+    throw "local server fixture unavailable: $BaseUrl"
 }
 try {
     $app = Start-Process $Exe -PassThru

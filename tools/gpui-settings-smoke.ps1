@@ -26,6 +26,7 @@ public static class AmareSettings {
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -100,18 +101,45 @@ function Click-Titlebar([string]$button) {
     }
     Click-Client $script:hwnd $x 22
 }
+function Click-TitlebarWin32([string]$button) {
+    $state = Read-State
+    $layout = if ($null -ne $state) { $state.layout_bounds } else { $null }
+    $name = switch ($button) { "minimize" { "window_min" } "maximize" { "window_max" } "close" { "window_close" } default { "" } }
+    if ($null -eq $layout -or $null -eq $layout.toolbar_children -or $name -eq "") { return $false }
+    $b = $layout.toolbar_children.$name
+    if ($null -eq $b) { return $false }
+    $point = New-Object AmareSettings+POINT
+    [void][AmareSettings]::ClientToScreen($script:hwnd, [ref]$point)
+    $sx = [int]($point.X + $b.x + $b.width / 2)
+    $sy = [int]($point.Y + $b.y + $b.height / 2)
+    $hit = switch ($button) { "minimize" { 8 } "maximize" { 9 } "close" { 20 } default { 0 } }
+    $lparam = [IntPtr](($sy -shl 16) -bor ($sx -band 0xFFFF))
+    [void][AmareSettings]::SendMessage($script:hwnd, 0x00A1, [IntPtr]$hit, $lparam)
+    Start-Sleep -Milliseconds 120
+    [void][AmareSettings]::SendMessage($script:hwnd, 0x00A2, [IntPtr]$hit, $lparam)
+    Start-Sleep -Milliseconds 500
+    return $true
+}
 function Try-Titlebar([string]$button, [scriptblock]$test, [scriptblock]$fallback, [string]$name, [string]$success) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
         Click-Titlebar $button
         try {
             [void](Wait-WindowState $test 3 "$name attempt")
-            Add-Result $name "PASS" $success
+            Add-Result $name "PASS" "$success (real mouse)"
+            return
+        } catch { }
+    }
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if (-not (Click-TitlebarWin32 $button)) { break }
+        try {
+            [void](Wait-WindowState $test 3 "$name win32 attempt")
+            Add-Result $name "PASS" "$success (Win32 NC; real mouse click did not change state)"
             return
         } catch { }
     }
     & $fallback
     Start-Sleep -Milliseconds 700
-    Add-Result $name "UNVERIFIED" "custom titlebar click did not change state; OS fallback used"
+    Add-Result $name "UNVERIFIED" "real mouse and Win32 NC click did not change state; OS fallback used"
 }
 function Shot([string]$name) {
     $rect = New-Object AmareSettings+RECT
@@ -279,7 +307,14 @@ try {
         if (Test-Path $restartErr) { Get-Content $restartErr -Tail 40 | ForEach-Object { Write-Host "STDERR $_" } }
         throw "restored settings app exited during startup"
     }
-    [void](Wait-State { param($s) $null -ne $s.address } 60 "restored settings app")
+    try {
+        [void](Wait-State { param($s) $null -ne $s.address } 60 "restored settings app")
+    } catch {
+        if (Test-Path $restartErr) {
+            Get-Content $restartErr -Tail 100 | ForEach-Object { Write-Host "STDERR $_" }
+        }
+        throw
+    }
     $restoredMulti = $true
     try {
         $windows = Wait-WindowCount ($baseWindows + 1) 20 "restored multi-window session"

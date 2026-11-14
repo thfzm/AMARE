@@ -182,12 +182,19 @@ Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $completeData, $failureData, $corruptData, $ScreenshotDir | Out-Null
 $server = Start-Process python -ArgumentList @("tools/slow_session_server.py", $Port) -PassThru
 try {
+    $serverReady = $false
     for ($i = 0; $i -lt 40; $i++) {
         try {
             $probe = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/fast" -UseBasicParsing -TimeoutSec 2
-            if ($probe.StatusCode -eq 200) { break }
+            if ($probe.StatusCode -eq 200) { $serverReady = $true; break }
         } catch { }
         Start-Sleep -Milliseconds 300
+    }
+    if ($serverReady) {
+        Add-Result "local-session-server-ready" "PASS" "port=$Port status=200"
+    } else {
+        Add-Result "local-session-server-ready" "FAIL" "port=$Port did not return 200"
+        throw "local session server fixture unavailable"
     }
     $fast = "http://127.0.0.1:$Port/fast"
     $scroll = "http://127.0.0.1:$Port/scroll"
@@ -212,7 +219,29 @@ try {
     Start-Sleep -Seconds 1
     Shot "06-session-restore-complete.png"
     Add-Result "session-complete-restore" "PASS" "tabs=$(@((Read-State).tabs).Count)"
+    [void](Wait-State {
+        param($s)
+        @($s.tabs | Where-Object { $_.webview -ne $true -and $null -eq $_.error }).Count -eq 0
+    } 20 "restored WebView2 controllers")
     $restored = Read-State
+    Add-Result "session-webview-attached" "PASS" "attached=$(@($restored.tabs | Where-Object { $_.webview -eq $true }).Count)"
+    $activeRestored = @($restored.tabs | Where-Object { $_.id -eq $restored.active_tab })[0]
+    if ($null -eq $activeRestored -or [string]::IsNullOrWhiteSpace($activeRestored.source)) {
+        Add-Result "session-active-tab-navigation" "UNVERIFIED" "active tab source empty"
+    } else {
+        Add-Result "session-active-tab-navigation" "PASS" "active=$($restored.active_tab) source=$($activeRestored.source)"
+    }
+    if ($null -ne $before.layout_bounds -and $null -ne $restored.layout_bounds) {
+        $bw = [double]$before.layout_bounds.window.width
+        $bh = [double]$before.layout_bounds.window.height
+        $rw = [double]$restored.layout_bounds.window.width
+        $rh = [double]$restored.layout_bounds.window.height
+        if ([Math]::Abs($bw - $rw) -le 30 -and [Math]::Abs($bh - $rh) -le 30) {
+            Add-Result "session-window-bounds" "PASS" "$($bw)x$($bh) -> $($rw)x$($rh)"
+        } else {
+            Add-Result "session-window-bounds" "UNVERIFIED" "$($bw)x$($bh) -> $($rw)x$($rh)"
+        }
+    }
     $scrollTab = @($restored.tabs | Where-Object { $_.restored -eq $true } | Select-Object -First 1)
     if ($null -eq $scrollTab) { throw "no restored tab marker" }
     Start-Sleep -Seconds 3

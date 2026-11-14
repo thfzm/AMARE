@@ -218,8 +218,21 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
     $state = Read-State $hwnd
     $index = Get-EntryIndex $state $user
     if ($index -lt 0) { throw "entry not found: $user" }
+    $entry = @($state.password_vault.entries | Where-Object username -eq $user)[0]
+    if ($null -ne $entry) {
+        $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
+        if ($null -ne $actionInfo) {
+            $b = if ($action -eq "edit") { $actionInfo.edit } else { $actionInfo.delete }
+            if ($null -ne $b) {
+                Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+                $state = Read-State $hwnd
+                if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
+                if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+            }
+        }
+    }
     $baseY = 341 + ($index * 100)
-    # First try the exact visual position of 수정/삭제, then a small grid.
+    # Fall back to a small coordinate grid if bounds were unavailable.
     $xs = if ($action -eq "edit") { 975, 970, 980 } else { 1000, 990, 1010 }
     foreach ($x in $xs) {
         foreach ($dy in -12, 0, 12, 24, 36, 48) {
@@ -255,8 +268,10 @@ function Get-PageState([IntPtr]$hwnd) {
 }
 function Close-Window([IntPtr]$hwnd) {
     Focus-Window $hwnd
-    Send-Keys "%{F4}"
-    Start-Sleep -Milliseconds 500
+    # WM_CLOSE exercises the window's normal close path without relying on
+    # foreground keyboard delivery, which is unreliable in the CI session.
+    [void][AmareTestFocus]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    Start-Sleep -Milliseconds 700
 }
 
 $script:app = $null

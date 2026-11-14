@@ -410,6 +410,7 @@ struct AmareApp {
     next_input_id: u64,
     pending_input_id: Option<u64>,
     layout_bounds: Option<serde_json::Value>,
+    password_action_bounds: Vec<serde_json::Value>,
 }
 
 impl AmareApp {
@@ -478,6 +479,29 @@ impl AmareApp {
             "scale_factor": window.scale_factor(),
             "toolbar_children": children,
         }));
+    }
+
+    fn record_password_action(&mut self, id: u64, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
+        if !Self::diagnostics_enabled() {
+            return;
+        }
+        let point = |b: &gpui::Bounds<gpui::Pixels>| {
+            serde_json::json!({
+                "x": f32::from(b.origin.x),
+                "y": f32::from(b.origin.y),
+                "width": f32::from(b.size.width),
+                "height": f32::from(b.size.height),
+            })
+        };
+        if let (Some(edit), Some(delete)) = (bounds.get(0), bounds.get(1)) {
+            self.password_action_bounds
+                .retain(|value| value["id"] != id);
+            self.password_action_bounds.push(serde_json::json!({
+                "id": id,
+                "edit": point(edit),
+                "delete": point(delete),
+            }));
+        }
     }
 
     fn trace_action(&mut self, action: &str) {
@@ -626,6 +650,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
 
@@ -720,6 +745,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -860,6 +886,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -888,15 +915,25 @@ impl AmareApp {
                         }
                         for (id, url) in ordered {
                             let (webview, error) = this.create_webview();
+                            let has_error = error.is_some();
                             if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
                                 tab.webview = webview;
                                 tab.error = error.map(Into::into);
+                                tab.loading = !has_error;
                                 if let Some(view) = &tab.webview {
                                     view.navigate(&url);
                                     view.set_active(active_id == Some(id));
                                     if active_id == Some(id) {
                                         view.focus();
                                     }
+                                }
+                            }
+                            if has_error {
+                                if let Some(progress) = &mut this.restore_progress {
+                                    progress.finished = (progress.finished + 1).min(progress.total);
+                                    progress.failed += 1;
+                                    progress.visible_until =
+                                        Instant::now() + Duration::from_secs(6);
                                 }
                             }
                         }
@@ -909,6 +946,11 @@ impl AmareApp {
         }
         let address_focus = app.address_input.read(cx).focus_handle(cx);
         window.focus(&address_focus);
+        eprintln!(
+            "[restore] new_restored end id={} tabs={}",
+            snapshot.window_id,
+            app.tabs.len()
+        );
         app
     }
 
@@ -1115,6 +1157,7 @@ impl AmareApp {
             "confirm_clear_site_data": self.confirm_clear_site_data,
             "diagnostics": self.diagnostics,
             "layout_bounds": self.layout_bounds,
+            "password_actions": self.password_action_bounds,
             "pending_input_id": self.pending_input_id,
             "capture_count": self.capture_count,
             "last_capture_path": self.last_capture_path,
@@ -2000,12 +2043,8 @@ impl AmareApp {
         for tab in &mut self.tabs {
             let was_loading = tab.loading;
             let Some(webview) = &tab.webview else {
-                if tab.restored && tab.loading {
-                    tab.loading = false;
-                    tab.error = Some("WebView2 controller unavailable".into());
-                    restore_finished += 1;
-                    restore_failed += 1;
-                }
+                // Restored tabs intentionally have no controller until the
+                // deferred attach runs. Do not report a failure before that.
                 continue;
             };
             let source = webview.source();
@@ -3431,6 +3470,7 @@ impl AmareApp {
     }
 
     fn render_password_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
+        self.password_action_bounds.clear();
         let dark = effective_dark(&self.settings.theme, window);
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
         let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
@@ -3738,6 +3778,7 @@ impl AmareApp {
                 "보안 저장소가 잠겨 있습니다."
             }));
         }
+        let password_weak = cx.weak_entity();
         for entry in filtered {
             let id = entry.id;
             let origin = entry.origin.clone();
@@ -3810,6 +3851,14 @@ impl AmareApp {
                                 div()
                                     .flex()
                                     .gap_2()
+                                    .on_children_prepainted({
+                                        let weak = password_weak.clone();
+                                        move |bounds, _window, cx| {
+                                            let _ = weak.update(cx, |this, _cx| {
+                                                this.record_password_action(id, bounds);
+                                            });
+                                        }
+                                    })
                                     .child(
                                         div()
                                             .id(SharedString::from(format!("password-edit-{id}")))
@@ -4657,6 +4706,12 @@ impl Render for AmareApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.status_poll_started {
             self.status_poll_started = true;
+            eprintln!(
+                "[restore] first render window={} tabs={} active={}",
+                self.window_id,
+                self.tabs.len(),
+                self.active
+            );
             self.start_status_poll(cx);
         }
         self.poll_drop_request(window, cx);
@@ -5387,6 +5442,11 @@ fn main() {
         let (_, startup_settings) = library::browser_settings_cached()
             .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
         let (restored, session_error) = load_session_windows(&startup_settings);
+        eprintln!(
+            "[restore] loaded windows={} error={:?}",
+            restored.len(),
+            session_error
+        );
         STARTUP_SESSION_ERROR.with(|error| *error.borrow_mut() = session_error);
         if restored.is_empty() {
             let (width, height) = automation_window_size();
@@ -5417,6 +5477,17 @@ fn main() {
             }
         } else {
             for snapshot in restored {
+                eprintln!(
+                    "[restore] opening window id={} tabs={} active={} bounds={}x{}+{}+{} max={}",
+                    snapshot.window_id,
+                    snapshot.tabs.len(),
+                    snapshot.active,
+                    snapshot.width,
+                    snapshot.height,
+                    snapshot.x,
+                    snapshot.y,
+                    snapshot.maximized
+                );
                 let bounds = Bounds::new(
                     point(px(snapshot.x.max(0.0)), px(snapshot.y.max(0.0))),
                     size(
