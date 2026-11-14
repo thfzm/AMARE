@@ -12,13 +12,10 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Input;
 using Microsoft.Web.WebView2.Core;
 using Windows.System;
 using WinRT.Interop;
-using RectInt32 = Windows.Graphics.RectInt32;
 using WinColor = Windows.UI.Color;
-using WinRect = Windows.Foundation.Rect;
 
 namespace Amare.Windows;
 
@@ -198,23 +195,18 @@ public sealed partial class MainWindow : Window
             }
 
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
+            // Only the small grip area is a window-drag region. The tab strip and
+            // buttons stay normal client content so tab drag/tear-off are not
+            // swallowed by the non-client title bar.
+            SetTitleBar(TitleBarDragArea);
             var titleBar = AppWindow.TitleBar;
             titleBar.ExtendsContentIntoTitleBar = true;
             titleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
             titleBar.IconShowOptions = IconShowOptions.HideIconAndSystemMenu;
             _titleBarConfigured = true;
 
-            AppTitleBar.Loaded += (_, _) =>
-            {
-                UpdateTitleBarInsets();
-                SetTitleBarRegions();
-            };
-            AppTitleBar.SizeChanged += (_, _) =>
-            {
-                UpdateTitleBarInsets();
-                SetTitleBarRegions();
-            };
+            AppTitleBar.Loaded += (_, _) => UpdateTitleBarInsets();
+            AppTitleBar.SizeChanged += (_, _) => UpdateTitleBarInsets();
             RootGrid.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
             Activated += (_, _) =>
             {
@@ -263,55 +255,6 @@ public sealed partial class MainWindow : Window
         {
             AppLog.Error("Title bar inset update failed", exception);
         }
-    }
-
-    /// <summary>
-    /// The extended title bar is a non-client drag region by default. Tab items and
-    /// the New Tab / New Window buttons must be declared as passthrough regions or
-    /// the system would treat clicks on them as window drags.
-    /// </summary>
-    private void SetTitleBarRegions()
-    {
-        if (!_titleBarConfigured || AppTitleBar.XamlRoot is null)
-        {
-            return;
-        }
-        try
-        {
-            var scale = AppTitleBar.XamlRoot.RasterizationScale;
-            var rects = new List<RectInt32>();
-            // Mark the complete interactive controls, not individual tab items:
-            // item rectangles can change between layout passes, and a stale rect
-            // turns a tab drag into a window move.
-            AddPassthroughRect(rects, TabList, scale);
-            AddPassthroughRect(rects, TitleBarButtons, scale);
-
-            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-            source.SetRegionRects(
-                NonClientRegionKind.Passthrough,
-                rects.Count == 0 ? Array.Empty<RectInt32>() : rects.ToArray());
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Title bar passthrough regions failed", exception);
-        }
-    }
-
-    private static void AddPassthroughRect(
-        List<RectInt32> rects, FrameworkElement element, double scale)
-    {
-        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
-        {
-            return;
-        }
-        var transform = element.TransformToVisual(null);
-        var bounds = transform.TransformBounds(
-            new WinRect(0, 0, element.ActualWidth, element.ActualHeight));
-        rects.Add(new RectInt32(
-            _X: (int)Math.Round(bounds.X * scale),
-            _Y: (int)Math.Round(bounds.Y * scale),
-            _Width: (int)Math.Round(bounds.Width * scale),
-            _Height: (int)Math.Round(bounds.Height * scale)));
     }
 
     private void UpdateTitleBarColors()

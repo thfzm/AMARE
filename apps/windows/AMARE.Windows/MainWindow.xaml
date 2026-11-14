@@ -40,7 +40,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="64" />
+                <ColumnDefinition Width="96" />
                 <ColumnDefinition x:Name="CaptionSpacer" Width="0" />
             </Grid.ColumnDefinitions>
             <ListView
@@ -127,7 +127,9 @@
                 Grid.Column="2"
                 Background="Transparent"
                 AutomationProperties.Name="Window drag area"
-                ToolTipService.ToolTip="Drag to move the window" />
+                ToolTipService.ToolTip="Drag to move the window">
+                <FontIcon Glyph="&#xE76F;" FontSize="12" Opacity="0.45" />
+            </Border>
         </Grid>
 
         <!-- Toolbar -->
