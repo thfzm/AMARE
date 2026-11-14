@@ -345,7 +345,7 @@ try {
     # clicking its toolbar. The window status file exists before the controller.
     [void](Wait-State $script:hwnd2 {
         param($s)
-        @($s.tabs).Count -ge 1 -and [string]$s.source -ne ""
+        @($s.tabs).Count -ge 1 -and [bool]$s.tabs[0].loading -eq $false
     } 20 "second window ready")
     Focus-Window $script:hwnd2
     Open-Passwords $script:hwnd2
