@@ -156,7 +156,7 @@ internal static class KeyboardShortcutRouter
 
             var resolved = command.Value;
             window.DispatcherQueue.TryEnqueue(
-                DispatcherQueuePriority.High,
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.High,
                 () => window.HandleShortcut(resolved));
         }
         catch (Exception exception)
