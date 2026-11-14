@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.66.0)
+# AMARE GPUI Windows Shell (0.67.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.66.0)
+## Verified in Windows CI (0.67.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.67 defers the first WebView2 attach for new windows until after the window renders, activates the new window, and publishes tab status before controller creation. GPUI CI still reports 4 FAIL, so GPUI is not the default build.
 - 0.66 delivers WebView2 accelerator shortcuts synchronously to GPUI (`SetFocus` + `SendMessageW`) so Ctrl+L and immediately typed characters reach the address bar, and creates a fresh tab when the last tab is closed. The GPUI password smoke now passes 51/0/1; Windows 11 user verification is still UNVERIFIED.
 - 0.65 forwards Ctrl/Shift/Alt keydown/keyup explicitly from WebView2 AcceleratorKeyPressed to GPUI, removing reliance on GetKeyState/focus for Ctrl+T/L/N. Actual Windows 11 user verification is still UNVERIFIED; CI cannot validate it.
 - 0.64 added GPUI toolbar layout bounds diagnostics via `on_children_prepainted`. Actual bounds: new tab x786,y7 30×30; new window x824,y7 30×30. CI SendInput still returns 0; UIA still has no GPUI toolbar elements; layout-bounds clicks did not produce actions. Actual input E2E remains BLOCKED.
