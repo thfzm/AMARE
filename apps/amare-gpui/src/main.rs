@@ -490,7 +490,7 @@ impl AmareApp {
             .unwrap_or_else(|_| (0, library::BrowserSettings::default()));
         let start_url =
             std::env::var("AMARE_GPUI_START_URL").unwrap_or_else(|_| settings.home_page.clone());
-        Self::new_with_url(window, cx, start_url, true)
+        Self::new_with_url(window, cx, start_url, true, false)
     }
 
     fn new_with_url(
@@ -498,6 +498,7 @@ impl AmareApp {
         cx: &mut App,
         start_url: String,
         run_self_test: bool,
+        defer_webview: bool,
     ) -> Self {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
@@ -525,15 +526,19 @@ impl AmareApp {
         };
 
         #[cfg(target_os = "windows")]
-        let first_webview = match (webview_env.as_ref(), parent) {
-            (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
-                Ok(webview) => Some(webview),
-                Err(error) => {
-                    webview_error = Some(error);
-                    None
-                }
-            },
-            _ => None,
+        let first_webview = if defer_webview {
+            None
+        } else {
+            match (webview_env.as_ref(), parent) {
+                (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
+                    Ok(webview) => Some(webview),
+                    Err(error) => {
+                        webview_error = Some(error);
+                        None
+                    }
+                },
+                _ => None,
+            }
         };
         #[cfg(not(target_os = "windows"))]
         let first_webview = ();
@@ -549,7 +554,7 @@ impl AmareApp {
             id,
             title: "New Tab".into(),
             url: start_url.clone().into(),
-            loading: false,
+            loading: defer_webview,
             error: first_error,
             can_go_back: false,
             can_go_forward: false,
@@ -625,14 +630,17 @@ impl AmareApp {
         apply_platform_settings(&app.settings);
 
         #[cfg(target_os = "windows")]
-        if run_self_test && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1") {
+        if !defer_webview
+            && run_self_test
+            && std::env::var("AMARE_GPUI_SELF_TEST").ok().as_deref() == Some("1")
+        {
             if let Some(view) = app.active_webview() {
                 let _ = view.run_self_test();
             }
         }
 
         #[cfg(target_os = "windows")]
-        if let Some(webview) = app.active_webview() {
+        if !defer_webview && let Some(webview) = app.active_webview() {
             webview.navigate(&start_url);
             webview.set_active(true);
         }
@@ -2081,6 +2089,27 @@ impl AmareApp {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    fn attach_initial_webview(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
+        let (webview, error) = self.create_webview();
+        let has_error = error.is_some();
+        if let Some(tab) = self.tabs.first_mut() {
+            tab.webview = webview;
+            tab.error = error.map(Into::into);
+            tab.loading = !has_error;
+        }
+        if let Some(webview) = self.active_webview() {
+            webview.navigate(&url);
+            webview.set_active(true);
+            self.sync_webview_bounds(window);
+            webview.focus();
+        }
+        self.trace_event(format!(
+            "attach_initial_webview url={url} error={has_error}"
+        ));
+        cx.notify();
+    }
+
     fn create_webview(&self) -> (Option<webview::WebViewHost>, Option<String>) {
         #[cfg(target_os = "windows")]
         {
@@ -2205,7 +2234,12 @@ impl AmareApp {
                 }),
                 ..Default::default()
             },
-            move |window, cx| cx.new(|cx| AmareApp::new_with_url(window, cx, url, false)),
+            move |window, cx| {
+                // Do not create the first WebView2 inside the window-creation
+                // callback. Controller creation pumps Win32 messages and blocked
+                // the second window before it could render or write its status.
+                cx.new(|cx| AmareApp::new_with_url(window, cx, url, false, true))
+            },
         );
         self.trace_event(format!(
             "open_new_window requested_url={url_for_log} result={}",
@@ -2214,6 +2248,14 @@ impl AmareApp {
                 Err(error) => format!("err:{error:?}"),
             }
         ));
+        if let Ok(handle) = result {
+            let url = url_for_log.clone();
+            cx.defer(move |cx| {
+                let _ = handle.update(cx, |app, window, cx| {
+                    app.attach_initial_webview(url, window, cx);
+                });
+            });
+        }
         cx.activate(true);
     }
 

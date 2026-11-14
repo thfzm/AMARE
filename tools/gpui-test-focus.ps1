@@ -73,15 +73,15 @@ function Force-AmareForeground([IntPtr]$hwnd) {
 }
 
 function Send-GpuiShortcut([IntPtr]$hwnd, [int]$vk, [switch]$NoCtrl) {
+    # Use real keyboard input rather than PostMessage. PostMessage does not
+    # update the thread modifier state, so GPUI could see Ctrl+T without Ctrl.
     [void](Force-AmareForeground $hwnd)
-    $scan = [AmareTestFocus]::MapVirtualKey([uint32]$vk, 0)
-    $down = [int64](1 -bor ($scan -shl 16))
-    $up = [int64](0xC0000001 -bor ($scan -shl 16))
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero) }
-    [void][AmareTestFocus]::PostMessage($hwnd, 0x0100, [IntPtr]$vk, [IntPtr]$down)
-    [void][AmareTestFocus]::PostMessage($hwnd, 0x0101, [IntPtr]$vk, [IntPtr]$up)
+    [AmareTestFocus]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+    [AmareTestFocus]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero)
     if (-not $NoCtrl) { [AmareTestFocus]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero) }
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 350
 }
 
 function Send-GpuiClick([IntPtr]$hwnd, [int]$x, [int]$y) {
