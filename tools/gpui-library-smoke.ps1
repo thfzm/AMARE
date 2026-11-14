@@ -176,6 +176,7 @@ $env:AMARE_GPUI_DATA_DIR = $DataDir
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_SELF_TEST = "0"
+$env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
 try {
     $app = Start-Process $Exe -PassThru

@@ -216,14 +216,16 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
     $state = Read-State $hwnd
     $index = Get-EntryIndex $state $user
     if ($index -lt 0) { throw "entry not found: $user" }
-    $baseY = 330 + ($index * 100)
-    $x = if ($action -eq "edit") { 960 } else { 1002 }
-    foreach ($dy in 0, -8, 8, -16, 16) {
-        $script:lastActionY = $baseY + $dy
-        Click-Client $hwnd $x $script:lastActionY
-        $state = Read-State $hwnd
-        if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
-        if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+    $baseY = 340 + ($index * 100)
+    $xs = if ($action -eq "edit") { 960, 970, 980 } else { 990, 1002, 1012 }
+    foreach ($x in $xs) {
+        foreach ($dy in -12, 0, 12, 24, 36, 48) {
+            $script:lastActionY = $baseY + $dy
+            Click-Client $hwnd $x $script:lastActionY
+            $state = Read-State $hwnd
+            if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
+            if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+        }
     }
     throw "Could not open $action for $user"
 }

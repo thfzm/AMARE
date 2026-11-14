@@ -265,6 +265,7 @@ $script:app = $null
 $before = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
 Remove-Item $Status -Force -ErrorAction SilentlyContinue
 $env:AMARE_GPUI_SELF_TEST = "0"
+$env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
 $env:AMARE_GPUI_STATUS = $Status
 $env:AMARE_GPUI_START_URL = (Page "A")
