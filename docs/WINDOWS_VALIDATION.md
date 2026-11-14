@@ -84,10 +84,10 @@ Unified item shape:
 
 ## 5. 현재 실행 상태 (0.66.0)
 
-- Windows CI [43571194047](https://github.com/thfzm/AMARE/actions/runs/43571194047): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **47/47**, interop **70/70**.
-- Linux CI [43571194018](https://github.com/thfzm/AMARE/actions/runs/43571194018): **SUCCESS**.
+- Windows CI [43575072487](https://github.com/thfzm/AMARE/actions/runs/43575072487): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43575072515](https://github.com/thfzm/AMARE/actions/runs/43575072515): **SUCCESS**.
 - GPUI CI [43566952547](https://github.com/thfzm/AMARE/actions/runs/43566952547): **FAILURE** — password **51/0/1**, input **25/0/4**, aggregate **FAIL=4/UNVERIFIED=11**; **실제 Windows 11 사용자 검증 UNVERIFIED**.
-- WinUI UI smoke **47/47**: custom title strip, WebView2 focus Ctrl+T/L/N, Ctrl+N/New Window, last-tab recovery, tab reorder/tear-off/cross-window, settings/history/downloads, session restore, maximize/restore **PASS**.
+- WinUI UI smoke **48/48**: custom title strip, WebView2 focus Ctrl+T/L/N, Ctrl+N/New Window, last-tab recovery, tab reorder/tear-off/cross-window, settings/history/downloads, session restore, maximize/restore **PASS**.
 - GPUI password **51/0/1**, input **25/0/4**; GPUI tab/library/session/multiwindow은 CI 제약으로 **FAIL/UNVERIFIED**다.
 - 실제 Windows 11 사용자 키보드/창 chrome 검증, Snap, Alt+Tab, 작업 표시줄, Korean IME, DPI, 다중 모니터는 **UNVERIFIED**다.
 - ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.

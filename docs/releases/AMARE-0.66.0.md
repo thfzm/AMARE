@@ -55,9 +55,9 @@
 
 | 항목 | 결과 |
 |---|---|
-| Windows CI [#43571194047](https://github.com/thfzm/AMARE/actions/runs/43571194047) | **SUCCESS** |
+| Windows CI [#43575072487](https://github.com/thfzm/AMARE/actions/runs/43575072487) | **SUCCESS** |
 | Windows verification assertions | **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED** |
-| WinUI UI smoke | **47 / 47 PASS** |
+| WinUI UI smoke | **48 / 48 PASS** |
 | C#/Rust interop | **70 / 70 PASS** |
 | Linux CI [#43571194018](https://github.com/thfzm/AMARE/actions/runs/43571194018) | **SUCCESS** |
 | GPUI CI [#43566952547](https://github.com/thfzm/AMARE/actions/runs/43566952547) | **FAILURE** |
@@ -70,7 +70,8 @@ WinUI UI smoke에서 확인한 항목:
 - New Window 버튼과 `Ctrl+N` 새 창 생성
 - 마지막 탭 종료 후 New Tab 탐색
 - 탭 drag reorder, 창 간 이동, tear-off + re-merge
-- Settings/History/Diagnostics/Downloads/Update check, 세션 복원, maximize/restore
+- Settings dialog 안에서 Ctrl+T / Ctrl+N (`settings_shortcut_actions`) **PASS**
+- History/Diagnostics/Downloads/Update check, 세션 복원, maximize/restore
 
 GPUI CI 상세:
 
@@ -92,8 +93,8 @@ CI 근거입니다. 나머지 GPUI suite 실패는 CI foreground/SendInput 제�
 
 | 파일 | 크기 | SHA-256 |
 |---|---:|---|
-| `AMARE-0.66.0-win-x64.zip` (WinUI, 권장) | 126,906,505 bytes | `732b890881219d9b1033aff0ddddc407116ee75ce64b5d0fe3fc889639e3dcc9` |
-| `AMARE-0.66.0-win-x64-unsigned.msix` | 126,841,852 bytes | `92f613fc960d1b5d61bcdf96873d1bd59990516b911f0267e7946e72db414a49` |
+| `AMARE-0.66.0-win-x64.zip` (WinUI, 권장) | 126,910,099 bytes | `60973de6412575a3121662e2147a5ac02528b11509c8cca88a085aa0dfc4369f` |
+| `AMARE-0.66.0-win-x64-unsigned.msix` | 126,845,430 bytes | `ca4c37409767a3adee6879b13802acca3d5af4706ecff0edcb14e67b22546bb5` |
 | `AMARE-0.66.0-gpui-win-x64.zip` (GPUI 대체 셸) | 5,885,885 bytes | `d89697fc87525e1bbc6f907f5e331d45ab0c696a79ced5eca63da595ca69d7aa` |
 
 - UNSIGNED. MSIX 설치는 `0x80073D2C`로 **UNVERIFIED/BLOCKED**입니다.
