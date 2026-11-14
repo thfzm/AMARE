@@ -908,13 +908,23 @@ impl AmareApp {
             if let Some(handle) = window.to_async(cx).window_handle().downcast::<AmareApp>() {
                 cx.spawn(async move |_this, cx| {
                     Timer::after(Duration::from_millis(16)).await;
+                    let target = handle
+                        .read_with(cx, |app, _| (app.webview_env.clone(), app.parent))
+                        .ok();
+                    let mut ordered = meta;
+                    if let Some(active_id) = active_id {
+                        ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
+                    }
+                    let mut created = Vec::new();
+                    for (id, url) in ordered {
+                        let (webview, error) = match target.clone() {
+                            Some((env, parent)) => AmareApp::create_webview_for_target(env, parent),
+                            None => (None, Some("restored window closed before attach".into())),
+                        };
+                        created.push((id, url, webview, error));
+                    }
                     let _ = handle.update(cx, |this, window, cx| {
-                        let mut ordered = meta;
-                        if let Some(active_id) = active_id {
-                            ordered.sort_by_key(|(id, _)| if *id == active_id { 0 } else { 1 });
-                        }
-                        for (id, url) in ordered {
-                            let (webview, error) = this.create_webview();
+                        for (id, url, webview, error) in created {
                             let has_error = error.is_some();
                             if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
                                 tab.webview = webview;
@@ -2154,8 +2164,28 @@ impl AmareApp {
     }
 
     #[cfg(target_os = "windows")]
-    fn attach_initial_webview(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
-        let (webview, error) = self.create_webview();
+    fn create_webview_for_target(
+        env: Option<std::sync::Arc<webview::WebViewEnvironment>>,
+        parent: Option<HWND>,
+    ) -> (Option<webview::WebViewHost>, Option<String>) {
+        match (env.as_ref(), parent) {
+            (Some(env), Some(parent)) => match webview::WebViewHost::create(env, parent) {
+                Ok(webview) => (Some(webview), None),
+                Err(error) => (None, Some(error)),
+            },
+            _ => (None, Some("Windows HWND unavailable".into())),
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn attach_initial_webview(
+        &mut self,
+        webview: Option<webview::WebViewHost>,
+        error: Option<String>,
+        url: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let has_error = error.is_some();
         if let Some(tab) = self.tabs.first_mut() {
             tab.webview = webview;
@@ -2171,6 +2201,37 @@ impl AmareApp {
         self.trace_event(format!(
             "attach_initial_webview url={url} error={has_error}"
         ));
+        cx.notify();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn attach_tab_webview(
+        &mut self,
+        id: u64,
+        url: String,
+        webview: Option<webview::WebViewHost>,
+        error: Option<String>,
+        focus_address: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
+        let has_error = error.is_some();
+        self.tabs[index].error = error.map(Into::into);
+        self.tabs[index].webview = webview;
+        self.tabs[index].loading = !has_error;
+        if let Some(view) = &self.tabs[index].webview {
+            view.navigate(&url);
+            view.set_active(self.active_tab().map(|tab| tab.id) == Some(id));
+            if !focus_address {
+                view.focus();
+            }
+        }
+        if focus_address && self.active_tab().map(|tab| tab.id) == Some(id) {
+            self.focus_address_input(window, cx);
+        }
         cx.notify();
     }
 
@@ -2234,37 +2295,26 @@ impl AmareApp {
         // Publish the new tab count before the deferred controller creation so a
         // slow WebView2 attach cannot hide the tab from session/status readers.
         self.write_status(cx);
-        // WebView2 controller creation can take long enough to block the GPUI
-        // event loop when several tabs are opened back-to-back. Register the
-        // tab immediately and attach its controller after the current effect
-        // cycle so Ctrl+T/button clicks always update the tab strip first.
-        cx.defer_in(window, move |this, window, cx| {
-            let (webview, error) = this.create_webview();
-            let Some(index) = this.tabs.iter().position(|tab| tab.id == id) else {
-                return;
-            };
-            this.tabs[index].error = error.map(Into::into);
-            #[cfg(target_os = "windows")]
-            {
-                this.tabs[index].webview = webview;
-                if let Some(view) = &this.tabs[index].webview {
-                    view.navigate(&url);
-                    view.set_active(this.active_tab().map(|tab| tab.id) == Some(id));
-                    if !focus_address {
-                        view.focus();
-                    }
-                }
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = webview;
-                this.tabs[index].error = error.map(Into::into);
-            }
-            if focus_address && this.active_tab().map(|tab| tab.id) == Some(id) {
-                this.focus_address_input(window, cx);
-            }
-            cx.notify();
-        });
+        // Create the controller outside the entity borrow. WebView2 creation
+        // pumps Win32 messages; doing it inside a deferred app update can let a
+        // status-poll task re-enter GPUI and panic with RefCell already borrowed.
+        #[cfg(target_os = "windows")]
+        if let Some(handle) = window.to_async(cx).window_handle().downcast::<AmareApp>() {
+            let target = (self.webview_env.clone(), self.parent);
+            cx.spawn(async move |_this, cx| {
+                Timer::after(Duration::from_millis(16)).await;
+                let (webview, error) = AmareApp::create_webview_for_target(target.0, target.1);
+                let _ = handle.update(cx, |this, window, cx| {
+                    this.attach_tab_webview(id, url, webview, error, focus_address, window, cx);
+                });
+            })
+            .detach();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = id;
+            let _ = focus_address;
+        }
         cx.notify();
     }
 
@@ -2324,9 +2374,16 @@ impl AmareApp {
             // inside defer_in re-enters GPUI while the app RefCell is borrowed.
             cx.spawn(async move |_this, cx| {
                 Timer::after(Duration::from_millis(16)).await;
+                let target = handle
+                    .read_with(cx, |app, _| (app.webview_env.clone(), app.parent))
+                    .ok();
+                let (webview, error) = match target {
+                    Some((env, parent)) => AmareApp::create_webview_for_target(env, parent),
+                    None => (None, Some("window closed before WebView2 attach".into())),
+                };
                 let _ = handle.update(cx, |app, window, cx| {
                     window.activate_window();
-                    app.attach_initial_webview(url, window, cx);
+                    app.attach_initial_webview(webview, error, url, window, cx);
                 });
             })
             .detach();
