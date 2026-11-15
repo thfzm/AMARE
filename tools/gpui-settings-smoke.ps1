@@ -346,10 +346,6 @@ try {
     [void][AmareSettings]::SetWindowPos($windows[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
-    $script:hwnd = $windows[1]
-    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "second-window-maximize" "second window maximized"
-    Try-Titlebar "maximize" { -not [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 9) } "second-window-restore" "second window restored"
-    $script:hwnd = $windows[0]
 
     foreach ($window in (Get-BrowserWindows)) {
         [void](Force-AmareForeground $window)

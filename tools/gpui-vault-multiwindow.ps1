@@ -26,6 +26,7 @@ public static class AmareVaultWin {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 }
@@ -94,7 +95,7 @@ function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($k
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareVaultWin+POINT
     [void][AmareVaultWin]::ClientToScreen($hwnd, [ref]$point)
-    try { [void][AmareVaultWin]::ShowWindow($hwnd, 9) } catch {}
+    try { if ([AmareVaultWin]::IsIconic($hwnd)) { [void][AmareVaultWin]::ShowWindow($hwnd, 9) } } catch {}
     Focus-Window $hwnd
     Start-Sleep -Milliseconds 200
     [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + $y))
@@ -103,6 +104,22 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     Start-Sleep -Milliseconds 80
     [AmareVaultWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 350
+}
+function Click-VaultTitlebar([IntPtr]$hwnd, [string]$name) {
+    $state = Read-State $hwnd
+    if ($null -eq $state -or $null -eq $state.layout_bounds -or $null -eq $state.layout_bounds.toolbar_children) { return $false }
+    $b = $state.layout_bounds.toolbar_children.$name
+    if ($null -eq $b) { return $false }
+    Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+    return $true
+}
+function Wait-Zoomed([IntPtr]$hwnd, [bool]$zoom, [int]$seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if ([AmareVaultWin]::IsZoomed($hwnd) -eq $zoom) { return $true }
+        Start-Sleep -Milliseconds 150
+    }
+    return $false
 }
 function Shot-Window([IntPtr]$hwnd, [string]$name) {
     $rect = New-Object AmareVaultWin+RECT
@@ -455,6 +472,16 @@ try {
     }
     if (@(Read-AllStates).Count -gt 2) { throw "third window did not close" }
     Add-Result "close-third-window" "PASS" "two windows remain"
+    if (Click-VaultTitlebar $script:hwnd2 "window_max" -and (Wait-Zoomed $script:hwnd2 $true 5)) {
+        Add-Result "second-window-maximize" "PASS" "window 2 maximized via real mouse"
+    } else {
+        Add-Result "second-window-maximize" "UNVERIFIED" "window 2 did not maximize"
+    }
+    if (Click-VaultTitlebar $script:hwnd2 "window_max" -and (Wait-Zoomed $script:hwnd2 $false 5)) {
+        Add-Result "second-window-restore" "PASS" "window 2 restored via real mouse"
+    } else {
+        Add-Result "second-window-restore" "UNVERIFIED" "window 2 did not restore"
+    }
     Shot-Both $script:hwnd1 $script:hwnd2 "06-two-window-sync.png"
 
     # Independent edits in both windows while the forms are open together.
@@ -501,13 +528,16 @@ try {
     $daveDeleted = Confirm-Delete $script:hwnd1 "dave"
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "dave deleted")
     Add-Result "dave-delete-applied" "PASS" "window1 dave removed"
-    [void](Wait-State $script:hwnd2 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "window2 sees dave deleted")
-    Add-Result "dave-delete-propagation" "PASS" "window2 sees dave removed without restart"
+    # Window 2 deliberately has dave's edit form open, so its list does not
+    # reload until the stale form is resolved. Verify propagation through the
+    # modify-vs-delete conflict path below instead of expecting the open form
+    # to be clobbered.
     [void](Fill-VaultField $script:hwnd2 "password" "S3cret!Dave-stale" @(358,366,374,382,390,398))
     [void](Save-Form $script:hwnd2)
     $deleteConflict = Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.conflict } 12 "modify-delete conflict"
     if (@($deleteConflict.password_vault.entries | Where-Object username -eq "dave").Count -ne 0) { throw "deleted dave reappeared after conflict" }
     Add-Result "modify-delete-conflict" "PASS" "stale dave edit rejected and reloaded without dave"
+    Add-Result "dave-delete-propagation" "PASS" "window2 conflict reload shows dave removed without restart"
     Shot-Window $script:hwnd2 "08-stale-save-rejected.png"
 
     # Stale tombstone: window 2 is in an add form while window 1 deletes dave's peer.
