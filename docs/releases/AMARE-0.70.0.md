@@ -89,7 +89,7 @@ Aggregate: **1 FAIL / 17 UNVERIFIED**.
 |---|---:|---|
 | `AMARE-0.70.0-win-x64.zip` (WinUI) | 126,906,473 bytes | `740d7fc0eed0dc104324657a7ee1836c56463f75aa0f07141273fd6b37c71b7b` |
 | `AMARE-0.70.0-win-x64-unsigned.msix` | 126,841,776 bytes | `d03a1fc2ce1f35acc7550739c17a43fcf31ca879df4693d200632bd0cd6cf0ac` |
-| `AMARE-0.70.0-gpui-win-x64.zip` | 5,919,096 bytes | `7392e47cf866d84e424147029653f2486c5d75cf913fb5cc821c6b6af388da8a` |
+| `AMARE-0.70.0-gpui-win-x64.zip` | 5,919,113 bytes | `d4983ff33b8d4711a66c0e7770b28c9cb441475661073c57163f9430879ae827` |
 
 - UNSIGNED. MSIX install `0x80073D2C` **UNVERIFIED/BLOCKED**.
 - 공개 GitHub Release 없음.
