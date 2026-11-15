@@ -525,6 +525,9 @@ impl AmareApp {
     }
 
     fn record_layout(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>, window: &Window) {
+        if !Self::diagnostics_enabled() {
+            return;
+        }
         let normal = match window.window_bounds() {
             WindowBounds::Windowed(bounds)
             | WindowBounds::Maximized(bounds)
@@ -564,9 +567,6 @@ impl AmareApp {
             "outer": outer,
             "client": client,
         }));
-        if !Self::diagnostics_enabled() {
-            return;
-        }
         let names = [
             "tab_strip",
             "new_tab",
@@ -1197,11 +1197,14 @@ impl AmareApp {
                 #[cfg(not(target_os = "windows"))]
                 let webview_attached = false;
                 #[cfg(target_os = "windows")]
-                let tab_source = tab
-                    .webview
-                    .as_ref()
-                    .map(|webview| webview.source())
-                    .unwrap_or_default();
+                let tab_source = if active.map(|active| active.id) == Some(tab.id) {
+                    tab.webview
+                        .as_ref()
+                        .map(|webview| webview.source())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
                 #[cfg(not(target_os = "windows"))]
                 let tab_source = String::new();
                 serde_json::json!({
@@ -4776,10 +4779,32 @@ impl AmareApp {
         // the maximized client area. `window_bounds()` returns the normal
         // placement plus an explicit maximized flag, which is what must be
         // persisted to restore the same windowed size and maximized state.
-        let bounds = match window.window_bounds() {
-            WindowBounds::Windowed(bounds)
-            | WindowBounds::Maximized(bounds)
-            | WindowBounds::Fullscreen(bounds) => bounds,
+        // Querying the placement involves Win32 calls, so only do it on the
+        // two-second save tick (or before the first snapshot).
+        let previous = SESSION_WINDOWS.with(|cell| cell.borrow().get(&self.window_id).cloned());
+        let placement = if due || previous.is_none() {
+            let bounds = match window.window_bounds() {
+                WindowBounds::Windowed(bounds)
+                | WindowBounds::Maximized(bounds)
+                | WindowBounds::Fullscreen(bounds) => bounds,
+            };
+            (
+                f32::from(bounds.origin.x),
+                f32::from(bounds.origin.y),
+                f32::from(bounds.size.width),
+                f32::from(bounds.size.height),
+                window.is_maximized(),
+            )
+        } else if let Some(previous) = previous.as_ref() {
+            (
+                previous.x,
+                previous.y,
+                previous.width,
+                previous.height,
+                previous.maximized,
+            )
+        } else {
+            (0.0, 0.0, 1044.0, 788.0, window.is_maximized())
         };
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -4788,11 +4813,11 @@ impl AmareApp {
         let mut snapshot = SessionWindowSnapshot {
             revision: 0,
             window_id: self.window_id,
-            x: f32::from(bounds.origin.x),
-            y: f32::from(bounds.origin.y),
-            width: f32::from(bounds.size.width),
-            height: f32::from(bounds.size.height),
-            maximized: window.is_maximized(),
+            x: placement.0,
+            y: placement.1,
+            width: placement.2,
+            height: placement.3,
+            maximized: placement.4,
             active: self.active,
             tabs: self
                 .tabs
