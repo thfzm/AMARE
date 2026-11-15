@@ -121,6 +121,39 @@ function Click-TitlebarWin32([string]$button) {
     Start-Sleep -Milliseconds 500
     return $true
 }
+function DoubleClick-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
+    $point = New-Object AmareSettings+POINT
+    [void][AmareSettings]::ClientToScreen($hwnd, [ref]$point)
+    [void](Force-AmareForeground $hwnd)
+    [void][AmareSettings]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+    Start-Sleep -Milliseconds 120
+    foreach ($click in 1..2) {
+        [AmareSettings]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 40
+        [AmareSettings]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        if ($click -eq 1) { Start-Sleep -Milliseconds 90 }
+    }
+    Start-Sleep -Milliseconds 500
+}
+function Get-RectText([IntPtr]$hwnd) {
+    $rect = New-Object AmareSettings+RECT
+    [void][AmareSettings]::GetWindowRect($hwnd, [ref]$rect)
+    return "$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom)"
+}
+function Try-DoubleClickTitlebar([scriptblock]$test, [string]$name, [string]$success) {
+    $rect = New-Object AmareSettings+RECT
+    [void][AmareSettings]::GetClientRect($script:hwnd, [ref]$rect)
+    $x = [int](($rect.Right - $rect.Left) / 2)
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        DoubleClick-Client $script:hwnd $x 22
+        try {
+            [void](Wait-WindowState $test 3 "$name attempt")
+            Add-Result $name "PASS" "$success (real mouse double click)"
+            return
+        } catch { }
+    }
+    Add-Result $name "UNVERIFIED" "real mouse double click did not change state"
+}
 function Try-Titlebar([string]$button, [scriptblock]$test, [scriptblock]$fallback, [string]$name, [string]$success) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
         Click-Titlebar $button
@@ -208,12 +241,37 @@ try {
     $app.Refresh(); $script:hwnd = $app.MainWindowHandle
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "GPUI window missing" }
     [void](Force-AmareForeground $script:hwnd)
+    $normalRect = Get-RectText $script:hwnd
     Try-Titlebar "minimize" { [AmareSettings]::IsIconic($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 6) } "titlebar-minimize-click" "window minimized"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
-    Start-Sleep -Milliseconds 700
+    try {
+        [void](Wait-WindowState { -not [AmareSettings]::IsIconic($script:hwnd) } 5 "minimize restore")
+        Add-Result "titlebar-minimize-restore" "PASS" "window restored from minimized state"
+    } catch {
+        Add-Result "titlebar-minimize-restore" "UNVERIFIED" $_.Exception.Message
+    }
     Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "titlebar-maximize-click" "window maximized"
+    Shot "14-titlebar-maximized.png"
     Try-Titlebar "maximize" { -not [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 9) } "titlebar-restore-click" "window restored"
-    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "second-window-maximize" "second window maximized"
+    Shot "15-titlebar-restored.png"
+    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "titlebar-repeat-maximize" "window maximized on repeat"
+    Try-Titlebar "maximize" { -not [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 9) } "titlebar-repeat-restore" "window restored on repeat"
+    $restoredRect = Get-RectText $script:hwnd
+    $beforeParts = @($normalRect.Split(',') | ForEach-Object { [int]$_ })
+    $afterParts = @($restoredRect.Split(',') | ForEach-Object { [int]$_ })
+    $geometryDelta = 0
+    if ($beforeParts.Count -eq 4 -and $afterParts.Count -eq 4) {
+        for ($i = 0; $i -lt 4; $i++) { $geometryDelta = [Math]::Max($geometryDelta, [Math]::Abs($beforeParts[$i] - $afterParts[$i])) }
+    } else {
+        $geometryDelta = 9999
+    }
+    if ($geometryDelta -le 2) {
+        Add-Result "titlebar-geometry-preserved" "PASS" "$normalRect -> $restoredRect (max delta ${geometryDelta}px)"
+    } else {
+        Add-Result "titlebar-geometry-preserved" "UNVERIFIED" "$normalRect -> $restoredRect (max delta ${geometryDelta}px)"
+    }
+    Try-DoubleClickTitlebar { [AmareSettings]::IsZoomed($script:hwnd) } "titlebar-double-click-maximize" "window maximized"
+    Try-DoubleClickTitlebar { -not [AmareSettings]::IsZoomed($script:hwnd) } "titlebar-double-click-restore" "window restored"
     Start-Sleep -Milliseconds 500
     Shot "01-initial-browser.png"
 
@@ -288,6 +346,10 @@ try {
     [void][AmareSettings]::SetWindowPos($windows[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
     Start-Sleep -Seconds 5
     Add-Result "multi-window-created" "PASS" "windows=$($windows.Count) side-by-side"
+    $script:hwnd = $windows[1]
+    Try-Titlebar "maximize" { [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 3) } "second-window-maximize" "second window maximized"
+    Try-Titlebar "maximize" { -not [AmareSettings]::IsZoomed($script:hwnd) } { [void][AmareSettings]::ShowWindow($script:hwnd, 9) } "second-window-restore" "second window restored"
+    $script:hwnd = $windows[0]
 
     foreach ($window in (Get-BrowserWindows)) {
         [void](Force-AmareForeground $window)
@@ -385,7 +447,11 @@ try {
             if (-not $app.WaitForExit(15000)) {
                 Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
                 Add-Result "last-window-normal-exit" "UNVERIFIED" "Alt+F4/WM_CLOSE did not exit; process killed"
+            } else {
+                Add-Result "last-window-normal-exit" "PASS" "WM_CLOSE exited last window"
             }
+        } else {
+            Add-Result "last-window-normal-exit" "PASS" "Alt+F4 exited last window"
         }
     }
     Start-Sleep -Seconds 2
@@ -418,13 +484,6 @@ try {
     if (-not $reset) { throw "Timed out waiting for settings reset" }
     Add-Result "settings-reset" "PASS" "defaults restored"
     Shot "13-settings-after-reset.png"
-    Start-Sleep -Seconds 2
-    $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
-    if ($after -gt 0) {
-        Add-Result "settings-exit-webview2-cleanup" "UNVERIFIED" "webview2=$after after exit"
-    } else {
-        Add-Result "settings-exit-webview2-cleanup" "PASS" "webview2=0"
-    }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
     try { Shot "99-settings-failure.png" } catch {}
@@ -438,6 +497,13 @@ finally {
         Start-Sleep -Milliseconds 500
     }
     if ($null -ne $app -and -not $app.HasExited) { try { $app.Kill() } catch {} }
+    Start-Sleep -Seconds 2
+    $afterCleanup = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+    if ($afterCleanup -gt 0) {
+        Add-Result "settings-final-webview2-cleanup" "UNVERIFIED" "webview2=$afterCleanup after all settings windows exited"
+    } else {
+        Add-Result "settings-final-webview2-cleanup" "PASS" "webview2=0 after all settings windows exited"
+    }
     $summary = [pscustomobject]@{
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
         results = $script:results

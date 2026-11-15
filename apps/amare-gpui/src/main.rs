@@ -1,7 +1,7 @@
 #![recursion_limit = "512"]
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -21,7 +21,7 @@ use windows::Win32::{
     Foundation::POINT,
     UI::{
         Input::KeyboardAndMouse::{GetAsyncKeyState, SetFocus, VK_LBUTTON},
-        WindowsAndMessaging::GetCursorPos,
+        WindowsAndMessaging::{GetClientRect, GetCursorPos, GetWindowRect, SW_RESTORE, ShowWindow},
     },
 };
 
@@ -33,7 +33,7 @@ mod webview;
 use text_input::AddressInput;
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, RECT};
 
 actions!(
     amare,
@@ -190,6 +190,8 @@ struct SessionTabSnapshot {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct SessionWindowSnapshot {
+    #[serde(default)]
+    revision: u64,
     window_id: u64,
     x: f32,
     y: f32,
@@ -202,10 +204,88 @@ struct SessionWindowSnapshot {
     saved_at_ms: i64,
 }
 
+impl SessionWindowSnapshot {
+    /// Compare persisted content without treating the monotonically increasing
+    /// bookkeeping fields as user-visible changes.
+    fn same_content(&self, other: &Self) -> bool {
+        self.window_id == other.window_id
+            && self.x == other.x
+            && self.y == other.y
+            && self.width == other.width
+            && self.height == other.height
+            && self.maximized == other.maximized
+            && self.active == other.active
+            && self.tabs == other.tabs
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct SessionPayload {
+    #[serde(default = "session_schema")]
+    schema: u32,
+    #[serde(default)]
+    revision: u64,
+    #[serde(default)]
+    windows: Vec<SessionWindowSnapshot>,
+}
+
+fn session_schema() -> u32 {
+    2
+}
+
+struct ClosedWindowSnapshot {
+    snapshot: SessionWindowSnapshot,
+    closed_at: Instant,
+}
+
+/// Two windows closed in quick succession are still the same user shutdown.
+/// Keep recently closed snapshots long enough for the last window's Drop to
+/// include them, but do not resurrect a window the user closed earlier while
+/// continuing to browse in another window.
+const SESSION_CLOSE_GRACE: Duration = Duration::from_secs(3);
+
+static NEXT_SESSION_REVISION: AtomicU64 = AtomicU64::new(1);
+
 thread_local! {
     static SESSION_WINDOWS: RefCell<BTreeMap<u64, SessionWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
-    static SESSION_CLOSED_WINDOWS: RefCell<BTreeMap<u64, SessionWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
+    static SESSION_CLOSED_WINDOWS: RefCell<BTreeMap<u64, ClosedWindowSnapshot>> = const { RefCell::new(BTreeMap::new()) };
+    static LAST_PERSISTED_REVISION: Cell<u64> = const { Cell::new(0) };
     static STARTUP_SESSION_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn next_session_revision() -> u64 {
+    NEXT_SESSION_REVISION.fetch_add(1, Ordering::SeqCst)
+}
+
+#[cfg(target_os = "windows")]
+fn window_hwnd(window: &Window) -> Option<HWND> {
+    HasWindowHandle::window_handle(window)
+        .ok()
+        .map(|handle| handle.as_raw())
+        .and_then(|handle| match handle {
+            RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
+            _ => None,
+        })
+}
+
+/// GPUI 0.2.2's Windows `zoom()` always calls `SW_MAXIMIZE`; it does not
+/// implement a maximize/restore toggle. Use the real Win32 state to decide,
+/// then call `SW_RESTORE` explicitly when the window is already maximized.
+fn toggle_window_maximize(window: &mut Window) {
+    #[cfg(target_os = "windows")]
+    {
+        if window.is_maximized() {
+            if let Some(hwnd) = window_hwnd(window) {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                }
+                return;
+            }
+        }
+        window.zoom_window();
+    }
+    #[cfg(not(target_os = "windows"))]
+    window.zoom_window();
 }
 
 #[derive(Clone)]
@@ -293,6 +373,7 @@ struct TabState {
     restored: bool,
     #[cfg(target_os = "windows")]
     pending_scroll: Option<(i64, i64)>,
+    scroll_restore_attempts: u8,
     #[cfg(target_os = "windows")]
     webview: Option<webview::WebViewHost>,
 }
@@ -410,6 +491,7 @@ struct AmareApp {
     next_input_id: u64,
     pending_input_id: Option<u64>,
     layout_bounds: Option<serde_json::Value>,
+    window_state: Option<serde_json::Value>,
     password_action_bounds: Vec<serde_json::Value>,
 }
 
@@ -443,6 +525,45 @@ impl AmareApp {
     }
 
     fn record_layout(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>, window: &Window) {
+        let normal = match window.window_bounds() {
+            WindowBounds::Windowed(bounds)
+            | WindowBounds::Maximized(bounds)
+            | WindowBounds::Fullscreen(bounds) => bounds,
+        };
+        #[cfg(target_os = "windows")]
+        let (outer, client) = window_hwnd(window)
+            .map(|hwnd| unsafe {
+                let mut outer = RECT::default();
+                let mut client = RECT::default();
+                let _ = GetWindowRect(hwnd, &mut outer);
+                let _ = GetClientRect(hwnd, &mut client);
+                (
+                    serde_json::json!({
+                        "x": outer.left, "y": outer.top,
+                        "width": outer.right - outer.left,
+                        "height": outer.bottom - outer.top,
+                    }),
+                    serde_json::json!({
+                        "width": client.right - client.left,
+                        "height": client.bottom - client.top,
+                    }),
+                )
+            })
+            .unwrap_or_else(|| (serde_json::Value::Null, serde_json::Value::Null));
+        #[cfg(not(target_os = "windows"))]
+        let (outer, client) = (serde_json::Value::Null, serde_json::Value::Null);
+        self.window_state = Some(serde_json::json!({
+            "normal": {
+                "x": f32::from(normal.origin.x),
+                "y": f32::from(normal.origin.y),
+                "width": f32::from(normal.size.width),
+                "height": f32::from(normal.size.height),
+            },
+            "maximized": window.is_maximized(),
+            "scale_factor": window.scale_factor(),
+            "outer": outer,
+            "client": client,
+        }));
         if !Self::diagnostics_enabled() {
             return;
         }
@@ -590,6 +711,7 @@ impl AmareApp {
             restored: false,
             #[cfg(target_os = "windows")]
             pending_scroll: None,
+            scroll_restore_attempts: 0,
             #[cfg(target_os = "windows")]
             webview: first_webview,
         }];
@@ -650,6 +772,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            window_state: None,
             password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
@@ -745,6 +868,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            window_state: None,
             password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
@@ -803,6 +927,7 @@ impl AmareApp {
                 restored: true,
                 #[cfg(target_os = "windows")]
                 pending_scroll,
+                scroll_restore_attempts: 0,
                 #[cfg(target_os = "windows")]
                 webview: None,
             });
@@ -824,6 +949,7 @@ impl AmareApp {
                 restored: false,
                 #[cfg(target_os = "windows")]
                 pending_scroll: None,
+                scroll_restore_attempts: 0,
                 #[cfg(target_os = "windows")]
                 webview: None,
             });
@@ -886,6 +1012,7 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             layout_bounds: None,
+            window_state: None,
             password_action_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
@@ -1069,10 +1196,19 @@ impl AmareApp {
                 let webview_attached = tab.webview.is_some();
                 #[cfg(not(target_os = "windows"))]
                 let webview_attached = false;
+                #[cfg(target_os = "windows")]
+                let tab_source = tab
+                    .webview
+                    .as_ref()
+                    .map(|webview| webview.source())
+                    .unwrap_or_default();
+                #[cfg(not(target_os = "windows"))]
+                let tab_source = String::new();
                 serde_json::json!({
                     "id": tab.id,
                     "title": tab.title,
                     "url": tab.url,
+                    "source": tab_source,
                     "loading": tab.loading,
                     "error": tab.error,
                     "can_go_back": tab.can_go_back,
@@ -1166,6 +1302,7 @@ impl AmareApp {
             "confirm_clear_site_data": self.confirm_clear_site_data,
             "diagnostics": self.diagnostics,
             "layout_bounds": self.layout_bounds,
+            "window_state": self.window_state,
             "password_actions": self.password_action_bounds,
             "pending_input_id": self.pending_input_id,
             "capture_count": self.capture_count,
@@ -2094,10 +2231,19 @@ impl AmareApp {
             }
             #[cfg(target_os = "windows")]
             if tab.restored && !tab.loading {
-                if let Some((x, y)) = tab.pending_scroll.take() {
+                if let Some((x, y)) = tab.pending_scroll {
                     webview.scroll_to(x, y);
-                    tab.scroll_x = x;
-                    tab.scroll_y = y;
+                    tab.scroll_restore_attempts = tab.scroll_restore_attempts.saturating_add(1);
+                    if let Some((actual_x, actual_y)) = webview.scroll_position() {
+                        tab.scroll_x = actual_x;
+                        tab.scroll_y = actual_y;
+                        let matched = (actual_x - x).abs() <= 2 && (actual_y - y).abs() <= 2;
+                        if matched || tab.scroll_restore_attempts >= 3 {
+                            tab.pending_scroll = None;
+                        }
+                    } else if tab.scroll_restore_attempts >= 3 {
+                        tab.pending_scroll = None;
+                    }
                 } else if let Some((x, y)) = webview.scroll_position() {
                     tab.scroll_x = x;
                     tab.scroll_y = y;
@@ -2268,6 +2414,7 @@ impl AmareApp {
             restored: false,
             #[cfg(target_os = "windows")]
             pending_scroll: None,
+            scroll_restore_attempts: 0,
             #[cfg(target_os = "windows")]
             webview: None,
         });
@@ -4625,12 +4772,21 @@ impl AmareApp {
                 }
             }
         }
-        let bounds = window.bounds();
+        // `Window::bounds()` is the live client area and, while maximized, is
+        // the maximized client area. `window_bounds()` returns the normal
+        // placement plus an explicit maximized flag, which is what must be
+        // persisted to restore the same windowed size and maximized state.
+        let bounds = match window.window_bounds() {
+            WindowBounds::Windowed(bounds)
+            | WindowBounds::Maximized(bounds)
+            | WindowBounds::Fullscreen(bounds) => bounds,
+        };
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        let snapshot = SessionWindowSnapshot {
+        let mut snapshot = SessionWindowSnapshot {
+            revision: 0,
             window_id: self.window_id,
             x: f32::from(bounds.origin.x),
             y: f32::from(bounds.origin.y),
@@ -4652,15 +4808,32 @@ impl AmareApp {
         };
         let changed = SESSION_WINDOWS.with(|cell| {
             let mut windows = cell.borrow_mut();
-            let changed = windows.get(&self.window_id) != Some(&snapshot);
-            windows.insert(self.window_id, snapshot);
-            changed
+            match windows.get(&self.window_id) {
+                Some(previous) if previous.same_content(&snapshot) => {
+                    snapshot.revision = previous.revision;
+                    snapshot.saved_at_ms = previous.saved_at_ms;
+                    windows.insert(self.window_id, snapshot);
+                    false
+                }
+                _ => {
+                    snapshot.revision = next_session_revision();
+                    windows.insert(self.window_id, snapshot);
+                    true
+                }
+            }
+        });
+        // A window closed earlier while this window kept running must not be
+        // resurrected after the grace period. During the grace period it stays
+        // available for a genuine multi-window shutdown.
+        let now = Instant::now();
+        SESSION_CLOSED_WINDOWS.with(|cell| {
+            cell.borrow_mut()
+                .retain(|_, closed| now.duration_since(closed.closed_at) <= SESSION_CLOSE_GRACE);
         });
         if self.settings.save_session_on_exit
             && (due || (changed && self.last_session_save.elapsed() >= Duration::from_millis(500)))
         {
-            persist_session(false);
-            SESSION_CLOSED_WINDOWS.with(|cell| cell.borrow_mut().clear());
+            persist_live_session();
             self.last_session_save = Instant::now();
         }
     }
@@ -5046,7 +5219,7 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .child("□")
                             .on_click(cx.listener(|_, _, window, _| {
-                                window.zoom_window();
+                                toggle_window_maximize(window);
                             })),
                     )
                     .child(
@@ -5313,36 +5486,230 @@ impl Render for AmareApp {
 
 impl Drop for AmareApp {
     fn drop(&mut self) {
+        // `refresh_tabs` updates tab scroll positions on every render, so the
+        // final snapshot can use the values already held by the tabs without
+        // re-entering WebView2/GPUI from Drop.
+        SESSION_WINDOWS.with(|cell| {
+            let mut windows = cell.borrow_mut();
+            if let Some(snapshot) = windows.get_mut(&self.window_id) {
+                for (index, tab) in self.tabs.iter().enumerate() {
+                    if let Some(saved) = snapshot.tabs.get_mut(index) {
+                        saved.url = tab.url.to_string();
+                        saved.title = tab.title.to_string();
+                        saved.scroll_x = tab.scroll_x;
+                        saved.scroll_y = tab.scroll_y;
+                    }
+                }
+                snapshot.active = self.active.min(snapshot.tabs.len().saturating_sub(1));
+                snapshot.revision = next_session_revision();
+            }
+        });
+        let now = Instant::now();
         let empty = SESSION_WINDOWS.with(|windows| {
             let mut windows = windows.borrow_mut();
             if let Some(snapshot) = windows.remove(&self.window_id) {
+                let empty = windows.is_empty();
                 SESSION_CLOSED_WINDOWS.with(|closed| {
-                    closed.borrow_mut().insert(snapshot.window_id, snapshot);
+                    closed.borrow_mut().insert(
+                        snapshot.window_id,
+                        ClosedWindowSnapshot {
+                            snapshot,
+                            closed_at: now,
+                        },
+                    );
                 });
+                return empty;
             }
             windows.is_empty()
         });
+        eprintln!(
+            "[close] drop window={} live_empty={}",
+            self.window_id, empty
+        );
         if self.settings.save_session_on_exit {
-            // Persist immediately while the closing window's snapshot is still
-            // in CLOSED_WINDOWS. This preserves all windows even when the
-            // process quits before the last Drop runs.
-            persist_session(true);
+            if empty {
+                // Persist the closing window (and any window closed within the
+                // shutdown grace period) before the process exits.
+                persist_final_session();
+            } else {
+                // One of several windows closed: persist only the still-live
+                // windows. This is an explicit closed state, not an autosave
+                // race, and it removes the closed window from the next restore.
+                persist_live_session();
+            }
         } else if empty {
             let _ = library::save_session("[]");
         }
     }
 }
 
-fn persist_session(include_closed: bool) {
+fn persist_live_session() -> bool {
+    let snapshots =
+        SESSION_WINDOWS.with(|cell| cell.borrow().values().cloned().collect::<Vec<_>>());
+    let snapshot_revision = snapshots
+        .iter()
+        .map(|window| window.revision)
+        .max()
+        .unwrap_or(0);
+    // A window close removes its snapshot, so the remaining live snapshot can
+    // have the same revision as the last payload. Bump the payload revision so
+    // the explicit "window A is closed" state is written instead of being
+    // rejected as an older autosave.
+    let last = LAST_PERSISTED_REVISION.with(|cell| cell.get());
+    let revision = snapshot_revision.max(last.saturating_add(1));
+    write_session_payload(snapshots, revision, false)
+}
+
+fn persist_final_session() -> bool {
+    let now = Instant::now();
     let mut snapshots =
         SESSION_WINDOWS.with(|cell| cell.borrow().values().cloned().collect::<Vec<_>>());
-    if include_closed {
-        SESSION_CLOSED_WINDOWS.with(|cell| snapshots.extend(cell.borrow().values().cloned()));
+    let mut revision = snapshots
+        .iter()
+        .map(|window| window.revision)
+        .max()
+        .unwrap_or(0);
+    SESSION_CLOSED_WINDOWS.with(|cell| {
+        for closed in cell.borrow().values() {
+            if now.duration_since(closed.closed_at) <= SESSION_CLOSE_GRACE {
+                revision = revision.max(closed.snapshot.revision);
+                snapshots.push(closed.snapshot.clone());
+            }
+        }
+    });
+    // Deduplicate defensively: a window must appear at most once.
+    let mut by_id = BTreeMap::new();
+    for snapshot in snapshots {
+        by_id
+            .entry(snapshot.window_id)
+            .and_modify(|existing: &mut SessionWindowSnapshot| {
+                if snapshot.revision >= existing.revision {
+                    *existing = snapshot.clone();
+                }
+            })
+            .or_insert(snapshot);
     }
-    let payload = serde_json::to_string(&snapshots).ok();
-    if let Some(payload) = payload {
-        let _ = library::save_session(&payload);
+    let snapshots = by_id.into_values().collect::<Vec<_>>();
+    let revision = next_session_revision().max(revision.saturating_add(1));
+    write_session_payload(snapshots, revision, true)
+}
+
+fn write_session_payload(
+    mut snapshots: Vec<SessionWindowSnapshot>,
+    revision: u64,
+    final_write: bool,
+) -> bool {
+    snapshots.sort_by_key(|window| window.window_id);
+    let last = LAST_PERSISTED_REVISION.with(|cell| cell.get());
+    if revision < last || (revision == last && !final_write) {
+        return false;
     }
+    let payload = SessionPayload {
+        schema: session_schema(),
+        revision,
+        windows: snapshots,
+    };
+    let Ok(payload) = serde_json::to_string(&payload) else {
+        return false;
+    };
+    match library::save_session(&payload) {
+        Ok(()) => {
+            LAST_PERSISTED_REVISION.with(|cell| cell.set(revision));
+            true
+        }
+        Err(error) => {
+            eprintln!("[session] save failed revision={revision}: {error}");
+            false
+        }
+    }
+}
+
+fn parse_session_windows(
+    json: &str,
+) -> Result<(Vec<SessionWindowSnapshot>, u64), serde_json::Error> {
+    if json.trim_start().starts_with('{') {
+        let payload = serde_json::from_str::<SessionPayload>(json)?;
+        Ok((payload.windows, payload.revision))
+    } else {
+        // 0.70 and earlier persisted a bare array. Keep reading it so an
+        // upgrade does not discard the user's last session.
+        let windows = serde_json::from_str::<Vec<SessionWindowSnapshot>>(json)?;
+        Ok((windows, 0))
+    }
+}
+
+fn sanitize_session_windows(
+    windows: Vec<SessionWindowSnapshot>,
+) -> (Vec<SessionWindowSnapshot>, Option<String>) {
+    let original_count = windows.len();
+    let mut problems = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut sanitized = Vec::new();
+    for mut window in windows.into_iter().take(16) {
+        if window.window_id == 0 {
+            problems.push("window id 0".to_string());
+            continue;
+        }
+        if !seen.insert(window.window_id) {
+            problems.push(format!("duplicate window id {}", window.window_id));
+            continue;
+        }
+        if !window.x.is_finite() || !window.y.is_finite() {
+            window.x = 0.0;
+            window.y = 0.0;
+            problems.push(format!("window {} position", window.window_id));
+        }
+        window.x = window.x.clamp(-100_000.0, 100_000.0);
+        window.y = window.y.clamp(-100_000.0, 100_000.0);
+        if !window.width.is_finite() || !window.height.is_finite() {
+            window.width = 1044.0;
+            window.height = 788.0;
+            problems.push(format!("window {} size", window.window_id));
+        }
+        window.width = window.width.clamp(640.0, 16_384.0);
+        window.height = window.height.clamp(480.0, 16_384.0);
+        window.tabs.truncate(100);
+        let mut tabs = Vec::new();
+        for mut tab in window.tabs {
+            if tab.url.trim().is_empty() {
+                tab.url = "about:blank".into();
+                problems.push(format!("window {} empty tab URL", window.window_id));
+            }
+            if tab.title.trim().is_empty() {
+                tab.title = tab.url.clone();
+            }
+            tab.scroll_x = tab.scroll_x.max(0);
+            tab.scroll_y = tab.scroll_y.max(0);
+            tabs.push(tab);
+        }
+        if tabs.is_empty() {
+            tabs.push(SessionTabSnapshot {
+                url: "about:blank".into(),
+                title: "New Tab".into(),
+                scroll_x: 0,
+                scroll_y: 0,
+            });
+            problems.push(format!("window {} had no tabs", window.window_id));
+        }
+        window.tabs = tabs;
+        window.active = window.active.min(window.tabs.len() - 1);
+        sanitized.push(window);
+    }
+    if original_count > 16 {
+        problems.push(format!("window count capped at 16 ({original_count})"));
+    }
+    if sanitized.is_empty() && original_count > 0 {
+        problems.push("no restorable windows".to_string());
+    }
+    let message = if problems.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "세션 일부를 복구했습니다 ({})",
+            problems.join(", ")
+        ))
+    };
+    (sanitized, message)
 }
 
 fn load_session_windows(
@@ -5355,8 +5722,21 @@ fn load_session_windows(
         return (Vec::new(), None);
     }
     match library::load_session() {
-        Ok(Some(json)) => match serde_json::from_str::<Vec<SessionWindowSnapshot>>(&json) {
-            Ok(windows) => (windows, None),
+        Ok(Some(json)) => match parse_session_windows(&json) {
+            Ok((windows, revision)) => {
+                let max_revision = windows
+                    .iter()
+                    .map(|window| window.revision)
+                    .max()
+                    .unwrap_or(0);
+                let persisted_revision = revision.max(max_revision);
+                LAST_PERSISTED_REVISION.with(|cell| cell.set(persisted_revision));
+                NEXT_SESSION_REVISION.fetch_max(
+                    persisted_revision.saturating_add(1).max(1),
+                    Ordering::SeqCst,
+                );
+                sanitize_session_windows(windows)
+            }
             Err(error) => {
                 let _ = library::save_corrupt_session(&json);
                 (

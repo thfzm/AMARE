@@ -357,9 +357,14 @@ pub fn session_summary() -> Result<Option<SessionSummary>, String> {
         return Ok(None);
     };
     let value: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    let windows = value.as_array().map(|items| items.len()).unwrap_or(0);
-    let tabs = value
-        .as_array()
+    // 0.71 persists {schema, revision, windows}; 0.70 and earlier used a bare
+    // array. Report both so the session summary stays valid across upgrades.
+    let items = value
+        .get("windows")
+        .and_then(|windows| windows.as_array())
+        .or_else(|| value.as_array());
+    let windows = items.map(|items| items.len()).unwrap_or(0);
+    let tabs = items
         .map(|items| {
             items
                 .iter()
@@ -373,8 +378,7 @@ pub fn session_summary() -> Result<Option<SessionSummary>, String> {
                 .sum()
         })
         .unwrap_or(0);
-    let saved_at_ms = value
-        .as_array()
+    let saved_at_ms = items
         .map(|items| {
             items
                 .iter()

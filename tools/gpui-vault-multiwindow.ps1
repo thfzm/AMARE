@@ -17,6 +17,7 @@ public static class AmareVaultWin {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -229,20 +230,30 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
             Start-Sleep -Milliseconds 150
             $state = Read-State $hwnd
             $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
-            if ($null -ne $actionInfo -and $null -ne $actionInfo.edit) { break }
+            if ($null -ne $actionInfo -and $null -ne $actionInfo.edit -and $null -ne $actionInfo.delete) { break }
             Start-Sleep -Milliseconds 250
         }
         if ($null -ne $actionInfo) {
             $b = if ($action -eq "edit") { $actionInfo.edit } else { $actionInfo.delete }
             if ($null -ne $b) {
-                for ($attempt = 0; $attempt -lt 4; $attempt++) {
+                for ($attempt = 0; $attempt -lt 5; $attempt++) {
                     Focus-Window $hwnd
                     Start-Sleep -Milliseconds 250
+                    # Focus the entry row first; this also validates that the
+                    # stored layout bounds are inside the live client area.
+                    Click-Client $hwnd 600 ([int]($b.y + $b.height / 2))
+                    Start-Sleep -Milliseconds 150
                     Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
-                    Start-Sleep -Milliseconds 300
+                    Start-Sleep -Milliseconds 350
                     $state = Read-State $hwnd
+                    if ($null -eq $state) { continue }
                     if ($action -eq "edit" -and $null -ne $state.password_vault.editing) { return $state }
-                    if ($action -eq "delete" -and $null -ne $state.password_vault.confirm_delete) { return $state }
+                    if ($action -eq "delete") {
+                        if ($null -ne $state.password_vault.confirm_delete) { return $state }
+                        # The entry may already have been deleted by a previous
+                        # click (confirmation was already active).
+                        if (@($state.password_vault.entries | Where-Object username -eq $user).Count -eq 0) { return $state }
+                    }
                 }
             }
         }
@@ -260,6 +271,25 @@ function Click-EntryAction([IntPtr]$hwnd, [string]$user, [string]$action) {
         }
     }
     throw "Could not open $action for $user"
+}
+function Confirm-Delete([IntPtr]$hwnd, [string]$user) {
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        $state = Read-State $hwnd
+        if ($null -eq $state) { Start-Sleep -Milliseconds 300; continue }
+        if (@($state.password_vault.entries | Where-Object username -eq $user).Count -eq 0) { return $state }
+        $entry = @($state.password_vault.entries | Where-Object username -eq $user)[0]
+        $actionInfo = @($state.password_actions | Where-Object { [int64]$_.id -eq [int64]$entry.id })[0]
+        if ($null -ne $actionInfo -and $null -ne $actionInfo.delete) {
+            $b = $actionInfo.delete
+            Focus-Window $hwnd
+            Start-Sleep -Milliseconds 200
+            Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+        }
+        Start-Sleep -Milliseconds 500
+        $state = Read-State $hwnd
+        if ($null -ne $state -and @($state.password_vault.entries | Where-Object username -eq $user).Count -eq 0) { return $state }
+    }
+    throw "Could not confirm delete for $user"
 }
 function Close-Passwords([IntPtr]$hwnd) {
     $state = Read-State $hwnd
@@ -462,9 +492,17 @@ try {
     [void](Close-Passwords $script:hwnd1)
     [void](Open-Passwords $script:hwnd1)
     [void](Click-EntryAction $script:hwnd2 "dave" "edit")
-    [void](Click-EntryAction $script:hwnd1 "dave" "delete")
-    [void](Click-EntryAction $script:hwnd1 "dave" "delete")
+    $daveConfirm = Click-EntryAction $script:hwnd1 "dave" "delete"
+    if ($null -ne $daveConfirm.password_vault.confirm_delete) {
+        Add-Result "dave-delete-confirm" "PASS" "window1 received delete click and showed confirmation"
+    } else {
+        Add-Result "dave-delete-confirm" "FAIL" "delete confirmation was not shown"
+    }
+    $daveDeleted = Confirm-Delete $script:hwnd1 "dave"
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "dave deleted")
+    Add-Result "dave-delete-applied" "PASS" "window1 dave removed"
+    [void](Wait-State $script:hwnd2 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 0 } 12 "window2 sees dave deleted")
+    Add-Result "dave-delete-propagation" "PASS" "window2 sees dave removed without restart"
     [void](Fill-VaultField $script:hwnd2 "password" "S3cret!Dave-stale" @(358,366,374,382,390,398))
     [void](Save-Form $script:hwnd2)
     $deleteConflict = Wait-State $script:hwnd2 { param($s) $null -ne $s.password_vault.conflict } 12 "modify-delete conflict"
@@ -480,7 +518,7 @@ try {
     Click-Client $script:hwnd2 990 159
     [void](Wait-State $script:hwnd2 { param($s) $s.password_vault.form_open } 8 "stale add form")
     [void](Click-EntryAction $script:hwnd1 "erin" "delete")
-    [void](Click-EntryAction $script:hwnd1 "erin" "delete")
+    [void](Confirm-Delete $script:hwnd1 "erin")
     [void](Wait-State $script:hwnd1 { param($s) @($s.password_vault.entries | Where-Object username -eq "erin").Count -eq 0 } 12 "erin deleted")
     if (-not (Fill-VaultField $script:hwnd2 "origin" "http://127.0.0.1:8767" @(250,258,266,274,282,290))) { throw "stale origin field" }
     if (-not (Fill-VaultField $script:hwnd2 "username" "carol" @(300,308,316,324,332,340,348))) { throw "stale username field" }
