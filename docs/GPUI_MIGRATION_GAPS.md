@@ -1,16 +1,22 @@
-# GPUI migration gaps and P0/P1 plan (0.68.0)
+# GPUI migration gaps and P0/P1 plan (0.70.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.69.0 status
+## 0.70.0 status
 
-- Session Restore: metadata/controller/window/multi-window recovery **PASS**;
-  active navigation source, scroll, corrupt fallback **UNVERIFIED**.
+- WebView2 create/navigate/focus moved outside entity borrows; restored-window
+  `RefCell already borrowed` panic removed. Alt+F4 two-window graceful exit and
+  WebView2 cleanup **PASS**.
+- Session Restore: metadata/controller/window recovery **PASS**; active URL
+  **PASS** in the library restart sample; scroll, exact geometry, maximized
+  state, multi-window restore (`windows=1`) and corrupt fallback **UNVERIFIED**.
 - Titlebar: minimize/maximize **PASS (real mouse)**; restore/close **UNVERIFIED**.
-- Tab: 21 PASS / 0 FAIL / 6 UNVERIFIED; library 20/0/0; settings 21/0/4.
-- Multiwindow: 12/1; one late Vault delete action fails.
-- Three repeats: 1/2/2 FAIL — 3 consecutive 0 FAIL not achieved.
+  GPUI 0.2.2 `zoom()` only calls `SW_MAXIMIZE`, so restore needs an explicit
+  Win32 `SW_RESTORE` branch.
+- Tab 21/0/7; library 20/0/0; settings 22/0/4; session 10/0/5.
+- Multiwindow: 12/1; one late `dave` Vault delete action fails.
+- Three repeats on `fddbc1d`: 2/3/1 FAIL — 3 consecutive 0 FAIL not achieved.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules

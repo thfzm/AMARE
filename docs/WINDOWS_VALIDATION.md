@@ -82,13 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.69.0)
+## 5. 현재 실행 상태 (0.70.0)
 
-- Windows CI [43575072487](https://github.com/thfzm/AMARE/actions/runs/43575072487): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43575072515](https://github.com/thfzm/AMARE/actions/runs/43575072515): **SUCCESS**.
-- GPUI CI [43566952547](https://github.com/thfzm/AMARE/actions/runs/43566952547): **FAILURE** — password **51/0/1**, input **25/0/4**, aggregate **FAIL=4/UNVERIFIED=11**; **실제 Windows 11 사용자 검증 UNVERIFIED**.
-- WinUI UI smoke **48/48**: custom title strip, WebView2 focus Ctrl+T/L/N, Ctrl+N/New Window, last-tab recovery, tab reorder/tear-off/cross-window, settings/history/downloads, session restore, maximize/restore **PASS**.
-- GPUI 최종: password **51/0/1**, input **25/0/4**, multiwindow **12/1**, tab **21/0/6**, library **20/0/0**, settings **21/0/4**, session **10/0/4**; session active/scroll, titlebar restore/close, multiwindow dave delete는 **UNVERIFIED/FAIL**이다.
-- 실제 Windows 11 사용자 키보드/창 chrome 검증, Snap, Alt+Tab, 작업 표시줄, Korean IME, DPI, 다중 모니터는 **UNVERIFIED**다.
-- ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**다.
-- Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**다.
+- Windows CI [43732722790](https://github.com/thfzm/AMARE/actions/runs/43732722790): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43732722784](https://github.com/thfzm/AMARE/actions/runs/43732722784): **SUCCESS**.
+- GPUI 반복: [#43732722754](https://github.com/thfzm/AMARE/actions/runs/43732722754) **2 FAIL/17 UNVERIFIED**, [#43735180784](https://github.com/thfzm/AMARE/actions/runs/43735180784) **3/18**, [#43735187244](https://github.com/thfzm/AMARE/actions/runs/43735187244) **1 FAIL/17 UNVERIFIED** — 3회 연속 0 FAIL **미달**.
+- GPUI 최고 반복: password **51/0/1**, multiwindow **12/1/0**, input **25/0/4**, tab **21/0/7**, library **20/0/0**, download **7/0/1**, settings **22/0/4**, session **10/0/5**.
+- GPUI 0.70: WebView2 create/navigate/focus를 entity borrow 밖으로 이동해 `RefCell already borrowed` panic 제거, titlebar minimize/maximize 실제 mouse **PASS**, Alt+F4 두 창 순차 종료 **PASS**, WebView2 cleanup **PASS**.
+- 남은 미해결: titlebar restore/close, 다중 창 Session Restore(`windows=1`), session scroll/geometry/maximized/corrupt fallback, 마지막 탭 `WM_CLOSE` 종료, multiwindow `dave` delete **FAIL**.
+- 실제 Windows 11 사용자 키보드/창 chrome 검증, titlebar double-click, Snap, Alt+Tab, 작업 표시줄, Korean IME 실기기, DPI 125/150/200%, 다중 모니터는 **UNVERIFIED**.
+- ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**.
+- Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**.
