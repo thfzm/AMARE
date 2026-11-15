@@ -626,11 +626,14 @@ try {
 
     if ($pendingReady) {
         $cancelled = $false
-        foreach ($cx in 655, 670, 685) {
-            Click-Client $script:hwnd2 $cx 302
-            Start-Sleep -Milliseconds 500
-            $afterCancel = Read-State $script:hwnd2
-            if ($null -eq $afterCancel.password_vault.pending) { $cancelled = $true; break }
+        foreach ($cy in 290, 296, 302, 308, 314, 320) {
+            foreach ($cx in 640, 655, 670, 685, 700, 715) {
+                Click-Client $script:hwnd2 $cx $cy
+                Start-Sleep -Milliseconds 350
+                $afterCancel = Read-State $script:hwnd2
+                if ($null -eq $afterCancel.password_vault.pending) { $cancelled = $true; break }
+            }
+            if ($cancelled) { break }
         }
         if (-not $cancelled) { throw "pending cancel button did not clear pending" }
         $afterCancel = Read-State $script:hwnd2

@@ -240,7 +240,16 @@ c.close()
 "@ | Set-Content -Path $py -Encoding UTF8
     python $py $db.FullName $jsonPath
     if ($LASTEXITCODE -ne 0) { throw "failed to write session fixture" }
-    $verify = python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute("SELECT value_text FROM settings WHERE key='gpui.session'").fetchone()[0]); c.close()" $db.FullName
+    $verifyPy = Join-Path $env:TEMP "amare-verify-session.py"
+    @"
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+row = c.execute("SELECT value_text FROM settings WHERE key='gpui.session'").fetchone()
+print('' if row is None else row[0])
+c.close()
+"@ | Set-Content -Path $verifyPy -Encoding UTF8
+    $verify = python $verifyPy $db.FullName
+    if ($LASTEXITCODE -ne 0) { throw "session fixture verification query failed" }
     if ((($verify -join "") -ne $json.Trim())) { throw "session fixture verification failed: $($verify -join '')" }
 }
 function Get-SavedSession([string]$dataRoot) {

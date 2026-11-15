@@ -323,7 +323,10 @@ try {
     Shot "05-account-edit.png"
     Click-Client $script:hwnd 995 207
 
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    [void](Force-AmareForeground $script:hwnd)
+    Click-Client $script:hwnd 420 70
+    Send-GpuiShortcut $script:hwnd 0x4C
+    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait($LoginUrl)
     Send-Keys "{ENTER}"
     [void](Wait-State { param($s) $s.source -like "$LoginUrl*" } 25 "login page")
