@@ -242,7 +242,7 @@ struct ClosedWindowSnapshot {
 /// Keep recently closed snapshots long enough for the last window's Drop to
 /// include them, but do not resurrect a window the user closed earlier while
 /// continuing to browse in another window.
-const SESSION_CLOSE_GRACE: Duration = Duration::from_secs(3);
+const SESSION_CLOSE_GRACE: Duration = Duration::from_secs(10);
 
 static NEXT_SESSION_REVISION: AtomicU64 = AtomicU64::new(1);
 
@@ -5582,6 +5582,15 @@ fn persist_live_session() -> bool {
     // rejected as an older autosave.
     let last = LAST_PERSISTED_REVISION.with(|cell| cell.get());
     let revision = snapshot_revision.max(last.saturating_add(1));
+    eprintln!(
+        "[session] live ids={:?} revision={} last={}",
+        snapshots
+            .iter()
+            .map(|window| window.window_id)
+            .collect::<Vec<_>>(),
+        revision,
+        last
+    );
     write_session_payload(snapshots, revision, false)
 }
 
@@ -5616,6 +5625,14 @@ fn persist_final_session() -> bool {
     }
     let snapshots = by_id.into_values().collect::<Vec<_>>();
     let revision = next_session_revision().max(revision.saturating_add(1));
+    eprintln!(
+        "[session] final ids={:?} revision={}",
+        snapshots
+            .iter()
+            .map(|window| window.window_id)
+            .collect::<Vec<_>>(),
+        revision
+    );
     write_session_payload(snapshots, revision, true)
 }
 
@@ -5764,17 +5781,17 @@ fn load_session_windows(
             }
             Err(error) => {
                 let _ = library::save_corrupt_session(&json);
-                (
-                    Vec::new(),
-                    Some(format!("저장된 세션 데이터가 손상되었습니다 ({error})")),
-                )
+                let message = format!("저장된 세션 데이터가 손상되었습니다 ({error})");
+                eprintln!("[session] corrupt session: {message}");
+                (Vec::new(), Some(message))
             }
         },
         Ok(None) => (Vec::new(), None),
-        Err(error) => (
-            Vec::new(),
-            Some(format!("세션을 읽지 못했습니다 ({error})")),
-        ),
+        Err(error) => {
+            let message = format!("세션을 읽지 못했습니다 ({error})");
+            eprintln!("[session] load failed: {message}");
+            (Vec::new(), Some(message))
+        }
     }
 }
 

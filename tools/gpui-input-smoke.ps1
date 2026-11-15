@@ -478,6 +478,7 @@ try {
     [void][Amare47]::ShowWindow($script:hwnd, 9)
     [void](Force-AmareForeground $script:hwnd)
     Start-Sleep -Milliseconds 700
+    Send-RealClientClick $script:hwnd 420 70
     Send-Keys "^l"
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     Send-Keys $BaseUrl

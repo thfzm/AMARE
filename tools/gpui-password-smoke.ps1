@@ -260,12 +260,16 @@ try {
     [void][AmarePassword]::ShowWindow($script:hwnd, 3)
     Start-Sleep -Seconds 1
     Shot "01-initial-browser.png"
+    [void](Force-AmareForeground $script:hwnd)
+    Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
     Send-Keys "{ENTER}"
     [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
+    [void](Force-AmareForeground $script:hwnd)
+    Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
     Send-Keys "{ENTER}"
@@ -273,6 +277,8 @@ try {
     Start-Sleep -Milliseconds 700
     Shot "02-capture-test-window.png"
     Capture-Auto "02-page-content.png"
+    [void](Force-AmareForeground $script:hwnd)
+    Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
     Send-Keys "{ENTER}"

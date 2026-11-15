@@ -215,17 +215,19 @@ function Set-SessionJson([string]$dataRoot, [string]$json) {
     if ($null -eq $db) { throw "profile amare.db missing under $dataRoot" }
     $jsonPath = Join-Path $env:TEMP "amare-session-fixture.json"
     $py = Join-Path $env:TEMP "amare-set-session.py"
-    Set-Content -Path $jsonPath -Value $json -Encoding UTF8
+    [IO.File]::WriteAllText($jsonPath, $json, (New-Object System.Text.UTF8Encoding($false)))
     @"
 import sqlite3, sys
 c = sqlite3.connect(sys.argv[1])
-value = open(sys.argv[2], encoding='utf-8').read()
+value = open(sys.argv[2], encoding='utf-8').read().strip()
 c.execute("INSERT OR REPLACE INTO settings(key, group_name, value_type, value_text, updated_at_ms) VALUES('gpui.session','browser','json',?,0)", (value,))
 c.commit()
 c.close()
 "@ | Set-Content -Path $py -Encoding UTF8
     python $py $db.FullName $jsonPath
     if ($LASTEXITCODE -ne 0) { throw "failed to write session fixture" }
+    $verify = python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute("SELECT value_text FROM settings WHERE key='gpui.session'").fetchone()[0]); c.close()" $db.FullName
+    if ((($verify -join "") -ne $json.Trim())) { throw "session fixture verification failed: $($verify -join '')" }
 }
 function Get-SavedSession([string]$dataRoot) {
     $db = Get-ProfileDb $dataRoot
@@ -258,7 +260,11 @@ function Start-App([string]$data, [string]$restore = "1", [switch]$Maximize, [sw
     $env:AMARE_GPUI_DIAGNOSTICS = "1"
     $env:AMARE_GPUI_RESTORE = $restore
     if ($SecondWindow) { $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1" } else { Remove-Item Env:AMARE_GPUI_OPEN_SECOND_WINDOW -ErrorAction SilentlyContinue }
-    $process = Start-Process $Exe -PassThru
+    if ($null -eq $script:sessionErrLogs) { $script:sessionErrLogs = @() }
+    $errLog = Join-Path $env:TEMP ("amare-session-" + [guid]::NewGuid().ToString("N") + ".log")
+    $script:sessionErrLogs += $errLog
+    $script:lastSessionErr = $errLog
+    $process = Start-Process $Exe -PassThru -RedirectStandardError $errLog
     [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
     Start-Sleep -Seconds 2
     $process.Refresh(); $script:hwnd = $process.MainWindowHandle
@@ -442,6 +448,7 @@ try {
     if ($savedWindows.Count -eq 2) {
         Add-Result "session-multiwindow-saved" "PASS" "saved windows=2 tabs=$savedTabs revision=$($savedMulti.revision)"
     } else {
+        foreach ($log in $script:sessionErrLogs) { if (Test-Path $log) { Get-Content $log -Tail 80 | ForEach-Object { Write-Host "STDERR $_" } } }
         Add-Result "session-multiwindow-saved" "FAIL" "saved windows=$($savedWindows.Count), expected 2 tabs=$savedTabs"
     }
     $app = Start-App $multiData
@@ -492,6 +499,7 @@ try {
         Add-Result "corrupt-session-fallback" "PASS" "error=$($errorState.session_error) windows=$($safeWindows.Count)"
         Shot "09-session-corrupt-fallback.png"
     } catch {
+        foreach ($log in $script:sessionErrLogs) { if (Test-Path $log) { Get-Content $log -Tail 60 | ForEach-Object { Write-Host "STDERR $_" } } }
         Add-Result "corrupt-session-fallback" "UNVERIFIED" $_.Exception.Message
         try { Shot "09-session-corrupt-fallback.png" } catch {}
     }
@@ -543,6 +551,7 @@ try {
     if (-not $app.HasExited) { try { Stop-App $app } catch { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue } }
     } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    foreach ($log in $script:sessionErrLogs) { if (Test-Path $log) { Get-Content $log -Tail 80 | ForEach-Object { Write-Host "STDERR $_" } } }
     try {
         $trace = (Read-State).diagnostics
         if ($null -ne $trace) { $trace | Select-Object -Last 40 | ForEach-Object { Write-Host "TRACE $_" } }
