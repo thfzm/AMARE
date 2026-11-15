@@ -459,6 +459,8 @@ try {
     # Modify vs delete conflict: stale edit in window 2, delete from window 1.
     Add-Account $script:hwnd1 "http://127.0.0.1:8767" "dave" $passwordD
     [void](Wait-State $script:hwnd2 { param($s) @($s.password_vault.entries | Where-Object username -eq "dave").Count -eq 1 } 12 "window2 sees dave")
+    [void](Close-Passwords $script:hwnd1)
+    [void](Open-Passwords $script:hwnd1)
     [void](Click-EntryAction $script:hwnd2 "dave" "edit")
     [void](Click-EntryAction $script:hwnd1 "dave" "delete")
     [void](Click-EntryAction $script:hwnd1 "dave" "delete")
@@ -473,6 +475,8 @@ try {
     # Stale tombstone: window 2 is in an add form while window 1 deletes dave's peer.
     Add-Account $script:hwnd1 "http://127.0.0.1:8767" "erin" $passwordD
     [void](Wait-State $script:hwnd2 { param($s) @($s.password_vault.entries | Where-Object username -eq "erin").Count -eq 1 } 12 "window2 sees erin")
+    [void](Close-Passwords $script:hwnd1)
+    [void](Open-Passwords $script:hwnd1)
     Click-Client $script:hwnd2 990 159
     [void](Wait-State $script:hwnd2 { param($s) $s.password_vault.form_open } 8 "stale add form")
     [void](Click-EntryAction $script:hwnd1 "erin" "delete")

@@ -27,6 +27,7 @@ public static class AmareSettings {
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -341,20 +342,59 @@ try {
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Milliseconds 800
 
-    Click-Client $script:hwnd 997 22
-    if (-not $app.WaitForExit(10000)) {
+    # With two restored windows, closing one must not terminate the process.
+    $live = @(Get-BrowserWindows)
+    if ($live.Count -ge 2) {
+        $script:hwnd = $live[0]
+        [void](Force-AmareForeground $script:hwnd)
+        Click-Titlebar "close"
+        Start-Sleep -Milliseconds 800
+        if (-not $app.HasExited) {
+            try {
+                [void](Wait-WindowCount ($live.Count - 1) 10 "close one window")
+                Add-Result "titlebar-close-one-window" "PASS" "one of $($live.Count) windows closed; app remains"
+            } catch {
+                Add-Result "titlebar-close-one-window" "UNVERIFIED" $_.Exception.Message
+            }
+        } else {
+            Add-Result "titlebar-close-one-window" "FAIL" "closing one window exited the whole app"
+        }
+        $remaining = @(Get-BrowserWindows)
+        if ($remaining.Count -ge 1) {
+            $script:hwnd = $remaining[0]
+            [void](Force-AmareForeground $script:hwnd)
+            [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+            if (-not $app.WaitForExit(15000)) {
+                [void][AmareSettings]::PostMessage($script:hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                if (-not $app.WaitForExit(15000)) {
+                    Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+                    Add-Result "last-window-normal-exit" "UNVERIFIED" "Alt+F4/WM_CLOSE did not exit; process killed"
+                } else {
+                    Add-Result "last-window-normal-exit" "PASS" "WM_CLOSE exited last window"
+                }
+            } else {
+                Add-Result "last-window-normal-exit" "PASS" "Alt+F4 exited last window"
+            }
+        }
+    } else {
+        Add-Result "titlebar-close-one-window" "UNVERIFIED" "only one restored window was available"
         [void](Force-AmareForeground $script:hwnd)
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         if (-not $app.WaitForExit(15000)) {
-            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
-            Add-Result "titlebar-close-click" "UNVERIFIED" "close button/Alt+F4 did not exit; process killed"
-        } else {
-            Add-Result "titlebar-close-click" "UNVERIFIED" "close button did not exit; Alt+F4 fallback used"
+            [void][AmareSettings]::PostMessage($script:hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+            if (-not $app.WaitForExit(15000)) {
+                Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+                Add-Result "last-window-normal-exit" "UNVERIFIED" "Alt+F4/WM_CLOSE did not exit; process killed"
+            }
         }
-    } else {
-        Add-Result "titlebar-close-click" "PASS" "window closed via close button"
     }
     Start-Sleep -Seconds 2
+    $afterWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
+    if ($afterWebView -gt 0) {
+        Add-Result "settings-exit-webview2-cleanup" "UNVERIFIED" "webview2=$afterWebView after exit"
+    } else {
+        Add-Result "settings-exit-webview2-cleanup" "PASS" "webview2=0 after exit"
+    }
 
     $env:AMARE_GPUI_RESTORE = "0"
     $app = Start-Process $Exe -PassThru

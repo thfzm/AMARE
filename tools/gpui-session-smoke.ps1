@@ -24,6 +24,7 @@ public static class AmareSession {
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
 }
 '@
 
@@ -226,11 +227,22 @@ try {
     } 20 "restored WebView2 controllers")
     $restored = Read-State
     Add-Result "session-webview-attached" "PASS" "attached=$(@($restored.tabs | Where-Object { $_.webview -eq $true }).Count)"
-    $activeRestored = @($restored.tabs | Where-Object { $_.id -eq $restored.active_tab })[0]
-    if ($null -eq $activeRestored -or [string]::IsNullOrWhiteSpace($activeRestored.source)) {
-        Add-Result "session-active-tab-navigation" "UNVERIFIED" "active tab source empty"
-    } else {
+    try {
+        [void](Wait-State {
+            param($s)
+            $t = @($s.tabs | Where-Object { $_.id -eq $s.active_tab })[0]
+            $null -ne $t -and -not [string]::IsNullOrWhiteSpace($t.source)
+        } 20 "active tab navigation source")
+        $restored = Read-State
+        $activeRestored = @($restored.tabs | Where-Object { $_.id -eq $restored.active_tab })[0]
         Add-Result "session-active-tab-navigation" "PASS" "active=$($restored.active_tab) source=$($activeRestored.source)"
+    } catch {
+        Add-Result "session-active-tab-navigation" "UNVERIFIED" "active tab source empty after 20s"
+    }
+    if ([AmareSession]::IsZoomed($script:hwnd)) {
+        Add-Result "session-maximized-restore" "PASS" "restored window IsZoomed=true"
+    } else {
+        Add-Result "session-maximized-restore" "UNVERIFIED" "restored window was not maximized"
     }
     if ($null -ne $before.layout_bounds -and $null -ne $restored.layout_bounds) {
         $bw = [double]$before.layout_bounds.window.width
@@ -247,10 +259,11 @@ try {
     if ($null -eq $scrollTab) { throw "no restored tab marker" }
     Start-Sleep -Seconds 3
     $restored = Read-State
-    if (-not (@($restored.tabs) | Where-Object { $_.scroll_y -gt 100 })) {
-        Add-Result "session-scroll-restore" "UNVERIFIED" "scroll position was not restored"
-    } else {
+    try {
+        [void](Wait-State { param($s) @($s.tabs | Where-Object { $_.scroll_y -gt 100 }).Count -ge 1 } 20 "scroll restore")
         Add-Result "session-scroll-restore" "PASS" "scroll_y>100 after restart"
+    } catch {
+        Add-Result "session-scroll-restore" "UNVERIFIED" "scroll position was not restored"
     }
     Stop-App $app
 
@@ -277,7 +290,15 @@ try {
     $db = Get-ChildItem $completeData -Recurse -Filter amare.db | Select-Object -First 1
     if ($null -eq $db) { throw "settings DB missing for corrupt session test" }
     $dbPath = $db.FullName.Replace('\\', '/')
-    python -c "import sqlite3; c=sqlite3.connect(r'$dbPath'); c.execute(\"UPDATE settings SET value_text='{' WHERE key='gpui.session'\"); c.commit(); c.close()"
+    $py = Join-Path $env:TEMP "amare-corrupt-session.py"
+    @"
+import sqlite3
+c = sqlite3.connect(r'$dbPath')
+c.execute("UPDATE settings SET value_text='{' WHERE key='gpui.session'")
+c.commit()
+c.close()
+"@ | Set-Content -Path $py -Encoding UTF8
+    python $py
     $app = Start-App $completeData
     try {
         [void](Wait-State { param($s) $null -ne $s.session_error } 15 "corrupt session error")
