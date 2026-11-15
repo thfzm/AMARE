@@ -185,7 +185,7 @@ function Ensure-Tabs([int]$target) {
 function Navigate([string]$url, [int]$timeout = 20) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
         [void](Force-AmareForeground $script:hwnd)
-        Click-Client $script:hwnd 420 70
+        Send-RealClientClick $script:hwnd 420 70
         Send-Keys "^l"
         Start-Sleep -Milliseconds 250
         Send-Keys "^a"

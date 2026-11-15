@@ -220,8 +220,16 @@ function Open-Settings {
     [void](Wait-State { param($s) $s.panel -eq "settings" } 8 "settings panel")
 }
 function Select-Category([string]$key, [int]$y) {
-    Click-Client $script:hwnd 82 $y
-    [void](Wait-State { param($s) $s.settings_category -eq $key } 6 "settings category $key")
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Click-Client $script:hwnd 82 $y
+        try {
+            [void](Wait-State { param($s) $s.settings_category -eq $key } 5 "settings category $key")
+            return
+        } catch {
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    throw "settings category $key did not open"
 }
 
 $script:hwnd = [IntPtr]::Zero

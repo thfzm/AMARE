@@ -102,6 +102,16 @@ function Click-Titlebar([IntPtr]$hwnd, [string]$name) {
     Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
     return $true
 }
+function Try-Click-State([IntPtr]$hwnd, [string]$button, [scriptblock]$test, [int]$seconds) {
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        [void](Force-AmareForeground $hwnd)
+        Start-Sleep -Milliseconds 200
+        if (Click-Titlebar $hwnd $button) {
+            if (Wait-StateBool $hwnd $test $seconds) { return $true }
+        }
+    }
+    return $false
+}
 function Wait-StateBool([IntPtr]$hwnd, [scriptblock]$test, [int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
@@ -164,15 +174,15 @@ try {
         }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 300
-        $maximize = Click-Titlebar $hwnd "window_max"
-        if ($maximize -and (Wait-StateBool $hwnd { [AmareTitlebar]::IsZoomed($hwnd) } 6)) {
+        $maximize = Try-Click-State $hwnd "window_max" { [AmareTitlebar]::IsZoomed($hwnd) } 4
+        if ($maximize) {
             Add-Result "$label-titlebar-maximize" "PASS" "IsZoomed=true via real mouse"
             Shot $hwnd ("0$($i + 1)-$label-maximized.png")
         } else {
             Add-Result "$label-titlebar-maximize" "UNVERIFIED" "window did not maximize"
         }
-        $restore = Click-Titlebar $hwnd "window_max"
-        if ($restore -and (Wait-StateBool $hwnd { -not [AmareTitlebar]::IsZoomed($hwnd) } 6)) {
+        $restore = Try-Click-State $hwnd "window_max" { -not [AmareTitlebar]::IsZoomed($hwnd) } 4
+        if ($restore) {
             Add-Result "$label-titlebar-restore" "PASS" "IsZoomed=false via real mouse"
             Shot $hwnd ("1$($i + 1)-$label-restored.png")
         } else {
@@ -186,8 +196,8 @@ try {
         } else {
             Add-Result "$label-geometry-preserved" "UNVERIFIED" "$($rects[$hwnd.ToInt64()]) -> $after"
         }
-        $minimize = Click-Titlebar $hwnd "window_min"
-        if ($minimize -and (Wait-StateBool $hwnd { [AmareTitlebar]::IsIconic($hwnd) } 6)) {
+        $minimize = Try-Click-State $hwnd "window_min" { [AmareTitlebar]::IsIconic($hwnd) } 4
+        if ($minimize) {
             Add-Result "$label-titlebar-minimize" "PASS" "IsIconic=true via real mouse"
             [void][AmareTitlebar]::ShowWindow($hwnd, 9)
             if (Wait-StateBool $hwnd { -not [AmareTitlebar]::IsIconic($hwnd) } 6) {

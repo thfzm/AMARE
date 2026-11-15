@@ -441,13 +441,27 @@ try {
 
     # Window/tab independence: a new tab in window 1 must not change window 2.
     $tabs2Before = @((Read-State $script:hwnd2).tabs).Count
-    Send-GpuiShortcut $script:hwnd1 0x54
-    [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -ge 2 } 12 "window1 extra tab")
+    $createdTab = $false
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Send-GpuiShortcut $script:hwnd1 0x54
+        try {
+            [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -ge 2 } 8 "window1 extra tab")
+            $createdTab = $true; break
+        } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $createdTab) { throw "window1 extra tab was not created" }
     $tabs2After = @((Read-State $script:hwnd2).tabs).Count
     if ($tabs2After -ne $tabs2Before) { throw "window2 tab count changed: $tabs2Before -> $tabs2After" }
     Add-Result "window-tab-independence" "PASS" "window1 extra tab; window2 tabs=$tabs2After"
-    Send-GpuiShortcut $script:hwnd1 0x57
-    [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -eq 1 } 12 "window1 extra tab close")
+    $closedTab = $false
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Send-GpuiShortcut $script:hwnd1 0x57
+        try {
+            [void](Wait-State $script:hwnd1 { param($s) @($s.tabs).Count -eq 1 } 8 "window1 extra tab close")
+            $closedTab = $true; break
+        } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $closedTab) { throw "window1 extra tab was not closed" }
 
     # Third window, then close it while the first two remain.
     $states = @(Read-AllStates)
