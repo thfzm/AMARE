@@ -21,6 +21,8 @@ public static class AmareTitlebar {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
@@ -134,11 +136,18 @@ $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1"
+Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
 $beforeWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
 try {
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-States 2 40 "two AMARE windows"
     $handles = @($states | Sort-Object window_id | ForEach-Object { [IntPtr][int64]$_.window_handle })
+    if ($handles.Count -ge 2) {
+        [void][AmareTitlebar]::SetWindowPos($handles[0], [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
+        [void][AmareTitlebar]::SetWindowPos($handles[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
+        Start-Sleep -Seconds 2
+    }
     $rects = @{}
     foreach ($hwnd in $handles) {
         $rect = New-Object AmareTitlebar+RECT
@@ -149,6 +158,10 @@ try {
     for ($i = 0; $i -lt $handles.Count; $i++) {
         $hwnd = $handles[$i]
         $label = "window$($i + 1)"
+        if (-not [AmareTitlebar]::IsWindow($hwnd)) {
+            Add-Result "$label-handle" "FAIL" "window handle is no longer valid"
+            continue
+        }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 300
         $maximize = Click-Titlebar $hwnd "window_max"

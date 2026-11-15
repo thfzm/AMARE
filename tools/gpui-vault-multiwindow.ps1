@@ -349,6 +349,8 @@ Remove-Item Env:AMARE_GPUI_STATUS -ErrorAction SilentlyContinue
 Remove-Item Env:AMARE_GPUI_STATUS_WINDOW -ErrorAction SilentlyContinue
 $env:AMARE_GPUI_START_URL = "about:blank"
 $env:AMARE_GPUI_NEW_WINDOW_URL = "about:blank"
+Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
 $env:AMARE_GPUI_SELF_TEST = "0"
 $env:AMARE_GPUI_DIAGNOSTICS = "1"
 $env:AMARE_GPUI_RESTORE = "0"
@@ -554,6 +556,7 @@ try {
     # lock in window 1 cancels it as well as clearing the decrypted entries.
     Close-Passwords $script:hwnd2
     Focus-Window $script:hwnd2
+    Click-Client $script:hwnd2 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait($LoginUrl)
     Send-Keys "{ENTER}"

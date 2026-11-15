@@ -298,6 +298,10 @@ function Stop-App([System.Diagnostics.Process]$process) {
 $script:hwnd = [IntPtr]::Zero
 $app = $null
 $server = $null
+# Remove WebView2 processes orphaned by an earlier failing suite so this
+# suite starts from a clean resource baseline.
+Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
 $completeData = Join-Path $DataDir "complete"
 $failureData = Join-Path $DataDir "failure"
 $corruptData = Join-Path $DataDir "corrupt"

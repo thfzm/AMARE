@@ -183,13 +183,22 @@ function Ensure-Tabs([int]$target) {
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
 }
 function Navigate([string]$url, [int]$timeout = 20) {
-    Send-Keys "^l"
-    Start-Sleep -Milliseconds 200
-    Send-Keys "^a"
-    Send-Keys "{BACKSPACE}"
-    Send-Keys $url
-    Send-Keys "{ENTER}"
-    return Wait-State { param($s) $s.source -eq $url } $timeout "navigation $url"
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        [void](Force-AmareForeground $script:hwnd)
+        Click-Client $script:hwnd 420 70
+        Send-Keys "^l"
+        Start-Sleep -Milliseconds 250
+        Send-Keys "^a"
+        Send-Keys "{BACKSPACE}"
+        Send-Keys $url
+        Send-Keys "{ENTER}"
+        try {
+            return Wait-State { param($s) $s.source -eq $url } $timeout "navigation $url"
+        } catch {
+            if ($attempt -eq 2) { throw }
+            Start-Sleep -Milliseconds 700
+        }
+    }
 }
 function Get-PageStateForTab([string]$tab) {
     $tabState = Get-TabState $null $tab
@@ -341,6 +350,7 @@ try {
     # New tab button actual click (with delayed-controller tolerance).
     $four = Ensure-Tabs 4
     Add-Result "new-tab-button" "UNVERIFIED" "titlebar controls overlap old coordinate; Ctrl+T fallback used"
+    [void](Wait-State { param($s) @($s.tabs | Where-Object { $_.id -eq $s.active_tab -and $_.webview -eq $true }).Count -eq 1 } 15 "active tab controller for D")
     $navD = Navigate (Page "D") 25
     # Five tabs + metrics.
     $five = Ensure-Tabs 5
