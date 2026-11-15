@@ -921,22 +921,22 @@ impl AmareApp {
                             Some((env, parent)) => AmareApp::create_webview_for_target(env, parent),
                             None => (None, Some("restored window closed before attach".into())),
                         };
+                        if let Some(view) = &webview {
+                            view.navigate(&url);
+                            view.set_active(active_id == Some(id));
+                            if active_id == Some(id) {
+                                view.focus();
+                            }
+                        }
                         created.push((id, url, webview, error));
                     }
-                    let _ = handle.update(cx, |this, window, cx| {
-                        for (id, url, webview, error) in created {
+                    let _ = handle.update(cx, |this, _window, cx| {
+                        for (id, _url, webview, error) in created {
                             let has_error = error.is_some();
                             if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
                                 tab.webview = webview;
                                 tab.error = error.map(Into::into);
                                 tab.loading = !has_error;
-                                if let Some(view) = &tab.webview {
-                                    view.navigate(&url);
-                                    view.set_active(active_id == Some(id));
-                                    if active_id == Some(id) {
-                                        view.focus();
-                                    }
-                                }
                             }
                             if has_error {
                                 if let Some(progress) = &mut this.restore_progress {
@@ -947,7 +947,6 @@ impl AmareApp {
                                 }
                             }
                         }
-                        this.sync_webview_bounds(window);
                         cx.notify();
                     });
                 })
@@ -2192,12 +2191,6 @@ impl AmareApp {
             tab.error = error.map(Into::into);
             tab.loading = !has_error;
         }
-        if let Some(webview) = self.active_webview() {
-            webview.navigate(&url);
-            webview.set_active(true);
-            self.sync_webview_bounds(window);
-            webview.focus();
-        }
         self.trace_event(format!(
             "attach_initial_webview url={url} error={has_error}"
         ));
@@ -2222,13 +2215,6 @@ impl AmareApp {
         self.tabs[index].error = error.map(Into::into);
         self.tabs[index].webview = webview;
         self.tabs[index].loading = !has_error;
-        if let Some(view) = &self.tabs[index].webview {
-            view.navigate(&url);
-            view.set_active(self.active_tab().map(|tab| tab.id) == Some(id));
-            if !focus_address {
-                view.focus();
-            }
-        }
         if focus_address && self.active_tab().map(|tab| tab.id) == Some(id) {
             self.focus_address_input(window, cx);
         }
@@ -2301,9 +2287,17 @@ impl AmareApp {
         #[cfg(target_os = "windows")]
         if let Some(handle) = window.to_async(cx).window_handle().downcast::<AmareApp>() {
             let target = (self.webview_env.clone(), self.parent);
+            let is_active = self.active_tab().map(|tab| tab.id) == Some(id);
             cx.spawn(async move |_this, cx| {
                 Timer::after(Duration::from_millis(16)).await;
                 let (webview, error) = AmareApp::create_webview_for_target(target.0, target.1);
+                if let Some(view) = &webview {
+                    view.navigate(&url);
+                    view.set_active(is_active);
+                    if !focus_address {
+                        view.focus();
+                    }
+                }
                 let _ = handle.update(cx, |this, window, cx| {
                     this.attach_tab_webview(id, url, webview, error, focus_address, window, cx);
                 });
@@ -2381,6 +2375,11 @@ impl AmareApp {
                     Some((env, parent)) => AmareApp::create_webview_for_target(env, parent),
                     None => (None, Some("window closed before WebView2 attach".into())),
                 };
+                if let Some(view) = &webview {
+                    view.navigate(&url);
+                    view.set_active(true);
+                    view.focus();
+                }
                 let _ = handle.update(cx, |app, window, cx| {
                     window.activate_window();
                     app.attach_initial_webview(webview, error, url, window, cx);
