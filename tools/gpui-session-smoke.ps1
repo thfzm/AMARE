@@ -210,8 +210,15 @@ function Get-ProfileDb([string]$root) {
         Where-Object { $_.FullName -match 'profiles' } |
         Select-Object -First 1
 }
+function Get-SessionDb([string]$root) {
+    foreach ($db in @(Get-ChildItem $root -Recurse -Filter amare.db -File | Where-Object { $_.FullName -match 'profiles' })) {
+        $count = python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute("SELECT count(*) FROM settings WHERE key='gpui.session'").fetchone()[0]); c.close()" $db.FullName 2>$null
+        if ([int]($count -join "") -gt 0) { return $db }
+    }
+    return Get-ProfileDb $root
+}
 function Set-SessionJson([string]$dataRoot, [string]$json) {
-    $db = Get-ProfileDb $dataRoot
+    $db = Get-SessionDb $dataRoot
     if ($null -eq $db) { throw "profile amare.db missing under $dataRoot" }
     $jsonPath = Join-Path $env:TEMP "amare-session-fixture.json"
     $py = Join-Path $env:TEMP "amare-set-session.py"
@@ -230,7 +237,7 @@ c.close()
     if ((($verify -join "") -ne $json.Trim())) { throw "session fixture verification failed: $($verify -join '')" }
 }
 function Get-SavedSession([string]$dataRoot) {
-    $db = Get-ProfileDb $dataRoot
+    $db = Get-SessionDb $dataRoot
     if ($null -eq $db) { return $null }
     $py = Join-Path $env:TEMP "amare-read-session.py"
     @"

@@ -5624,7 +5624,10 @@ fn persist_final_session() -> bool {
             .or_insert(snapshot);
     }
     let snapshots = by_id.into_values().collect::<Vec<_>>();
-    let revision = next_session_revision().max(revision.saturating_add(1));
+    let last = LAST_PERSISTED_REVISION.with(|cell| cell.get());
+    let revision = next_session_revision()
+        .max(revision.saturating_add(1))
+        .max(last.saturating_add(1));
     eprintln!(
         "[session] final ids={:?} revision={}",
         snapshots
