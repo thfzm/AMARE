@@ -263,9 +263,9 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/index.html")
     Send-Keys "{ENTER}"
-    [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page")
+    [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/index.html*" } 25 "normal page")
     Start-Sleep -Milliseconds 700
     Shot "02-normal-page.png"
     [void](Force-AmareForeground $script:hwnd)
@@ -280,9 +280,9 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
     Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    [System.Windows.Forms.SendKeys]::SendWait("https://example.com/")
+    [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/index.html")
     Send-Keys "{ENTER}"
-    [void](Wait-State { param($s) $s.source -like "https://example.com/*" } 25 "normal page restored")
+    [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/index.html*" } 25 "normal page restored")
     Start-Sleep -Milliseconds 700
     Open-Passwords
     Shot "02-password-manager-panel.png"

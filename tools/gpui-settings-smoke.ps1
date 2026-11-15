@@ -176,17 +176,26 @@ function Try-Titlebar([string]$button, [scriptblock]$test, [scriptblock]$fallbac
     Add-Result $name "UNVERIFIED" "real mouse and Win32 NC click did not change state; OS fallback used"
 }
 function Shot([string]$name) {
-    $rect = New-Object AmareSettings+RECT
-    [void][AmareSettings]::GetWindowRect($script:hwnd, [ref]$rect)
-    $w = [Math]::Max(1, $rect.Right - $rect.Left); $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    $bmp = New-Object System.Drawing.Bitmap($w, $h)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
     $path = Join-Path $ScreenshotDir $name
-    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
-    if ((Get-Item $path).Length -lt 1000) { throw "screenshot empty: $path" }
-    Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if ([AmareSettings]::IsIconic($script:hwnd)) { [void][AmareSettings]::ShowWindow($script:hwnd, 9) }
+        [void](Force-AmareForeground $script:hwnd)
+        Start-Sleep -Milliseconds 400
+        $rect = New-Object AmareSettings+RECT
+        [void][AmareSettings]::GetWindowRect($script:hwnd, [ref]$rect)
+        $w = [Math]::Max(1, $rect.Right - $rect.Left); $h = [Math]::Max(1, $rect.Bottom - $rect.Top)
+        $bmp = New-Object System.Drawing.Bitmap($w, $h)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bmp.Size)
+        $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+        if ((Get-Item $path).Length -ge 1000) {
+            Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+            return
+        }
+        Start-Sleep -Milliseconds 600
+    }
+    throw "screenshot empty: $path"
 }
 function ShotFull([string]$name) {
     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds

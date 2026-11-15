@@ -183,7 +183,7 @@ function Ensure-Tabs([int]$target) {
     throw "Could not reach $target tabs (current=$(@((Read-State).tabs).Count))"
 }
 function Navigate([string]$url, [int]$timeout = 20) {
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
         [void](Force-AmareForeground $script:hwnd)
         Send-RealClientClick $script:hwnd 420 70
         Send-GpuiShortcut $script:hwnd 0x4C
@@ -195,7 +195,7 @@ function Navigate([string]$url, [int]$timeout = 20) {
         try {
             return Wait-State { param($s) $s.source -eq $url } $timeout "navigation $url"
         } catch {
-            if ($attempt -eq 2) { throw }
+            if ($attempt -eq 4) { throw }
             Start-Sleep -Milliseconds 700
         }
     }

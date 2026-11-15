@@ -299,6 +299,9 @@ try {
         if ($app2.MainWindowHandle -ne [IntPtr]::Zero) { break }
     }
     $restored = Wait-State { param($s) @($s.bookmarks).Count -ge 2 -and @($s.history).Count -ge 1 -and @($s.tabs).Count -eq @($beforeSession.tabs).Count } 60 "restored library data and session tabs"
+    try {
+        $restored = Wait-State { param($s) -not [string]::IsNullOrWhiteSpace($s.source) -and $s.active_tab -eq $beforeSession.active_tab } 20 "restored active tab source"
+    } catch { }
     Add-Result "restart-persistence" "PASS" "bookmarks=$(@($restored.bookmarks).Count) history=$(@($restored.history).Count)"
     $app2.Refresh(); $script:hwnd = $app2.MainWindowHandle
     if ($script:hwnd -ne [IntPtr]::Zero) {

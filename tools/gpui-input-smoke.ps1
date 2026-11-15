@@ -234,8 +234,13 @@ try {
     Add-Result "ctrl-r-from-webview" "PASS" "loads $loadsBefore -> $($reloaded.loads)"
 
     $history = Navigate-Address $shortcutUrl 25
-    Send-Keys "%{LEFT}"
-    $back = Wait-State { param($s) $s.source -eq $BaseUrl } 20 "Alt+Left"
+    $back = $null
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        [void](Force-AmareForeground $script:hwnd)
+        Send-Keys "%{LEFT}"
+        try { $back = Wait-State { param($s) $s.source -eq $BaseUrl } 12 "Alt+Left"; break } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if ($null -eq $back) { throw "Timed out waiting for Alt+Left" }
     Add-Result "alt-left-from-webview" "PASS" "source=$($back.source)"
     Send-Keys "%{RIGHT}"
     $forward = Wait-State { param($s) $s.source -eq $shortcutUrl } 20 "Alt+Right"

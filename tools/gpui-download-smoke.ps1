@@ -49,6 +49,7 @@ try {
  if($null-eq$pageState-or$null-eq$pageState.downloadRect){throw "download link rect unavailable"}
  Click-Web ([int]$pageState.downloadRect.left+5) ([int]$pageState.downloadRect.top+5)
  $started=Wait-State {param($s) @($s.downloads).Count -ge 1} 20 "download start"
+ [void](Force-AmareForeground $script:hwnd)
  [System.Windows.Forms.SendKeys]::SendWait("^+d")
  [void](Wait-State {param($s) $s.panel -eq "downloads"} 10 "downloads panel")
  Shot "09-download-progress.png"
