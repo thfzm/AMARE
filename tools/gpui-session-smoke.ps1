@@ -211,8 +211,15 @@ function Get-ProfileDb([string]$root) {
         Select-Object -First 1
 }
 function Get-SessionDb([string]$root) {
+    $py = Join-Path $env:TEMP "amare-session-db-probe.py"
+    @"
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+print(c.execute("SELECT count(*) FROM settings WHERE key='gpui.session'").fetchone()[0])
+c.close()
+"@ | Set-Content -Path $py -Encoding UTF8
     foreach ($db in @(Get-ChildItem $root -Recurse -Filter amare.db -File | Where-Object { $_.FullName -match 'profiles' })) {
-        $count = python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute("SELECT count(*) FROM settings WHERE key='gpui.session'").fetchone()[0]); c.close()" $db.FullName 2>$null
+        $count = python $py $db.FullName 2>$null
         if ([int]($count -join "") -gt 0) { return $db }
     }
     return Get-ProfileDb $root

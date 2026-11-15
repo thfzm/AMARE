@@ -104,6 +104,15 @@ function Click-Titlebar([IntPtr]$hwnd, [string]$name) {
     if (-not [AmareTitlebar]::GetClientRect($hwnd, [ref]$rect)) { return $false }
     $width = $rect.Right - $rect.Left
     if ($width -lt 300) { return $false }
+    $state = Get-State $hwnd
+    if ($null -ne $state -and $null -ne $state.layout_bounds -and $null -ne $state.layout_bounds.window -and $null -ne $state.layout_bounds.toolbar_children) {
+        $layoutWidth = [double]$state.layout_bounds.window.width
+        $b = $state.layout_bounds.toolbar_children.$name
+        if ($null -ne $b -and [Math]::Abs($layoutWidth - $width) -le 20) {
+            Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+            return $true
+        }
+    }
     $x = switch ($name) {
         "window_min" { $width - 143 }
         "window_max" { $width - 89 }
