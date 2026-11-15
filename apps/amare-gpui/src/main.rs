@@ -33,7 +33,7 @@ mod webview;
 use text_input::AddressInput;
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Foundation::HWND;
 
 actions!(
     amare,
@@ -534,28 +534,6 @@ impl AmareApp {
             | WindowBounds::Maximized(bounds)
             | WindowBounds::Fullscreen(bounds) => bounds,
         };
-        #[cfg(target_os = "windows")]
-        let (outer, client) = window_hwnd(window)
-            .map(|hwnd| unsafe {
-                let mut outer = RECT::default();
-                let mut client = RECT::default();
-                let _ = GetWindowRect(hwnd, &mut outer);
-                let _ = GetClientRect(hwnd, &mut client);
-                (
-                    serde_json::json!({
-                        "x": outer.left, "y": outer.top,
-                        "width": outer.right - outer.left,
-                        "height": outer.bottom - outer.top,
-                    }),
-                    serde_json::json!({
-                        "width": client.right - client.left,
-                        "height": client.bottom - client.top,
-                    }),
-                )
-            })
-            .unwrap_or_else(|| (serde_json::Value::Null, serde_json::Value::Null));
-        #[cfg(not(target_os = "windows"))]
-        let (outer, client) = (serde_json::Value::Null, serde_json::Value::Null);
         self.window_state = Some(serde_json::json!({
             "normal": {
                 "x": f32::from(normal.origin.x),
@@ -565,8 +543,6 @@ impl AmareApp {
             },
             "maximized": window.is_maximized(),
             "scale_factor": window.scale_factor(),
-            "outer": outer,
-            "client": client,
         }));
         let names = [
             "tab_strip",

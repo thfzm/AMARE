@@ -17,6 +17,7 @@ public static class AmareSession {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -208,6 +209,7 @@ function Wait-SessionWindows([System.Diagnostics.Process]$process, [int]$count, 
 function Get-ProfileDb([string]$root) {
     return Get-ChildItem $root -Recurse -Filter amare.db -File |
         Where-Object { $_.FullName -match 'profiles' } |
+        Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 }
 function Get-SessionDb([string]$root) {
@@ -218,7 +220,7 @@ c = sqlite3.connect(sys.argv[1])
 print(c.execute("SELECT count(*) FROM settings WHERE key='gpui.session'").fetchone()[0])
 c.close()
 "@ | Set-Content -Path $py -Encoding UTF8
-    foreach ($db in @(Get-ChildItem $root -Recurse -Filter amare.db -File | Where-Object { $_.FullName -match 'profiles' })) {
+    foreach ($db in @(Get-ChildItem $root -Recurse -Filter amare.db -File | Where-Object { $_.FullName -match 'profiles' } | Sort-Object LastWriteTime -Descending)) {
         $count = python $py $db.FullName 2>$null
         if ([int]($count -join "") -gt 0) { return $db }
     }
@@ -409,7 +411,11 @@ try {
         } else {
             Add-Result "session-window-bounds" "UNVERIFIED" "normal client $($bn.width)x$($bn.height) -> $($rn.width)x$($rn.height) (delta $dw x $dh)"
         }
-        Add-Result "session-outer-client-distinction" "PASS" "outer=$($restored.window_state.outer.width)x$($restored.window_state.outer.height) client=$($restored.window_state.client.width)x$($restored.window_state.client.height) normal=$($rn.width)x$($rn.height) scale=$($restored.window_state.scale_factor)"
+        $outer = New-Object AmareSession+RECT
+        $client = New-Object AmareSession+RECT
+        [void][AmareSession]::GetWindowRect($script:hwnd, [ref]$outer)
+        [void][AmareSession]::GetClientRect($script:hwnd, [ref]$client)
+        Add-Result "session-outer-client-distinction" "PASS" "outer=$($outer.Right - $outer.Left)x$($outer.Bottom - $outer.Top) client=$($client.Right - $client.Left)x$($client.Bottom - $client.Top) normal=$($rn.width)x$($rn.height) scale=$($restored.window_state.scale_factor)"
     } else {
         Add-Result "session-window-bounds" "UNVERIFIED" "window_state.normal missing"
     }

@@ -219,7 +219,7 @@ try {
     Start-Sleep -Milliseconds 300
     Add-Result "page-focus-from-address" "PASS" "clicked page content"
 
-    $shortcutUrl = "https://example.com/?amare=page-ctrl-l"
+    $shortcutUrl = "$BaseUrl`?amare=page-ctrl-l"
     $result = Navigate-Address $shortcutUrl 25
     Add-Result "ctrl-l-from-webview" "PASS" "page Ctrl+L -> address -> source=$($result.source)"
     Shot "gpui-ctrl-l-from-page.png"
@@ -254,9 +254,9 @@ try {
     Send-Keys "junk"
     Start-Sleep -Milliseconds 250
     Send-Keys "^l"
-    Send-Keys "https://example.com/?amare=ctrl-l-selected"
+    Send-Keys "$BaseUrl`?amare=ctrl-l-selected"
     Send-Keys "{ENTER}"
-    $selected = Wait-State { param($s) $s.source -eq "https://example.com/?amare=ctrl-l-selected" } 20 "Ctrl+L select-all navigation"
+    $selected = Wait-State { param($s) $s.source -eq "$BaseUrl`?amare=ctrl-l-selected" } 20 "Ctrl+L select-all navigation"
     Add-Result "ctrl-l-when-address-focused-selects-all" "PASS" "source=$($selected.source)"
     $pageNav = Navigate-Address $BaseUrl 25
     Start-Sleep -Seconds 1

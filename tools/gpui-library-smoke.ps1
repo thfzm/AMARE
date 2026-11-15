@@ -210,7 +210,7 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     Shot "01-initial-new-tab.png"
 
-    [void](Navigate "https://example.com/" 25)
+    [void](Navigate "$BaseUrl" 25)
     Start-Sleep -Seconds 1
     Shot "02-example-page.png"
 
@@ -227,9 +227,9 @@ try {
 
     Send-Keys "^+b"
     Start-Sleep -Milliseconds 300
-    [void](Navigate "https://example.com/?bookmark=1" 25)
+    [void](Navigate "$BaseUrl`?bookmark=1" 25)
     Send-Keys "^d"; Start-Sleep -Milliseconds 800
-    [void](Navigate "https://example.com/?bookmark=2" 25)
+    [void](Navigate "$BaseUrl`?bookmark=2" 25)
     Send-Keys "^d"; Start-Sleep -Milliseconds 800
     [void](Wait-State { param($s) @($s.bookmarks).Count -ge 2 } 10 "bookmarks persisted")
     Send-Keys "^+b"
