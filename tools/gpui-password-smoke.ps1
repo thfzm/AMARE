@@ -239,6 +239,15 @@ $env:AMARE_GPUI_RESTORE = "0"
 $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
 $env:AMARE_GPUI_CAPTURE_DIR = $ScreenshotDir
 $env:AMARE_GPUI_AUTO_CAPTURE_URL = "capture-test.html"
+$serverReady = $false
+for ($i = 0; $i -lt 40; $i++) {
+    try {
+        $probe = Invoke-WebRequest -Uri "http://127.0.0.1:8767/login.html" -UseBasicParsing -TimeoutSec 2
+        if ($probe.StatusCode -eq 200) { $serverReady = $true; break }
+    } catch { }
+    Start-Sleep -Milliseconds 300
+}
+if (-not $serverReady) { throw "password test server 8767 did not become ready" }
 $passwordA = "S3cret!Alice-55"
 $passwordB = "S3cret!Bob-55"
 try {
