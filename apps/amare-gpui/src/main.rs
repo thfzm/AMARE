@@ -493,6 +493,7 @@ struct AmareApp {
     layout_bounds: Option<serde_json::Value>,
     window_state: Option<serde_json::Value>,
     password_action_bounds: Vec<serde_json::Value>,
+    password_form_save: Option<serde_json::Value>,
 }
 
 impl AmareApp {
@@ -621,6 +622,17 @@ impl AmareApp {
                 "id": id,
                 "edit": point(edit),
                 "delete": point(delete),
+            }));
+        }
+    }
+
+    fn record_password_form_save(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
+        if let Some(b) = bounds.first() {
+            self.password_form_save = Some(serde_json::json!({
+                "x": f32::from(b.origin.x),
+                "y": f32::from(b.origin.y),
+                "width": f32::from(b.size.width),
+                "height": f32::from(b.size.height),
             }));
         }
     }
@@ -774,6 +786,7 @@ impl AmareApp {
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
+            password_form_save: None,
         };
         apply_platform_settings(&app.settings);
 
@@ -870,6 +883,7 @@ impl AmareApp {
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
+            password_form_save: None,
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -1014,6 +1028,7 @@ impl AmareApp {
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
+            password_form_save: None,
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -1307,6 +1322,7 @@ impl AmareApp {
             "layout_bounds": self.layout_bounds,
             "window_state": self.window_state,
             "password_actions": self.password_action_bounds,
+            "password_form_save": self.password_form_save,
             "pending_input_id": self.pending_input_id,
             "capture_count": self.capture_count,
             "last_capture_path": self.last_capture_path,
@@ -3677,6 +3693,7 @@ impl AmareApp {
 
     fn render_password_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         self.password_action_bounds.clear();
+        self.password_form_save = None;
         let dark = effective_dark(&self.settings.theme, window);
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
         let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
@@ -3888,16 +3905,28 @@ impl AmareApp {
                                 )
                                 .child(
                                     div()
-                                        .id("password-save-form")
-                                        .px_3()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(accent)
-                                        .text_color(rgb(0xffffff))
-                                        .text_xs()
-                                        .cursor_pointer()
-                                        .child("저장")
-                                        .on_click(save),
+                                        .flex()
+                                        .on_children_prepainted({
+                                            let weak = cx.weak_entity();
+                                            move |bounds, _window, cx| {
+                                                let _ = weak.update(cx, |this, _cx| {
+                                                    this.record_password_form_save(bounds);
+                                                });
+                                            }
+                                        })
+                                        .child(
+                                            div()
+                                                .id("password-save-form")
+                                                .px_3()
+                                                .py_1()
+                                                .rounded_md()
+                                                .bg(accent)
+                                                .text_color(rgb(0xffffff))
+                                                .text_xs()
+                                                .cursor_pointer()
+                                                .child("저장")
+                                                .on_click(save),
+                                        ),
                                 ),
                         ),
                 )

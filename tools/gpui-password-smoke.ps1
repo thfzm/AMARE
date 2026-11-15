@@ -367,7 +367,8 @@ try {
     function Navigate-NoCapture([string]$url, [string]$label, [string]$shot) {
         [void](Force-AmareForeground $script:hwnd)
         Click-Client $script:hwnd 420 70
-        Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        Send-GpuiShortcut $script:hwnd 0x4C
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         [System.Windows.Forms.SendKeys]::SendWait($url)
         Send-Keys "{ENTER}"
         $isActionCross = $url -like "*action-*"

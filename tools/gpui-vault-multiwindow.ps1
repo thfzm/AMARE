@@ -206,6 +206,18 @@ function Fill-VaultField([IntPtr]$hwnd, [string]$field, [string]$text, [int[]]$y
     return $false
 }
 function Save-Form([IntPtr]$hwnd) {
+    $state = Read-State $hwnd
+    if ($null -ne $state -and $null -ne $state.password_form_save) {
+        $b = $state.password_form_save
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
+            Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+            Start-Sleep -Milliseconds 400
+            $state = Read-State $hwnd
+            if ($null -ne $state -and (-not $state.password_vault.form_open -or $null -ne $state.password_vault.conflict)) { return $state }
+            $state = Read-State $hwnd
+            if ($null -ne $state -and $null -ne $state.password_form_save) { $b = $state.password_form_save }
+        }
+    }
     foreach ($x in 994, 1004, 1014) {
         foreach ($y in 405, 417, 429, 441, 453, 465, 477) {
             Click-Client $hwnd $x $y

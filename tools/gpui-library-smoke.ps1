@@ -109,7 +109,7 @@ function Navigate([string]$url, [int]$timeout = 20) {
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 420 70
-        Send-Keys "^l"
+        Send-GpuiShortcut $script:hwnd 0x4C
         Start-Sleep -Milliseconds 200
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         Send-Keys $url

@@ -304,8 +304,15 @@ try {
     Shot "09-settings-search-results.png"
 
     Select-Category "appearance" 167
-    Click-Client $script:hwnd 1000 212
-    [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 8 "dark theme setting")
+    $darkSet = $false
+    foreach ($attempt in 1..3) {
+        Click-Client $script:hwnd 1000 212
+        try {
+            [void](Wait-State { param($s) $s.settings.theme -eq "dark" } 5 "dark theme setting")
+            $darkSet = $true; break
+        } catch { Start-Sleep -Milliseconds 300 }
+    }
+    if (-not $darkSet) { throw "Could not set dark theme" }
     $changed = $false
     $tabValue = 120
     foreach ($y in 492, 500, 508, 516) {

@@ -274,7 +274,17 @@ function Start-App([string]$data, [string]$restore = "1", [switch]$Maximize, [sw
     $process = Start-Process $Exe -PassThru -RedirectStandardError $errLog
     [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
     Start-Sleep -Seconds 2
-    $process.Refresh(); $script:hwnd = $process.MainWindowHandle
+    $script:hwnd = [IntPtr]::Zero
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        $process.Refresh()
+        $script:hwnd = $process.MainWindowHandle
+        if ($script:hwnd -eq [IntPtr]::Zero) {
+            $windows = @(Get-SessionWindows $process)
+            if ($windows.Count -gt 0) { $script:hwnd = $windows[0] }
+        }
+        if ($script:hwnd -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 300
+    }
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "session app window missing" }
     [void](Force-AmareForeground $script:hwnd)
     if ($Maximize) {

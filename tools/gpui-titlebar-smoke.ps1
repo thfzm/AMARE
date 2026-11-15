@@ -97,9 +97,20 @@ function Get-TitlebarButton([IntPtr]$hwnd, [string]$name) {
     return $null
 }
 function Click-Titlebar([IntPtr]$hwnd, [string]$name) {
-    $b = Get-TitlebarButton $hwnd $name
-    if ($null -eq $b) { return $false }
-    Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+    # Derive the button from the live client width. The status layout can lag
+    # one paint behind a maximize/restore transition; clicking a stale
+    # maximized-width coordinate can land in the other window.
+    $rect = New-Object AmareTitlebar+RECT
+    if (-not [AmareTitlebar]::GetClientRect($hwnd, [ref]$rect)) { return $false }
+    $width = $rect.Right - $rect.Left
+    if ($width -lt 300) { return $false }
+    $x = switch ($name) {
+        "window_min" { $width - 143 }
+        "window_max" { $width - 89 }
+        "window_close" { $width - 43 }
+        default { return $false }
+    }
+    Click-Client $hwnd $x 22
     return $true
 }
 function Try-Click-State([IntPtr]$hwnd, [string]$button, [scriptblock]$test, [int]$seconds) {
