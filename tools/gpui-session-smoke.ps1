@@ -27,6 +27,7 @@ public static class AmareSession {
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
@@ -35,7 +36,9 @@ public static class AmareSession {
         EnumWindows((hwnd, lparam) => {
             uint pid;
             GetWindowThreadProcessId(hwnd, out pid);
-            if (pid == (uint)processId && IsWindowVisible(hwnd)) { result.Add(hwnd); }
+            var title = new System.Text.StringBuilder(256);
+            GetWindowText(hwnd, title, title.Capacity);
+            if (pid == (uint)processId && IsWindowVisible(hwnd) && title.ToString() == "AMARE") { result.Add(hwnd); }
             return true;
         }, IntPtr.Zero);
         return result.ToArray();

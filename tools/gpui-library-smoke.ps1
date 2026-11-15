@@ -220,6 +220,7 @@ try {
     [void](Navigate "$BaseUrl`?tab=B" 25)
     Shot "03-multiple-tabs.png"
 
+    [void](Force-Focus $script:hwnd)
     Send-Keys "^+b"
     [void](Wait-State { param($s) $s.panel -eq "bookmarks" } 8 "bookmarks panel")
     Shot "04-bookmarks-panel.png"
@@ -237,8 +238,15 @@ try {
 
     Send-Keys "^+b"
     Start-Sleep -Milliseconds 300
+    [void](Force-Focus $script:hwnd)
     Send-Keys "^+h"
-    [void](Wait-State { param($s) $s.panel -eq "history" } 8 "history panel")
+    try {
+        [void](Wait-State { param($s) $s.panel -eq "history" } 8 "history panel")
+    } catch {
+        [void](Force-Focus $script:hwnd)
+        Send-Keys "^+h"
+        [void](Wait-State { param($s) $s.panel -eq "history" } 10 "history panel retry")
+    }
     Shot "06-history-panel.png"
     Send-Keys "example"
     [void](Wait-State { param($s) $s.history_query -eq "example" } 8 "history search query")

@@ -333,13 +333,21 @@ try {
     if (-not $changed) { throw "Timed out waiting for font size setting" }
     Shot "03b-appearance-changed.png"
 
+    [void](Force-AmareForeground $script:hwnd)
     Send-Keys "^,"
-    [void](Wait-State { param($s) $s.panel -eq "none" } 6 "settings closed")
+    try {
+        [void](Wait-State { param($s) $s.panel -eq "none" } 6 "settings closed")
+    } catch {
+        [void](Force-AmareForeground $script:hwnd)
+        Send-Keys "^,"
+        [void](Wait-State { param($s) $s.panel -eq "none" } 8 "settings closed retry")
+    }
     Shot "10-browser-settings-applied.png"
     [void][AmareSettings]::ShowWindow($script:hwnd, 9)
     Start-Sleep -Seconds 1
 
     $baseWindows = (Get-BrowserWindows).Count
+    [void](Force-AmareForeground $script:hwnd)
     Send-Keys "^n"
     $windows = Wait-WindowCount ($baseWindows + 1) 12 "second browser window"
     [void][AmareSettings]::SetWindowPos($windows[0], [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)

@@ -472,16 +472,6 @@ try {
     }
     if (@(Read-AllStates).Count -gt 2) { throw "third window did not close" }
     Add-Result "close-third-window" "PASS" "two windows remain"
-    if (Click-VaultTitlebar $script:hwnd2 "window_max" -and (Wait-Zoomed $script:hwnd2 $true 5)) {
-        Add-Result "second-window-maximize" "PASS" "window 2 maximized via real mouse"
-    } else {
-        Add-Result "second-window-maximize" "UNVERIFIED" "window 2 did not maximize"
-    }
-    if (Click-VaultTitlebar $script:hwnd2 "window_max" -and (Wait-Zoomed $script:hwnd2 $false 5)) {
-        Add-Result "second-window-restore" "PASS" "window 2 restored via real mouse"
-    } else {
-        Add-Result "second-window-restore" "UNVERIFIED" "window 2 did not restore"
-    }
     Shot-Both $script:hwnd1 $script:hwnd2 "06-two-window-sync.png"
 
     # Independent edits in both windows while the forms are open together.

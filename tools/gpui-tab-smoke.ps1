@@ -392,6 +392,8 @@ try {
 
     # Per-tab history: navigate A, back should not change B.
     [void](Select-Tab $aId)
+    [void](Wait-State { param($s) $s.active_tab -eq $aId -and @($s.tabs | Where-Object { $_.id -eq $aId -and $_.webview -eq $true }).Count -eq 1 } 15 "tab A controller before navigation")
+    Start-Sleep -Milliseconds 500
     [void](Navigate (Page "A2") 25)
     [void](Select-Tab $bId)
     Send-Keys "%{LEFT}"

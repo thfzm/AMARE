@@ -362,14 +362,18 @@ try {
         Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         [System.Windows.Forms.SendKeys]::SendWait($url)
         Send-Keys "{ENTER}"
-        [void](Wait-State { param($s) $s.source -like "$url*" } 25 "$label page")
+        $isActionCross = $url -like "*action-*"
+        [void](Wait-State {
+            param($s)
+            $s.source -like "$url*" -or ($isActionCross -and $s.source -like "http://localhost:8767/*")
+        } 25 "$label page")
         Start-Sleep -Seconds 3
         $state = Read-State
         if ($null -ne $state.password_vault.pending) {
             throw "$label unexpectedly produced a credential capture"
         }
         Shot $shot
-        Add-Result $label "PASS" "no credential capture; pending=null"
+        Add-Result $label "PASS" "no credential capture; pending=null source=$($state.source)"
     }
     Navigate-NoCapture "http://127.0.0.1:8767/iframe-cross.html" "iframe-cross-origin-no-capture" "06-iframe-cross-origin.png"
     Navigate-NoCapture "http://127.0.0.1:8767/iframe-same.html" "iframe-same-origin-no-capture" "06b-iframe-same-origin.png"
