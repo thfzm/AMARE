@@ -66,6 +66,8 @@ if mode == 'set':
 elif mode == 'backup':
     row = c.execute("SELECT value_text FROM settings WHERE key='gpui.session.corrupt'").fetchone()
     print('' if row is None else row[0])
+elif mode == 'backup_count':
+    print(c.execute("SELECT count(*) FROM settings WHERE key='gpui.session.corrupt'").fetchone()[0])
 c.commit(); c.close()
 "@ | Set-Content -Path $py -Encoding UTF8
     $output = python $py $db $mode $valuePath
@@ -142,10 +144,10 @@ try {
         @{ name = "missing-fields"; json = '[{"window_id":1}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
         @{ name = "unknown-field"; json = $valid.Replace('"saved_at_ms":1', '"saved_at_ms":1,"future_field":true'); error = $false; backup = $false; windows = 1; tabs = 1 },
         @{ name = "duplicate-window-id"; json = $validTwo.Replace('"window_id":2', '"window_id":1'); error = $true; backup = $true; windows = 1; tabs = 1 },
-        @{ name = "invalid-url"; json = $valid.Replace('about:blank', 'javascript:alert(1)'); error = $true; backup = $true; windows = 1; tabs = 1 },
-        @{ name = "active-out-of-range"; json = $valid.Replace('"active":0', '"active":99'); error = $true; backup = $true; windows = 1; tabs = 1 },
-        @{ name = "negative-scroll"; json = $valid.Replace('"scroll_x":0', '"scroll_x":-5').Replace('"scroll_y":0', '"scroll_y":-7'); error = $true; backup = $true; windows = 1; tabs = 1 },
-        @{ name = "huge-scroll"; json = $valid.Replace('"scroll_y":0', '"scroll_y":999999999'); error = $true; backup = $true; windows = 1; tabs = 1 },
+        @{ name = "invalid-url"; json = '[{"window_id":1,"x":100,"y":100,"width":1024,"height":720,"maximized":false,"active":0,"tabs":[{"url":"javascript:alert(1)","title":"bad","scroll_x":0,"scroll_y":0}],"saved_at_ms":1}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
+        @{ name = "active-out-of-range"; json = '[{"window_id":1,"x":100,"y":100,"width":1024,"height":720,"maximized":false,"active":99,"tabs":[{"url":"about:blank","title":"bad","scroll_x":0,"scroll_y":0}],"saved_at_ms":1}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
+        @{ name = "negative-scroll"; json = '[{"window_id":1,"x":100,"y":100,"width":1024,"height":720,"maximized":false,"active":0,"tabs":[{"url":"about:blank","title":"bad","scroll_x":-5,"scroll_y":-7}],"saved_at_ms":1}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
+        @{ name = "huge-scroll"; json = '[{"window_id":1,"x":100,"y":100,"width":1024,"height":720,"maximized":false,"active":0,"tabs":[{"url":"about:blank","title":"bad","scroll_x":0,"scroll_y":999999999}],"saved_at_ms":1}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
         @{ name = "legacy-array"; json = $legacy; error = $false; backup = $false; windows = 1; tabs = 1 },
         @{ name = "mixed-valid-invalid"; json = '[{"window_id":0,"tabs":[]},{"window_id":7,"active":0,"tabs":[{"url":"about:blank","title":"ok"}]}]'; error = $true; backup = $true; windows = 1; tabs = 1 },
         @{ name = "empty-window-list"; json = '[]'; error = $false; backup = $false; windows = 1; tabs = 1 },
@@ -166,13 +168,14 @@ try {
         $tabCount = if ($null -ne $state) { @($state.tabs).Count } else { 0 }
         $hasError = $null -ne $state -and -not [string]::IsNullOrWhiteSpace([string]$state.session_error)
         $backup = Invoke-SessionSql $db.FullName "backup"
+        $backupCount = [int](Invoke-SessionSql $db.FullName "backup_count")
         $ok = ($null -ne $state) -and (-not $app.HasExited) -and ($windowCount -eq $case.windows) -and ($tabCount -eq $case.tabs) -and ($hasError -eq $case.error)
         if ($case.backup) {
-            $ok = $ok -and ($backup.Trim() -eq $case.json.Trim())
+            $ok = $ok -and ($backupCount -eq 1) -and ($backup.Trim() -eq $case.json.Trim())
         } else {
-            $ok = $ok -and [string]::IsNullOrEmpty($backup)
+            $ok = $ok -and ($backupCount -eq 0)
         }
-        $detail = "windows=$windowCount tabs=$tabCount error=$hasError backup=$([string]::IsNullOrEmpty($backup) -eq $false) exit=$($app.HasExited)"
+        $detail = "windows=$windowCount tabs=$tabCount error=$hasError backupCount=$backupCount exit=$($app.HasExited)"
         if ($ok) { Add-Result $case.name "PASS" $detail } else { Add-Result $case.name "FAIL" $detail }
         [void]([System.Windows.Forms.SendKeys]::SendWait("%{F4}"))
         if (-not $app.WaitForExit(20000)) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }

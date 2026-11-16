@@ -5268,6 +5268,12 @@ impl Render for AmareApp {
                             .flex_1()
                             .overflow_hidden()
                             .window_control_area(WindowControlArea::Drag)
+                            .id("titlebar-drag")
+                            .on_click(cx.listener(|_, event: &gpui::ClickEvent, window, _| {
+                                if event.click_count() == 2 {
+                                    toggle_window_maximize(window);
+                                }
+                            }))
                             .child(div().flex().gap_1().children(tabs)),
                     )
                     .child(

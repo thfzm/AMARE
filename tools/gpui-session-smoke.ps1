@@ -290,9 +290,12 @@ function Start-App([string]$data, [string]$restore = "1", [switch]$Maximize, [sw
     $script:sessionErrLogs += $errLog
     $script:lastSessionErr = $errLog
     $process = Start-Process $Exe -PassThru -RedirectStandardError $errLog
-    [void](Wait-State { param($s) $null -ne $s.address } 60 "session app start")
+    $startState = Wait-State { param($s) $null -ne $s.address } 60 "session app start"
     Start-Sleep -Seconds 2
     $script:hwnd = [IntPtr]::Zero
+    if ($null -ne $startState -and [int64]$startState.window_handle -ne 0) {
+        $script:hwnd = [IntPtr][int64]$startState.window_handle
+    }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         $process.Refresh()
         $script:hwnd = $process.MainWindowHandle
