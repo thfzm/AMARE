@@ -1,20 +1,20 @@
-# GPUI migration gaps and P0/P1 plan (0.73.0)
+# GPUI migration gaps and P0/P1 plan (0.74.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.73.0 status
+## 0.74.0 status
 
-- Input delivery telemetry: mouse/key counters, foreground/active, click and
-  navigation request are exposed in status.
-- Navigation regression suite added; separates request, pending/attach and
-  final Source/loading.
+- AddressInput: submit callback, navigation dispatch, final Source and focus
+  are separately observable. Submit callbacks pass in the regression suite.
+- Navigation regression remains flaky on second-window state counting,
+  restore banner and corrupt-resave fixtures.
 - Corrupt session: **14/14 PASS** in all three repeats.
 - Session persistence core: multi-window 2→2, active URL, scroll, geometry,
   maximized, immediate close and no-resurrection PASS in two repeats.
-- Titlebar independent workflow: **FAIL** on window2 handle validity.
-- Three complete repeats: **8/9/10 FAIL**; first-click/submit automation
-  remains flaky.
+- Titlebar independent workflow: **16/0/0 PASS twice**, one window2 hang.
+- Three complete repeats: **10/8/8 FAIL**; first-click/submit automation and
+  titlebar window2 hang remain.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -25,7 +25,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.73.0.
+WinUI remains the default package. GPUI is not switched to default in 0.74.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -70,7 +70,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.73.0.
+- no public release is created by CI in 0.74.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
