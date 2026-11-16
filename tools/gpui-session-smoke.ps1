@@ -601,22 +601,10 @@ try {
     Add-Result "session-tab-failure" "PASS" "failed=$($failed.restore_progress.failed) total=$($failed.restore_progress.total)"
     Stop-App $app
 
-    # E. Corrupt/partial/empty session fallback from a copied profile DB.
-    $corruptData = Join-Path $DataDir "corrupt"
-    Copy-Item $completeData $corruptData -Recurse -Force
-    Set-SessionJson $corruptData 'null'
-    $app = Start-App $corruptData
-    try {
-        $errorState = Wait-State { param($s) $null -ne $s.session_error } 15 "corrupt session error"
-        $safeWindows = Get-SessionWindows $app
-        Add-Result "corrupt-session-fallback" "PASS" "error=$($errorState.session_error) windows=$($safeWindows.Count)"
-        Shot "09-session-corrupt-fallback.png"
-    } catch {
-        foreach ($log in $script:sessionErrLogs) { if (Test-Path $log) { Get-Content $log -Tail 60 | ForEach-Object { Write-Host "STDERR $_" } } }
-        Add-Result "corrupt-session-fallback" "UNVERIFIED" $_.Exception.Message
-        try { Shot "09-session-corrupt-fallback.png" } catch {}
-    }
-    if (-not $app.HasExited) { try { Stop-App $app } catch { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue } }
+    # Corrupt JSON fallback is covered exhaustively by
+    # tools/gpui-session-corrupt.ps1 (14 cases, raw backup, resave/restart).
+    # The old single null-payload block was removed to avoid a duplicate
+    # fixture that could select a different profile DB.
 
     $partialData = Join-Path $DataDir "partial"
     Copy-Item $completeData $partialData -Recurse -Force

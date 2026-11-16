@@ -502,6 +502,13 @@ struct AmareApp {
     next_input_id: u64,
     pending_input_id: Option<u64>,
     last_action: Option<String>,
+    mouse_down_count: u64,
+    key_down_count: u64,
+    last_input_at_ms: i64,
+    last_click_x: f32,
+    last_click_y: f32,
+    last_key: String,
+    window_active: bool,
     navigation_requests: u64,
     last_navigation_url: String,
     last_navigation_at_ms: i64,
@@ -792,6 +799,13 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             last_action: None,
+            mouse_down_count: 0,
+            key_down_count: 0,
+            last_input_at_ms: 0,
+            last_click_x: 0.0,
+            last_click_y: 0.0,
+            last_key: String::new(),
+            window_active: false,
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -894,6 +908,13 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             last_action: None,
+            mouse_down_count: 0,
+            key_down_count: 0,
+            last_input_at_ms: 0,
+            last_click_x: 0.0,
+            last_click_y: 0.0,
+            last_key: String::new(),
+            window_active: false,
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -1046,6 +1067,13 @@ impl AmareApp {
             next_input_id: 1,
             pending_input_id: None,
             last_action: None,
+            mouse_down_count: 0,
+            key_down_count: 0,
+            last_input_at_ms: 0,
+            last_click_x: 0.0,
+            last_click_y: 0.0,
+            last_key: String::new(),
+            window_active: false,
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -1352,6 +1380,13 @@ impl AmareApp {
             "password_reveals": self.password_reveal_bounds,
             "pending_input_id": self.pending_input_id,
             "last_action": self.last_action,
+            "mouse_down_count": self.mouse_down_count,
+            "key_down_count": self.key_down_count,
+            "last_input_at_ms": self.last_input_at_ms,
+            "last_click_x": self.last_click_x,
+            "last_click_y": self.last_click_y,
+            "last_key": self.last_key,
+            "window_active": self.window_active,
             "navigation_requests": self.navigation_requests,
             "last_navigation_url": self.last_navigation_url,
             "last_navigation_at_ms": self.last_navigation_at_ms,
@@ -5211,11 +5246,26 @@ impl Render for AmareApp {
 
         div()
             .track_focus(&self.focus_handle)
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseDownEvent, _, cx| {
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseDownEvent, window, cx| {
+                this.mouse_down_count = this.mouse_down_count.saturating_add(1);
+                this.last_click_x = f32::from(event.position.x);
+                this.last_click_y = f32::from(event.position.y);
+                this.last_input_at_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                this.window_active = window.is_window_active();
                 this.trace_event(format!("mouse_down x={:.1} y={:.1}", f32::from(event.position.x), f32::from(event.position.y)));
                 cx.notify();
             }))
-            .on_key_down(cx.listener(|this: &mut Self, event: &gpui::KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this: &mut Self, event: &gpui::KeyDownEvent, window, cx| {
+                this.key_down_count = this.key_down_count.saturating_add(1);
+                this.last_key = event.keystroke.to_string();
+                this.last_input_at_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                this.window_active = window.is_window_active();
                 if this.pending_input_id.is_none() {
                     let id = this.next_input_id;
                     this.next_input_id += 1;
