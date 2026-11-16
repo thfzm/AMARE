@@ -15,6 +15,7 @@ public static class AmareNav {
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
     public static IntPtr[] Windows(int processId) {
@@ -140,7 +141,10 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     $env:AMARE_GPUI_DIAGNOSTICS = "1"
     $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
     if ($SecondWindow) { $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1" } else { Remove-Item Env:AMARE_GPUI_OPEN_SECOND_WINDOW -ErrorAction SilentlyContinue }
-    $process = Start-Process $Exe -PassThru
+    $outLog = Join-Path $env:TEMP ("amare-nav-" + [guid]::NewGuid().ToString("N") + ".out.log")
+    $errLog = Join-Path $env:TEMP ("amare-nav-" + [guid]::NewGuid().ToString("N") + ".err.log")
+    $process = Start-Process $Exe -PassThru -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $script:lastNavErr = $errLog
     $script:app = $process
     $count = if ($SecondWindow) { 2 } else { 1 }
     $states = Wait-States $count 60 "app windows"
@@ -149,9 +153,10 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     return @($process, $hwnd)
 }
 function Stop-App($process, [IntPtr]$hwnd) {
-    [void](Force-AmareForeground $hwnd)
-    Send-Keys "%{F4}"
-    if (-not $process.WaitForExit(20000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    foreach ($window in @([AmareNav]::Windows([int]$process.Id))) {
+        [void][AmareNav]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    }
+    if (-not $process.WaitForExit(15000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 600
 }
 
@@ -238,6 +243,7 @@ c.commit(); c.close()
     }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    if (Test-Path $script:lastNavErr) { Get-Content $script:lastNavErr -Tail 80 | ForEach-Object { Write-Host "STDERR $_" } }
 } finally {
     if ($null -ne $script:app -and -not $script:app.HasExited) { try { $script:app.Kill() } catch {} }
     $summary = [pscustomobject]@{
