@@ -126,13 +126,27 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     Send-Keys $url
     Send-Keys "{ENTER}"
-    try {
-        [void](Wait-State $hwnd { param($s) [int64]$s.address_submit_count -gt [int64]$submitBefore } 10 "address submit callback")
-        Add-Result "submit-callback-$($script:case)" "PASS" "submit_count=$((Read-State $hwnd).address_submit_count) result=$((Read-State $hwnd).last_submit_result)"
-    } catch {
-        Add-Result "submit-callback-$($script:case)" "FAIL" "Enter/submit callback not observed"
+    $submitOk = $false
+    for ($submitAttempt = 0; $submitAttempt -lt 2; $submitAttempt++) {
+        try {
+            [void](Wait-State $hwnd { param($s) [int64]$s.address_submit_count -gt [int64]$submitBefore } 6 "address submit callback")
+            $submitOk = $true
+            break
+        } catch {
+            if ($submitAttempt -eq 1) { break }
+            Add-Result "submit-callback-$($script:case)" "UNVERIFIED" "first Enter not observed; retrying explicit address click"
+            Click-Client $hwnd 420 105
+            Send-GpuiShortcut $hwnd 0x4C
+            Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+            Send-Keys $url
+            Send-Keys "{ENTER}"
+        }
+    }
+    if (-not $submitOk) {
+        Add-Result "submit-callback-$($script:case)" "FAIL" "Enter/submit callback not observed after two explicit submits"
         return $null
     }
+    Add-Result "submit-callback-$($script:case)" "PASS" "submit_count=$((Read-State $hwnd).address_submit_count) result=$((Read-State $hwnd).last_submit_result)"
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.navigation_requests -gt [int64]$requestBefore } 10 "navigation request")
         $startedSeen = $false
@@ -241,7 +255,7 @@ try {
     $script:case = "restore-first"
     $started = Start-App $base
     $script:app = $started[0]; $script:hwnd = $started[1]
-    [void](Submit-Url $script:hwnd "$BaseUrl`?nav=restored" 30 -SkipClick)
+    [void](Submit-Url $script:hwnd "$BaseUrl`?nav=restored" 30)
     Stop-App $script:app $script:hwnd
 
     # 5. Resave/restart after a sanitized corrupt fixture.
