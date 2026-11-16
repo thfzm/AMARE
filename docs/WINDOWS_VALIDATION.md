@@ -82,13 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.76.0)
+## 5. 현재 실행 상태 (0.77.0)
 
-- Windows CI [43891020113](https://github.com/thfzm/AMARE/actions/runs/43891020113): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43891020130](https://github.com/thfzm/AMARE/actions/runs/43891020130): **SUCCESS**.
-- GPUI 3회(`26aeae5`): **11 FAIL/7 UNVERIFIED**, **6/11**, **9/7** — 3회 연속 0 FAIL **미달**.
-- Exact `address_bounds` 추가; restore banner와 무관하게 주소 클릭. 그래도 restore-first/corrupt-resave submit callback **FAIL**.
-- Corrupt session **14/14** 3회, session **29/0/0** 1회, Vault **17/0/0** 1회.
-- Titlebar 별도 5회: **2 PASS / 3 hang**, window2 진입 단계 hang.
-- 실제 Windows 11, DPI, Snap, Alt+Tab은 **UNVERIFIED**.
+- Windows CI [43918766969](https://github.com/thfzm/AMARE/actions/runs/43918766969): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43918767315](https://github.com/thfzm/AMARE/actions/runs/43918767315): **SUCCESS**.
+- GPUI 3회(`e6bee49`): **12/9**, **9/10**, **9/13** — 3회 연속 0 FAIL **미달**.
+- AddressInput 내부 text/focus/edit count 추가; root Enter count는 AddressInput Enter를 관측하지 못함.
+- 복원 active WebView2의 `view.focus()`가 address focus를 덮어쓰던 제품 경로 제거.
+- new-tab/rapid/new-window text+submit PASS; restore-first/corrupt-resave submit 불안정.
+- Corrupt session **14/14** 3회, session **29/0/0** 1회.
+- Titlebar 별도 5회: **1 PASS / 4 FAIL**.
+- 실제 Windows 11/DPI/Snap/Alt+Tab **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

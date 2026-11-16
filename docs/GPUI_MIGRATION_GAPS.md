@@ -1,19 +1,19 @@
-# GPUI migration gaps and P0/P1 plan (0.76.0)
+# GPUI migration gaps and P0/P1 plan (0.77.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.76.0 status
+## 0.77.0 status
 
-- AddressInput: exact address bounds in status; restore-banner coordinate
-  ambiguity removed.
-- Restore-first/corrupt-resave submit callback still FAIL after two explicit
-  submits; new-tab/rapid/new-window submit PASS.
+- AddressInput: internal text/focus/edit counters; root Enter count is not a
+  valid submit signal because AddressInput consumes Enter.
+- Restored WebView2 no longer steals address focus, but restore-first and
+  corrupt-resave submit remain unstable/FAIL.
+- New-tab/rapid/new-window submit PASS.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Session 29/0/0 once; Vault 17/0/0 once.
-- Titlebar independent workflow: **2/5 PASS**, three window2 hangs.
-- Three repeats: **11/6/9 FAIL**; restore submit, first-click automation and
-  titlebar window2 hang remain.
+- Session 29/0/0 once.
+- Titlebar independent workflow: **1/5 PASS**, window2 lifecycle/hang unresolved.
+- Three repeats: **12/9/9 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -24,7 +24,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.76.0.
+WinUI remains the default package. GPUI is not switched to default in 0.77.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -69,7 +69,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.76.0.
+- no public release is created by CI in 0.77.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

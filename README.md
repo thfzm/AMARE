@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.76.0 Titlebar Hang & Restore-First Navigation Root Cause** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다. GPUI는 exact address bounds와 titlebar window readiness gate를 추가해 restore banner/좌표 문제를 분리했고 corrupt **14/14**, session **29/0/0**, Vault **17/0/0**을 기록했습니다. Titlebar 별도 5회는 **2회 PASS/3회 hang**, restore-first/corrupt-resave submit은 exact bounds 사용 후에도 **FAIL**입니다. 동일 코드 3회는 **11/6/9 FAIL**로 **3회 연속 0 FAIL 미달**이며 실제 Windows 11/DPI는 **UNVERIFIED**입니다. **GPUI 기본 전환은 보류**합니다.
+현재 저장소는 **AMARE 0.77.0 Input Event Forensics & Multi-Window Hang Isolation** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다. GPUI는 AddressInput 내부 text/focus/edit telemetry를 추가하고, 복원 창의 WebView2가 주소 focus를 steal하던 제품 경로를 수정했습니다. new-tab/rapid/new-window submit은 PASS, corrupt **14/14**, session **29/0/0** 1회를 기록했지만 restore-first/corrupt submit은 여전히 불안정합니다. Titlebar 5회는 **1회 PASS/4회 FAIL**, 동일 코드 3회는 **12/9/9 FAIL**로 **3회 연속 0 FAIL 미달**입니다. 실제 Windows 11/DPI는 **UNVERIFIED**이며 **GPUI 기본 전환은 보류**합니다.
 
 ## 핵심 원칙
 
@@ -155,6 +155,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.56.0: **DPAPI vault security hardening** — actual delete confirm/cancel/complete + restart persistence, corrupted vault preserved with retry/backup guidance, multi-window merge/generation sync path, exact-origin autofill no auto-submit, plaintext scan, actual 0.56 screenshots; password **25/0/0**, vault unit 4/4, corrupt-DPAPI UX PASS, iframe attack automation/multi-window UI/DPAPI other-user failure/cookie control/DPI UNVERIFIED
 - Windows 0.57.0: **password security boundary** — iframe/nested/action-change no-capture **PASS**, exact-origin autofill/no-submit, actual delete cancel/confirm + last-account empty + restart, corrupted vault preservation, multiwindow merge/generation code, privacy autofill/save toggles, WebView2 ALL_SITE data clear; password **42/0/0**, unit 4/4, actual 0.57 screenshots; per-site cookie/permission control, DPAPI other-user failure, multiwindow simultaneous UI mutation, DPI/signing UNVERIFIED
 - Windows 0.58.0: **stability revalidation** — iframe/nested/action no-capture, navigation ID recheck, delete cancel/confirm/empty/restart, corrupted and key-missing vault preservation, privacy settings, actual 0.58 screenshots; password **43/0/0**, unit 4/4, WinUI **143/0/9/1** GUI **42/42**, Windows/Linux CI SUCCESS, GPUI CI step SUCCESS(내부 tab/library/settings/session FAIL); same-process multiwindow Vault mutation/충돌 UX/삭제 부활 방지/창 간 잠금 **FAIL/UNVERIFIED**, ALL_SITE **read-only/BLOCKED**, page DOM capture and GPUI tab/library/settings/session automation **UNVERIFIED/FAIL**, unsigned MSIX install **UNVERIFIED**
+- Windows 0.77.0: **GPUI input event forensics/multi-window hang isolation** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, AddressInput text/focus telemetry + restored focus steal 수정, new-tab/rapid/new-window submit PASS, corrupt 14/14, session 29/0/0 1회, restore/corrupt submit 불안정, titlebar 별도 1/5 PASS, GPUI 3회 12/9/9 FAIL로 0 FAIL 미달, 실제 Win11/DPI UNVERIFIED, GPUI 전환 보류
 - Windows 0.76.0: **GPUI titlebar hang/restore-first navigation** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, exact address bounds/readiness gate, corrupt 14/14, session 29/0/0, Vault 17/0/0, titlebar 별도 2/5 PASS, restore/corrupt submit FAIL, GPUI 3회 11/6/9 FAIL로 0 FAIL 미달, 실제 Win11/DPI UNVERIFIED, GPUI 전환 보류
 - Windows 0.75.0: **GPUI navigation lifecycle/automation reliability** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, tab navigation lifecycle telemetry, submit callback(new-tab/rapid/new-window) PASS, corrupt 14/14(3회), session core 29/0/0(2회), Vault 29/0/0(2회), titlebar 별도 1/5 PASS, GPUI 3회 **9/9/10 FAIL**로 0 FAIL 미달, restore/corrupt submit·first-click·실제 Win11 **UNVERIFIED**, GPUI 전환 보류
 - Windows 0.74.0: **GPUI input-to-navigation reliability/multi-window lifecycle** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, AddressInput submit/dispatch telemetry, navigation regression submit callback PASS, corrupt **14/14**, session core 2회 PASS, titlebar 별도 **16/0/0 2회**/window2 hang 1회, GPUI 3회 **10/8/8 FAIL**로 0 FAIL 미달, 실제 Win11/DPI **UNVERIFIED**, GPUI 전환 보류
@@ -177,7 +178,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
-Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.76.0 report](artifacts/windows/release/AMARE-0.76.0-development-report.md)에 기록되어 있습니다.
+Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.77.0 report](artifacts/windows/release/AMARE-0.77.0-development-report.md)에 기록되어 있습니다.
 
 ## 라이선스 및 공개 정책
 
