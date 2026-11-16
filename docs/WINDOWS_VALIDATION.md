@@ -82,15 +82,13 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.75.0)
+## 5. 현재 실행 상태 (0.76.0)
 
-- Windows CI [43881498595](https://github.com/thfzm/AMARE/actions/runs/43881498595): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43881498633](https://github.com/thfzm/AMARE/actions/runs/43881498633): **SUCCESS**.
-- GPUI 3회 완전 반복(`8618b0e`): **9 FAIL/3 UNVERIFIED**, **9/12**, **10/7** — 3회 연속 0 FAIL **미달**.
-- Navigation lifecycle: tab별 started/completed/timestamp + submit callback/dispatch/source 분리. new-tab/rapid/new-window submit PASS, restore/corrupt submit FAIL.
-- Corrupt session: **14/14 PASS — 3회 모두**.
-- Session persistence: **29/0/0** 2회; multi-window 2→2, active URL, scroll, geometry, maximized, immediate close, no-resurrection.
-- Vault: **29/0/0** 2회.
-- Titlebar 별도 5회: **1 PASS / 4 hang**, window2 진입 후 hang.
-- 실제 Windows 11, DPI 125/150/200%, Snap, Alt+Tab은 **UNVERIFIED**.
-- unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**, ALL_SITE 삭제는 **read-only/BLOCKED**입니다.
+- Windows CI [43891020113](https://github.com/thfzm/AMARE/actions/runs/43891020113): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43891020130](https://github.com/thfzm/AMARE/actions/runs/43891020130): **SUCCESS**.
+- GPUI 3회(`26aeae5`): **11 FAIL/7 UNVERIFIED**, **6/11**, **9/7** — 3회 연속 0 FAIL **미달**.
+- Exact `address_bounds` 추가; restore banner와 무관하게 주소 클릭. 그래도 restore-first/corrupt-resave submit callback **FAIL**.
+- Corrupt session **14/14** 3회, session **29/0/0** 1회, Vault **17/0/0** 1회.
+- Titlebar 별도 5회: **2 PASS / 3 hang**, window2 진입 단계 hang.
+- 실제 Windows 11, DPI, Snap, Alt+Tab은 **UNVERIFIED**.
+- unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

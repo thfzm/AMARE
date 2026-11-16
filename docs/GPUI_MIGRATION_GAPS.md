@@ -1,19 +1,18 @@
-# GPUI migration gaps and P0/P1 plan (0.75.0)
+# GPUI migration gaps and P0/P1 plan (0.76.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.75.0 status
+## 0.76.0 status
 
-- Navigation lifecycle: per-tab started/completed/timestamps and submit
-  callback/dispatch/source separation. New-tab/rapid/new-window submit PASS;
-  restore-first/corrupt-resave submit FAIL.
+- AddressInput: exact address bounds in status; restore-banner coordinate
+  ambiguity removed.
+- Restore-first/corrupt-resave submit callback still FAIL after two explicit
+  submits; new-tab/rapid/new-window submit PASS.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Session persistence: **29/0/0** twice; multi-window 2→2, active URL, scroll,
-  geometry, maximized, immediate close and no-resurrection PASS.
-- Vault: **29/0/0** twice.
-- Titlebar independent workflow: **1/5 PASS**, four window2 hangs.
-- Three complete repeats: **9/9/10 FAIL**; first-click/submit automation and
+- Session 29/0/0 once; Vault 17/0/0 once.
+- Titlebar independent workflow: **2/5 PASS**, three window2 hangs.
+- Three repeats: **11/6/9 FAIL**; restore submit, first-click automation and
   titlebar window2 hang remain.
 - AI/updater/site permissions remain not implemented.
 
@@ -25,7 +24,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.75.0.
+WinUI remains the default package. GPUI is not switched to default in 0.76.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -70,7 +69,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.75.0.
+- no public release is created by CI in 0.76.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
