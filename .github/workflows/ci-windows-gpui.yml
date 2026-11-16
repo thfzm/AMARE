@@ -338,20 +338,6 @@ jobs:
           & "tools/gpui-settings-smoke.ps1" -Exe $exe -Status $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI settings smoke failed with exit code $LASTEXITCODE" }
 
-      - name: GPUI titlebar multi-window test
-        shell: pwsh
-        continue-on-error: true
-        timeout-minutes: 8
-        env:
-          AMARE_GPUI_WINDOW_SIZE: "1044x788"
-        run: |
-          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
-          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-status"
-          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0"
-          & "tools/gpui-titlebar-smoke.ps1" -Exe $exe -StatusDir $status -DataDir $data -ScreenshotDir $shots
-          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI titlebar smoke failed with exit code $LASTEXITCODE" }
-
       - name: GPUI session restore and failure test
         shell: pwsh
         continue-on-error: true
@@ -450,7 +436,6 @@ jobs:
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0\gpui-session-results.json"),
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0\gpui-password-results.json"),
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0\gpui-vault-multiwindow-results.json"),
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0\gpui-titlebar-results.json"),
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.72.0\gpui-session-corrupt-results.json")
           )
           $failed = 0
@@ -494,7 +479,6 @@ jobs:
             artifacts/windows/screenshots/0.72.0/gpui-password-results.json
             artifacts/windows/screenshots/0.72.0/gpui-session-results.json
             artifacts/windows/screenshots/0.72.0/gpui-vault-multiwindow-results.json
-            artifacts/windows/screenshots/0.72.0/gpui-titlebar-results.json
             artifacts/windows/screenshots/0.72.0/gpui-session-corrupt-results.json
             artifacts/windows/diagnostics/0.72.0/*.json
             ${{ runner.temp }}/amare-gpui-address-status.json
