@@ -507,6 +507,7 @@ struct AmareApp {
     address_enter_count: u64,
     address_submit_count: u64,
     address_focused: bool,
+    address_bounds: Option<serde_json::Value>,
     last_submit_at_ms: i64,
     last_submit_result: String,
     last_submitted_len: usize,
@@ -628,6 +629,17 @@ impl AmareApp {
                 "id": id,
                 "edit": point(edit),
                 "delete": point(delete),
+            }));
+        }
+    }
+
+    fn record_address_bounds(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
+        if let Some(b) = bounds.first() {
+            self.address_bounds = Some(serde_json::json!({
+                "x": f32::from(b.origin.x),
+                "y": f32::from(b.origin.y),
+                "width": f32::from(b.size.width),
+                "height": f32::from(b.size.height),
             }));
         }
     }
@@ -811,6 +823,7 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
             last_submitted_len: 0,
@@ -927,6 +940,7 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
             last_submitted_len: 0,
@@ -1093,6 +1107,7 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
             last_submitted_len: 0,
@@ -1425,6 +1440,7 @@ impl AmareApp {
             "address_enter_count": self.address_enter_count,
             "address_submit_count": self.address_submit_count,
             "address_focused": self.address_focused,
+            "address_bounds": self.address_bounds,
             "last_submit_at_ms": self.last_submit_at_ms,
             "last_submit_result": self.last_submit_result,
             "last_submitted_len": self.last_submitted_len,
@@ -5558,6 +5574,14 @@ impl Render for AmareApp {
                     )
                     .child(
                         div()
+                            .on_children_prepainted({
+                                let weak = cx.weak_entity();
+                                move |bounds, _window, cx| {
+                                    let _ = weak.update(cx, |this, _cx| {
+                                        this.record_address_bounds(bounds);
+                                    });
+                                }
+                            })
                             .id("address")
                             .flex()
                             .items_center()

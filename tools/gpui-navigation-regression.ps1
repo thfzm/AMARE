@@ -97,8 +97,17 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     [AmareTestFocus]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 250
 }
+function Click-Address([IntPtr]$hwnd, [switch]$Fallback) {
+    $state = Read-State $hwnd
+    if (-not $Fallback -and $null -ne $state -and $null -ne $state.address_bounds) {
+        $b = $state.address_bounds
+        Click-Client $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+    } else {
+        Click-Client $hwnd 420 $(if ($Fallback) { 105 } else { 70 })
+    }
+}
 function Focus-Address([IntPtr]$hwnd, [switch]$SkipClick) {
-    if (-not $SkipClick) { Click-Client $hwnd 420 70 }
+    if (-not $SkipClick) { Click-Address $hwnd }
     Send-GpuiShortcut $hwnd 0x4C
     try {
         [void](Wait-State $hwnd { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 6 "address selected")
@@ -135,7 +144,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         } catch {
             if ($submitAttempt -eq 1) { break }
             Add-Result "submit-callback-$($script:case)" "UNVERIFIED" "first Enter not observed; retrying explicit address click"
-            Click-Client $hwnd 420 105
+            Click-Address $hwnd -Fallback
             Send-GpuiShortcut $hwnd 0x4C
             Send-Keys "^a"; Send-Keys "{BACKSPACE}"
             Send-Keys $url

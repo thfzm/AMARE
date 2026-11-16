@@ -143,6 +143,18 @@ function Wait-StateBool([IntPtr]$hwnd, [scriptblock]$test, [int]$seconds) {
     }
     return $false
 }
+function Wait-WindowReady([IntPtr]$hwnd, [int]$seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $state = Get-State $hwnd
+        if ($null -ne $state) {
+            $tab = @($state.tabs | Where-Object { $_.id -eq $state.active_tab })[0]
+            if ($null -ne $tab -and $tab.webview -eq $true -and $tab.loading -eq $false) { return $true }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return $false
+}
 function Check-OtherWindow([IntPtr]$hwnd, [string]$step) {
     $valid = [AmareTitlebar]::IsWindow($hwnd)
     $live = @([AmareTitlebar]::Windows([int]$script:app.Id)).Count
@@ -211,6 +223,10 @@ try {
             } else {
                 continue
             }
+        }
+        if (-not (Wait-WindowReady $hwnd 12)) {
+            Add-Result "$label-ready" "UNVERIFIED" "window did not reach webview=true/loading=false before input"
+            continue
         }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 300
