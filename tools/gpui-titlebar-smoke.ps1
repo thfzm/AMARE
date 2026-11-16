@@ -143,6 +143,16 @@ function Wait-StateBool([IntPtr]$hwnd, [scriptblock]$test, [int]$seconds) {
     }
     return $false
 }
+function Check-OtherWindow([IntPtr]$hwnd, [string]$step) {
+    $valid = [AmareTitlebar]::IsWindow($hwnd)
+    $live = @([AmareTitlebar]::Windows([int]$script:app.Id)).Count
+    if ($valid) {
+        Add-Result "hwnd-window2-$step" "PASS" "IsWindow=true live_windows=$live"
+    } else {
+        Add-Result "hwnd-window2-$step" "FAIL" "IsWindow=false live_windows=$live"
+    }
+    return $valid
+}
 function Shot([IntPtr]$hwnd, [string]$name) {
     $rect = New-Object AmareTitlebar+RECT
     [void][AmareTitlebar]::GetWindowRect($hwnd, [ref]$rect)
@@ -193,20 +203,28 @@ try {
         $label = "window$($i + 1)"
         Write-Host "TITLEBAR window=$i handle=$($hwnd.ToInt64())"
         if (-not [AmareTitlebar]::IsWindow($hwnd)) {
-            Add-Result "$label-handle" "FAIL" "window handle is no longer valid"
-            continue
+            Add-Result "$label-handle" "FAIL" "original window handle is no longer valid"
+            $live = @([AmareTitlebar]::Windows([int]$script:app.Id))
+            if ($i -eq 1 -and $live.Count -ge 2) {
+                Add-Result "window2-rediscovered" "UNVERIFIED" "original HWND invalid; continuing with a re-enumerated handle for evidence only"
+                $hwnd = $live[1]
+            } else {
+                continue
+            }
         }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 300
         $maximize = Try-Click-State $hwnd "window_max" { [AmareTitlebar]::IsZoomed($hwnd) } 4
         if ($maximize) {
             Add-Result "$label-titlebar-maximize" "PASS" "IsZoomed=true via real mouse"
+            if ($i -eq 0 -and $handles.Count -ge 2) { [void](Check-OtherWindow $handles[1] "after-window1-maximize") }
         } else {
             Add-Result "$label-titlebar-maximize" "UNVERIFIED" "window did not maximize"
         }
         $restore = Try-Click-State $hwnd "window_max" { -not [AmareTitlebar]::IsZoomed($hwnd) } 4
         if ($restore) {
             Add-Result "$label-titlebar-restore" "PASS" "IsZoomed=false via real mouse"
+            if ($i -eq 0 -and $handles.Count -ge 2) { [void](Check-OtherWindow $handles[1] "after-window1-restore") }
         } else {
             Add-Result "$label-titlebar-restore" "UNVERIFIED" "window did not restore"
         }
@@ -221,9 +239,11 @@ try {
         $minimize = Try-Click-State $hwnd "window_min" { [AmareTitlebar]::IsIconic($hwnd) } 4
         if ($minimize) {
             Add-Result "$label-titlebar-minimize" "PASS" "IsIconic=true via real mouse"
+            if ($i -eq 0 -and $handles.Count -ge 2) { [void](Check-OtherWindow $handles[1] "after-window1-minimize") }
             [void][AmareTitlebar]::ShowWindow($hwnd, 9)
             if (Wait-StateBool $hwnd { -not [AmareTitlebar]::IsIconic($hwnd) } 6) {
                 Add-Result "$label-minimize-restore" "PASS" "restored from minimized state"
+                if ($i -eq 0 -and $handles.Count -ge 2) { [void](Check-OtherWindow $handles[1] "after-window1-minimize-restore") }
             } else {
                 Add-Result "$label-minimize-restore" "UNVERIFIED" "window stayed minimized"
             }

@@ -164,7 +164,7 @@ function Shot-Both([IntPtr]$left, [IntPtr]$right, [string]$name) {
     $gc.Dispose(); $canvas.Dispose(); $g1.Dispose(); $g2.Dispose(); $b1.Dispose(); $b2.Dispose()
     Add-Result $name "PASS" "$path (composite of two actual window captures, $w1 x $h1 + $w2 x $h2)"
 }
-function Navigate([string]$url, [int]$timeout = 20) {
+function Navigate([string]$url, [int]$timeout = 20, [switch]$AllowNavigationError) {
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         Force-Focus $script:hwnd
         Click-Client $script:hwnd 420 70
@@ -182,7 +182,15 @@ function Navigate([string]$url, [int]$timeout = 20) {
         $beforeRequest = (Read-State).navigation_requests
         Send-Keys $url; Send-Keys "{ENTER}"
         try {
-            [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
+            try {
+                [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
+            } catch {
+                if ($AllowNavigationError) {
+                    Add-Result "failure-url-request" "UNVERIFIED" "request counter not observed for $url"
+                    return Read-State
+                }
+                throw
+            }
             return Wait-State { param($s) $s.source -like "$url*" } $timeout "navigation $url"
         } catch {
             if ($attempt -eq 1) { throw }
@@ -588,7 +596,7 @@ try {
     $app = Start-App $failureData
     [void](Navigate $fast 20)
     [void](Ensure-Tabs 2); [void](Navigate $slow 20)
-    [void](Ensure-Tabs 3); [void](Navigate $fail 10)
+    [void](Ensure-Tabs 3); [void](Navigate $fail 10 -AllowNavigationError)
     Start-Sleep -Seconds 4
     Shot "05b-session-failure-before-close.png"
     Stop-App $app

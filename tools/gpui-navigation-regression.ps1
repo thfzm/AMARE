@@ -33,8 +33,9 @@ public static class AmareNav {
 }
 '@
 
-$localPage = (Resolve-Path (Join-Path $PSScriptRoot "..\apps\amare-gpui\test-page\index.html")).Path -replace '\\','/'
-$BaseUrl = "file:///$localPage"
+$localPagePath = (Resolve-Path (Join-Path $PSScriptRoot "..\apps\amare-gpui\test-page\index.html")).Path
+$BaseUrl = ([Uri]::new($localPagePath)).AbsoluteUri
+if (-not (Test-Path $localPagePath)) { throw "navigation fixture missing: $localPagePath" }
 $script:results = [System.Collections.Generic.List[object]]::new()
 function Add-Result([string]$name, [string]$state, [string]$detail) {
     $script:results.Add([pscustomobject]@{ name = $name; result = $state; detail = $detail })
@@ -107,12 +108,20 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $mouseBefore = [int64]$state.mouse_down_count
     $keyBefore = [int64]$state.key_down_count
     $requestBefore = [int64]$state.navigation_requests
+    $submitBefore = [int64]$state.address_submit_count
     $selected = Focus-Address $hwnd -SkipClick:$SkipClick
     $state = Read-State $hwnd
-    Add-Result "input-delivery-$($script:case)" "PASS" "mouse_delta=$([int64]$state.mouse_down_count - $mouseBefore) key_delta=$([int64]$state.key_down_count - $keyBefore) selected=$selected foreground=$([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)"
+    Add-Result "input-delivery-$($script:case)" "PASS" "mouse_delta=$([int64]$state.mouse_down_count - $mouseBefore) selected=$selected focused=$($state.address_focused) foreground=$([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)"
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     Send-Keys $url
     Send-Keys "{ENTER}"
+    try {
+        [void](Wait-State $hwnd { param($s) [int64]$s.address_submit_count -gt [int64]$submitBefore } 10 "address submit callback")
+        Add-Result "submit-callback-$($script:case)" "PASS" "submit_count=$((Read-State $hwnd).address_submit_count) result=$((Read-State $hwnd).last_submit_result)"
+    } catch {
+        Add-Result "submit-callback-$($script:case)" "FAIL" "Enter/submit callback not observed"
+        return $null
+    }
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.navigation_requests -gt [int64]$requestBefore } 10 "navigation request")
         $pendingSeen = $false
@@ -121,7 +130,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
             $pendingSeen = $true
         } catch { }
         $done = Wait-State $hwnd { param($s) $s.source -like "$url*" -and @($s.tabs | Where-Object { $_.id -eq $s.active_tab })[0].loading -eq $false } $seconds "navigation complete"
-        Add-Result "navigation-$($script:case)" "PASS" "source=$($done.source) loading=false pending_seen=$pendingSeen requests=$($done.navigation_requests)"
+        Add-Result "navigation-$($script:case)" "PASS" "source=$($done.source) loading=false pending_seen=$pendingSeen requests=$($done.navigation_requests) submit_result=$($done.last_submit_result)"
         return $done
     } catch {
         $state = Read-State $hwnd

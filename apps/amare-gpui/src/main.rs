@@ -504,6 +504,13 @@ struct AmareApp {
     last_action: Option<String>,
     mouse_down_count: u64,
     key_down_count: u64,
+    address_enter_count: u64,
+    address_submit_count: u64,
+    address_focused: bool,
+    last_submit_at_ms: i64,
+    last_submit_result: String,
+    last_submitted_len: usize,
+    last_navigation_dispatch_at_ms: i64,
     last_input_at_ms: i64,
     last_click_x: f32,
     last_click_y: f32,
@@ -801,6 +808,13 @@ impl AmareApp {
             last_action: None,
             mouse_down_count: 0,
             key_down_count: 0,
+            address_enter_count: 0,
+            address_submit_count: 0,
+            address_focused: false,
+            last_submit_at_ms: 0,
+            last_submit_result: String::new(),
+            last_submitted_len: 0,
+            last_navigation_dispatch_at_ms: 0,
             last_input_at_ms: 0,
             last_click_x: 0.0,
             last_click_y: 0.0,
@@ -910,6 +924,13 @@ impl AmareApp {
             last_action: None,
             mouse_down_count: 0,
             key_down_count: 0,
+            address_enter_count: 0,
+            address_submit_count: 0,
+            address_focused: false,
+            last_submit_at_ms: 0,
+            last_submit_result: String::new(),
+            last_submitted_len: 0,
+            last_navigation_dispatch_at_ms: 0,
             last_input_at_ms: 0,
             last_click_x: 0.0,
             last_click_y: 0.0,
@@ -1069,6 +1090,13 @@ impl AmareApp {
             last_action: None,
             mouse_down_count: 0,
             key_down_count: 0,
+            address_enter_count: 0,
+            address_submit_count: 0,
+            address_focused: false,
+            last_submit_at_ms: 0,
+            last_submit_result: String::new(),
+            last_submitted_len: 0,
+            last_navigation_dispatch_at_ms: 0,
             last_input_at_ms: 0,
             last_click_x: 0.0,
             last_click_y: 0.0,
@@ -1382,6 +1410,13 @@ impl AmareApp {
             "last_action": self.last_action,
             "mouse_down_count": self.mouse_down_count,
             "key_down_count": self.key_down_count,
+            "address_enter_count": self.address_enter_count,
+            "address_submit_count": self.address_submit_count,
+            "address_focused": self.address_focused,
+            "last_submit_at_ms": self.last_submit_at_ms,
+            "last_submit_result": self.last_submit_result,
+            "last_submitted_len": self.last_submitted_len,
+            "last_navigation_dispatch_at_ms": self.last_navigation_dispatch_at_ms,
             "last_input_at_ms": self.last_input_at_ms,
             "last_click_x": self.last_click_x,
             "last_click_y": self.last_click_y,
@@ -2387,7 +2422,10 @@ impl AmareApp {
             None => self.search_engine_url(&input),
         };
         let tab = self.active_tab_mut();
-        let Some(tab) = tab else { return };
+        let Some(tab) = tab else {
+            self.last_submit_result = "no-active-tab".into();
+            return;
+        };
         tab.url = url.clone().into();
         tab.title = title_for(&url).into();
         tab.loading = true;
@@ -2406,11 +2444,17 @@ impl AmareApp {
                 webview.navigate(&url);
                 webview.focus();
                 self.tabs[index].pending_navigation = None;
+                self.last_submit_result = "dispatched".into();
             } else {
                 // The controller is attached asynchronously (new/restored tab).
                 // Queue the navigation so the first address submit is not lost.
                 self.tabs[index].pending_navigation = Some(url);
+                self.last_submit_result = "queued-no-controller".into();
             }
+            self.last_navigation_dispatch_at_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
         }
     }
 
@@ -2738,9 +2782,17 @@ impl AmareApp {
         cx.notify();
     }
 
-    fn submit_address(&mut self, _: &SubmitAddress, _window: &mut Window, cx: &mut Context<Self>) {
+    fn submit_address(&mut self, _: &SubmitAddress, window: &mut Window, cx: &mut Context<Self>) {
+        self.address_submit_count = self.address_submit_count.saturating_add(1);
+        self.last_submit_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.last_submitted_len = self.address_value(cx).len();
+        self.address_focused = self.address_input.read(cx).is_focused(window);
         self.trace_action("SubmitAddress");
         if self.panel == LibraryPanel::Settings {
+            self.last_submit_result = "settings-sync".into();
             self.sync_settings_text(true, cx);
             cx.notify();
             return;
@@ -5095,6 +5147,7 @@ impl Render for AmareApp {
             );
             self.start_status_poll(cx);
         }
+        self.address_focused = self.address_input.read(cx).is_focused(window);
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
@@ -5260,6 +5313,10 @@ impl Render for AmareApp {
             }))
             .on_key_down(cx.listener(|this: &mut Self, event: &gpui::KeyDownEvent, window, cx| {
                 this.key_down_count = this.key_down_count.saturating_add(1);
+                if event.keystroke.key.eq_ignore_ascii_case("enter") {
+                    this.address_enter_count = this.address_enter_count.saturating_add(1);
+                }
+                this.address_focused = this.address_input.read(cx).is_focused(window);
                 this.last_key = event.keystroke.to_string();
                 this.last_input_at_ms = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
