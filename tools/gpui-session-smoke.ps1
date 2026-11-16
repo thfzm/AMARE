@@ -512,7 +512,65 @@ try {
     }
     if (-not $app.WaitForExit(25000)) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
 
-    # D. Failure restore: one slow tab and one unreachable tab.
+    # D. Close one of two windows, keep the other well past the grace window,
+    # then close it: the closed window must not resurrect.
+    $resurrectData = Join-Path $DataDir "resurrect"
+    New-Item -ItemType Directory -Force -Path $resurrectData | Out-Null
+    $app = Start-App $resurrectData -SecondWindow
+    [void](Wait-SessionWindows $app 2 25 "two windows for resurrection test")
+    $resurrectWindows = @(Get-SessionWindows $app)
+    [void](Force-AmareForeground $resurrectWindows[0])
+    Send-Keys "%{F4}"
+    Start-Sleep -Seconds 1
+    $remaining = @(Get-SessionWindows $app)
+    if ($remaining.Count -eq 1) {
+        Add-Result "session-one-window-close" "PASS" "one window closed; one remains"
+    } else {
+        Add-Result "session-one-window-close" "FAIL" "windows=$($remaining.Count), expected 1"
+    }
+    Start-Sleep -Seconds 12
+    if ($remaining.Count -ge 1) {
+        [void](Force-AmareForeground $remaining[0])
+        Send-Keys "%{F4}"
+    }
+    if (-not $app.WaitForExit(25000)) { throw "resurrection test app did not exit" }
+    Start-Sleep -Seconds 2
+    $savedResurrect = @(Get-SessionWindowList (Get-SavedSession $resurrectData))
+    if ($savedResurrect.Count -eq 1) {
+        Add-Result "session-no-resurrection" "PASS" "saved windows=1 after earlier close + grace"
+    } else {
+        Add-Result "session-no-resurrection" "FAIL" "saved windows=$($savedResurrect.Count), expected 1"
+    }
+    $app = Start-App $resurrectData
+    try {
+        $restoredOne = Wait-SessionWindows $app 1 20 "single restored window"
+        Add-Result "session-no-resurrection-restore" "PASS" "restored windows=$($restoredOne.Count)"
+    } catch {
+        Add-Result "session-no-resurrection-restore" "UNVERIFIED" $_.Exception.Message
+    }
+    foreach ($window in (Get-SessionWindows $app)) {
+        [void](Force-AmareForeground $window)
+        Send-Keys "%{F4}"
+    }
+    if (-not $app.WaitForExit(25000)) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+
+    # E. Autosave/close race: close immediately after a navigation submit.
+    $immediateData = Join-Path $DataDir "immediate"
+    New-Item -ItemType Directory -Force -Path $immediateData | Out-Null
+    $app = Start-App $immediateData -ForceNormal
+    [void](Navigate $fast 20)
+    $immediateUrl = (Read-State).source
+    Stop-App $app
+    $app = Start-App $immediateData
+    try {
+        [void](Wait-State { param($s) $s.source -eq $immediateUrl } 25 "immediate-close restore")
+        Add-Result "session-immediate-autosave-close" "PASS" "restored $immediateUrl after immediate close"
+    } catch {
+        Add-Result "session-immediate-autosave-close" "UNVERIFIED" "source=$((Read-State).source) expected=$immediateUrl"
+    }
+    Stop-App $app
+
+    # F. Failure restore: one slow tab and one unreachable tab.
     $app = Start-App $failureData
     [void](Navigate $fast 20)
     [void](Ensure-Tabs 2); [void](Navigate $slow 20)

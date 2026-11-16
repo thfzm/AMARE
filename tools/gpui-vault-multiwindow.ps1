@@ -236,7 +236,7 @@ function Add-Account([IntPtr]$hwnd, [string]$origin, [string]$user, [string]$pas
     [void](Wait-State $hwnd { param($s) $s.password_vault.form_open } 8 "add form")
     # begin_password_add focuses the origin field. Use the form's natural
     # Tab order so add does not depend on absolute field coordinates.
-    [void](Force-Focus $hwnd)
+    Focus-Window $hwnd
     Start-Sleep -Milliseconds 250
     Send-Keys "^a"; [System.Windows.Forms.SendKeys]::SendWait($origin)
     Send-Keys "{TAB}"; Send-Keys "^a"; [System.Windows.Forms.SendKeys]::SendWait($user)

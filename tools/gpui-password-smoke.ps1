@@ -328,13 +328,20 @@ try {
     Shot "06-password-reveal.png"
 
     $edit = $false
-    foreach ($y in 330, 336, 342) {
-        foreach ($x in 950, 960, 970, 980) {
-            Click-Client $script:hwnd $x $y
+    $alice = @((Read-State).password_vault.entries | Where-Object username -eq "alice")[0]
+    if ($null -ne $alice) {
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
+            $action = @((Read-State).password_actions | Where-Object { [int64]$_.id -eq [int64]$alice.id })[0]
+            if ($null -ne $action -and $null -ne $action.edit) {
+                $b = $action.edit
+                Click-Client $script:hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+            } else {
+                Click-Client $script:hwnd 995 270
+            }
+            Start-Sleep -Milliseconds 300
             $state = Read-State
             if ($state.password_vault.form_open) { $edit = $true; break }
         }
-        if ($edit) { break }
     }
     if (-not $edit) { throw "Timed out waiting for edit form" }
     Shot "05-account-edit.png"
@@ -343,9 +350,14 @@ try {
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
     Send-GpuiShortcut $script:hwnd 0x4C
+    try {
+        [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected")
+    } catch { }
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    $beforeRequest = (Read-State).navigation_requests
     [System.Windows.Forms.SendKeys]::SendWait($LoginUrl)
     Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "login navigation request")
     [void](Wait-State { param($s) $s.source -like "$LoginUrl*" } 25 "login page")
     Start-Sleep -Seconds 1
     Open-Passwords
@@ -388,6 +400,9 @@ try {
         [void](Force-AmareForeground $script:hwnd)
         Click-Client $script:hwnd 420 70
         Send-GpuiShortcut $script:hwnd 0x4C
+        try {
+            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected")
+        } catch { }
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         [System.Windows.Forms.SendKeys]::SendWait($url)
         Send-Keys "{ENTER}"

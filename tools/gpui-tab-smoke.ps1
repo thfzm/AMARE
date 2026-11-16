@@ -187,7 +187,13 @@ function Navigate([string]$url, [int]$timeout = 20) {
         [void](Force-AmareForeground $script:hwnd)
         Send-RealClientClick $script:hwnd 420 70
         Send-GpuiShortcut $script:hwnd 0x4C
-        Start-Sleep -Milliseconds 250
+        try {
+            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected")
+        } catch {
+            Send-RealClientClick $script:hwnd 420 70
+            Send-GpuiShortcut $script:hwnd 0x4C
+            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected retry")
+        }
         Send-Keys "^a"
         Send-Keys "{BACKSPACE}"
         $beforeRequest = (Read-State).navigation_requests

@@ -177,13 +177,21 @@ function Get-Address([int]$timeout = 8) {
 function Navigate-Address([string]$url, [int]$timeout = 20) {
     for ($attempt = 1; $attempt -le 2; $attempt++) {
         [void](Force-AmareForeground $script:hwnd)
-        Send-Keys "^l"
-        Start-Sleep -Milliseconds 250
+        Send-GpuiShortcut $script:hwnd 0x4C
+        try {
+            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected")
+        } catch {
+            Send-RealClientClick $script:hwnd 420 70
+            Send-GpuiShortcut $script:hwnd 0x4C
+            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected retry")
+        }
         Send-Keys "^a"
         Send-Keys "{BACKSPACE}"
+        $beforeRequest = (Read-State).navigation_requests
         Send-Keys $url
         Send-Keys "{ENTER}"
         try {
+            [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
             return Wait-State { param($s) $s.source -eq $url } $timeout "navigation to $url"
         } catch {
             if ($attempt -eq 2) { throw }
