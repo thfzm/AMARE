@@ -1,22 +1,21 @@
-# GPUI migration gaps and P0/P1 plan (0.71.0)
+# GPUI migration gaps and P0/P1 plan (0.72.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.71.0 status
+## 0.72.0 status
 
-- Titlebar maximize/restore: explicit Win32 `SW_RESTORE` branch; two windows
-  **16/0/0 PASS** in all three complete repeats.
-- Session persistence: revisioned payload, final revision guard, 10s close
-  grace. Multi-window **saved 2 / restored 2 PASS**.
-- Fidelity: active URL/WebView2 Source, scroll, normal client geometry,
-  maximized save/restore **PASS**.
-- Corrupt metadata / empty / corrupt DB fallback **PASS**; corrupt JSON
-  fallback **UNVERIFIED** in the final repeats.
-- Vault delete confirm/applied/propagation, tombstones and restart integrity
-  **PASS** (best 29/0/0).
-- Three complete repeats: **5/6/6 FAIL** (best 5 FAIL/2 UNVERIFIED); remaining
-  FAILs are first click/navigation automation timing.
+- First navigation: product now queues navigation when WebView2 is not
+  attached; tests separate request from source/completion.
+- Corrupt session matrix: **14/14 PASS** in all three complete repeats.
+- Session persistence regression: **30/0/1** in two repeats; multi-window
+  2→2, active URL, scroll, geometry, maximized, immediate close and
+  no-resurrection PASS.
+- Titlebar: 0.72 pre-final run **12/0/0**; final CI isolates a second-window
+  harness hang.
+- Three complete repeats: **3/4/4 FAIL** (best 3 FAIL/9 UNVERIFIED); remaining
+  FAILs are first click/submit automation in password/vault/library/settings
+  and the titlebar CI hang.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -27,7 +26,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.71.0.
+WinUI remains the default package. GPUI is not switched to default in 0.72.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -72,7 +71,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.71.0.
+- no public release is created by CI in 0.72.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

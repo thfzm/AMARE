@@ -82,14 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.71.0)
+## 5. 현재 실행 상태 (0.72.0)
 
-- Windows CI [43774705662](https://github.com/thfzm/AMARE/actions/runs/43774705662): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43774705622](https://github.com/thfzm/AMARE/actions/runs/43774705622): **SUCCESS**.
-- GPUI 3회 완전 반복(동일 `7253c68`): **5 FAIL/2 UNVERIFIED**, **6/6**, **6/6** — 3회 연속 0 FAIL **미달**. 별도 run `43774716984`는 canceled/session skipped로 제외.
-- GPUI titlebar: 두 창 maximize/restore/minimize **16/0/0**, 3회 완전 반복 모두 PASS.
-- GPUI session: multi-window **saved 2/restored 2**, active URL, scroll `scrollY=2181`, client `1028x779`, maximized `IsZoomed=true` **PASS**; corrupt metadata/empty/corrupt DB **PASS**, corrupt JSON **UNVERIFIED**.
-- GPUI Vault: dave delete confirm/applied/propagation, tombstone, restart integrity **PASS** (최고 29/0/0).
-- 남은 FAIL은 password reveal, vault form, tab/library 첫 navigation, settings 첫 category/search 등 **자동화 click/focus/timing**입니다.
-- 실제 Windows 11 사용자, titlebar double-click, Snap, Alt+Tab, taskbar, DPI 125/150/200%, 다중 모니터는 **UNVERIFIED**.
+- Windows CI [43814816238](https://github.com/thfzm/AMARE/actions/runs/43814816238): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43814816318](https://github.com/thfzm/AMARE/actions/runs/43814816318): **SUCCESS**.
+- GPUI 3회 완전 반복(`30c4a62`): **3 FAIL/9 UNVERIFIED**, **4/5**, **4/8** — 3회 연속 0 FAIL **미달**.
+- GPUI corrupt session matrix: **14/14 PASS** (empty/truncated/invalid/missing/unknown/duplicate/invalid URL/active/scroll/legacy/mixed/empty/normal).
+- GPUI session persistence: **30 PASS / 0 FAIL / 1 UNVERIFIED** (2회); multi-window 2→2, active URL, scroll, geometry, maximized, immediate close, no-resurrection PASS.
+- GPUI first navigation: controller 미attach 시 `pending_navigation` 큐로 유실 방지.
+- Titlebar: 0.72 선행 run **12/0/0**, 0.71 **16/0/0**; final CI는 second-window hang 때문에 step을 분리.
+- 남은 FAIL은 password/vault/library/settings 첫 click/submit 자동화와 titlebar CI hang입니다.
+- 실제 Windows 11, DPI 125/150/200%, Snap, Alt+Tab, 다중 모니터는 **UNVERIFIED**.
 - unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**, ALL_SITE 삭제는 **read-only/BLOCKED**입니다.
