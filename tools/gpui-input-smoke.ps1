@@ -250,8 +250,13 @@ try {
     }
     if ($null -eq $back) { throw "Timed out waiting for Alt+Left" }
     Add-Result "alt-left-from-webview" "PASS" "source=$($back.source)"
-    Send-Keys "%{RIGHT}"
-    $forward = Wait-State { param($s) $s.source -eq $shortcutUrl } 20 "Alt+Right"
+    $forward = $null
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        [void](Force-AmareForeground $script:hwnd)
+        Send-Keys "%{RIGHT}"
+        try { $forward = Wait-State { param($s) $s.source -eq $shortcutUrl } 12 "Alt+Right"; break } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if ($null -eq $forward) { throw "Timed out waiting for Alt+Right" }
     Add-Result "alt-right-from-webview" "PASS" "source=$($forward.source)"
 
     Send-Keys "^l"

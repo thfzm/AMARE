@@ -262,7 +262,9 @@ try {
     Shot "01-initial-browser.png"
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    Send-GpuiShortcut $script:hwnd 0x4C
+    try { [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected") } catch { }
+    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/index.html")
     Send-Keys "{ENTER}"
     [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/index.html*" } 25 "normal page")
@@ -270,16 +272,22 @@ try {
     Shot "02-normal-page.png"
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    Send-GpuiShortcut $script:hwnd 0x4C
+    try { [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected") } catch { }
+    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    $beforeRequest = (Read-State).navigation_requests
     [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/capture-test.html")
     Send-Keys "{ENTER}"
+    [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "capture navigation request")
     [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/capture-test.html*" } 20 "capture test page")
     Start-Sleep -Milliseconds 700
     Shot "02-capture-test-window.png"
     Capture-Auto "02-page-content.png"
     [void](Force-AmareForeground $script:hwnd)
     Click-Client $script:hwnd 420 70
-    Send-Keys "^l"; Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    Send-GpuiShortcut $script:hwnd 0x4C
+    try { [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected") } catch { }
+    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     [System.Windows.Forms.SendKeys]::SendWait("http://127.0.0.1:8767/index.html")
     Send-Keys "{ENTER}"
     [void](Wait-State { param($s) $s.source -like "http://127.0.0.1:8767/index.html*" } 25 "normal page restored")
