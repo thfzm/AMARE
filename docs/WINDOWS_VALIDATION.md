@@ -82,15 +82,16 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.72.0)
+## 5. 현재 실행 상태 (0.73.0)
 
-- Windows CI [43814816238](https://github.com/thfzm/AMARE/actions/runs/43814816238): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43814816318](https://github.com/thfzm/AMARE/actions/runs/43814816318): **SUCCESS**.
-- GPUI 3회 완전 반복(`30c4a62`): **3 FAIL/9 UNVERIFIED**, **4/5**, **4/8** — 3회 연속 0 FAIL **미달**.
-- GPUI corrupt session matrix: **14/14 PASS** (empty/truncated/invalid/missing/unknown/duplicate/invalid URL/active/scroll/legacy/mixed/empty/normal).
-- GPUI session persistence: **30 PASS / 0 FAIL / 1 UNVERIFIED** (2회); multi-window 2→2, active URL, scroll, geometry, maximized, immediate close, no-resurrection PASS.
-- GPUI first navigation: controller 미attach 시 `pending_navigation` 큐로 유실 방지.
-- Titlebar: 0.72 선행 run **12/0/0**, 0.71 **16/0/0**; final CI는 second-window hang 때문에 step을 분리.
-- 남은 FAIL은 password/vault/library/settings 첫 click/submit 자동화와 titlebar CI hang입니다.
+- Windows CI [43831963819](https://github.com/thfzm/AMARE/actions/runs/43831963819): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43831963861](https://github.com/thfzm/AMARE/actions/runs/43831963861): **SUCCESS**.
+- GPUI 3회 완전 반복(`7de834c`): **8 FAIL/5 UNVERIFIED**, **9/11**, **10/6** — 3회 연속 0 FAIL **미달**.
+- GPUI corrupt session: **14/14 PASS — 3회 모두**.
+- GPUI session persistence core: 2회 PASS — multi-window 2→2, active URL, scroll, geometry, maximized, immediate close, no-resurrection.
+- Input delivery telemetry: mouse/key count, foreground/active window, click, navigation request를 status에 기록.
+- Navigation regression suite: new-tab immediate, rapid submit, new-window first, restore first, corrupt resave.
+- Titlebar 별도 workflow [43836783288](https://github.com/thfzm/AMARE/actions/runs/43836783288): **FAIL** — window1 조작 후 window2 handle invalid.
+- 남은 FAIL은 password/vault/tab/library/settings 첫 click/submit 자동화와 navigation harness fixture입니다.
 - 실제 Windows 11, DPI 125/150/200%, Snap, Alt+Tab, 다중 모니터는 **UNVERIFIED**.
 - unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**, ALL_SITE 삭제는 **read-only/BLOCKED**입니다.

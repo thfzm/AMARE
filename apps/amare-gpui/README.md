@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.72.0)
+# AMARE GPUI Windows Shell (0.73.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.72.0)
+## Verified in Windows CI (0.73.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.73 adds mouse/key/foreground/navigation-request telemetry and a navigation regression suite that separates event delivery from state change. Corrupt session is 14/0 in all three repeats; session persistence core passes multi-window 2→2, immediate close and no-resurrection. The titlebar multi-window workflow fails on window2 handle validity, and first-click automation remains flaky. Three repeats are 8/9/10 FAIL, so GPUI is not the default build.
 - 0.72 queues address navigation when a tab has no WebView2 controller yet, so the first submit is not lost; adds an explicit double-click toggle, invalid-JSON raw backup, and a 14-case corrupt-session matrix. Corrupt session is 14/0 in all three repeats; session persistence is 30/0/1 in two repeats. Three repeats are 3/4/4 FAIL (best 3 FAIL/9 UNVERIFIED), so GPUI is not the default build.
 - 0.71 adds an explicit Win32 `SW_RESTORE` branch for titlebar restore (GPUI `zoom()` always maximizes), revisioned session payloads with a final-snapshot guard and multi-window close grace, and normal-placement/maximized geometry persistence. Both-window titlebar max/restore/minimize is 16/0/0; multi-window session saves/restores 2 windows; active URL, scroll, geometry and maximized restore pass. Three complete repeats are 5/6/6 FAIL (best 5 FAIL/2 UNVERIFIED), so GPUI is not the default build.
 - 0.70 moves WebView2 create/navigate/set_active/focus outside GPUI entity borrows, removing the restored-window `RefCell already borrowed` panic. Titlebar minimize/maximize and Alt+F4 two-window graceful exit pass, and WebView2 cleanup reaches 0. Best repeat is 1 FAIL/17 UNVERIFIED; three repeats are 2/3/1 FAIL, so GPUI is not the default build. Titlebar restore/close, multi-window session restore, session scroll/geometry/maximized/corrupt fallback, and multiwindow Vault delete remain unresolved.

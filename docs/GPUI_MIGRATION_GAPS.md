@@ -1,21 +1,20 @@
-# GPUI migration gaps and P0/P1 plan (0.72.0)
+# GPUI migration gaps and P0/P1 plan (0.73.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.72.0 status
+## 0.73.0 status
 
-- First navigation: product now queues navigation when WebView2 is not
-  attached; tests separate request from source/completion.
-- Corrupt session matrix: **14/14 PASS** in all three complete repeats.
-- Session persistence regression: **30/0/1** in two repeats; multi-window
-  2→2, active URL, scroll, geometry, maximized, immediate close and
-  no-resurrection PASS.
-- Titlebar: 0.72 pre-final run **12/0/0**; final CI isolates a second-window
-  harness hang.
-- Three complete repeats: **3/4/4 FAIL** (best 3 FAIL/9 UNVERIFIED); remaining
-  FAILs are first click/submit automation in password/vault/library/settings
-  and the titlebar CI hang.
+- Input delivery telemetry: mouse/key counters, foreground/active, click and
+  navigation request are exposed in status.
+- Navigation regression suite added; separates request, pending/attach and
+  final Source/loading.
+- Corrupt session: **14/14 PASS** in all three repeats.
+- Session persistence core: multi-window 2→2, active URL, scroll, geometry,
+  maximized, immediate close and no-resurrection PASS in two repeats.
+- Titlebar independent workflow: **FAIL** on window2 handle validity.
+- Three complete repeats: **8/9/10 FAIL**; first-click/submit automation
+  remains flaky.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -26,7 +25,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.72.0.
+WinUI remains the default package. GPUI is not switched to default in 0.73.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -71,7 +70,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.72.0.
+- no public release is created by CI in 0.73.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
