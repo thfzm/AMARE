@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
@@ -26,6 +27,13 @@ actions!(
     ]
 );
 
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
 pub struct AddressInput {
     focus_handle: FocusHandle,
     content: SharedString,
@@ -37,6 +45,11 @@ pub struct AddressInput {
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,
     masked: bool,
+    text_input_count: u64,
+    mark_input_count: u64,
+    programmatic_set_count: u64,
+    last_text_len: usize,
+    last_edit_at_ms: i64,
 }
 
 impl AddressInput {
@@ -60,11 +73,26 @@ impl AddressInput {
             last_bounds: None,
             is_selecting: false,
             masked: false,
+            text_input_count: 0,
+            mark_input_count: 0,
+            programmatic_set_count: 0,
+            last_text_len: 0,
+            last_edit_at_ms: 0,
         }
     }
 
     pub fn content(&self) -> String {
         self.content.to_string()
+    }
+
+    pub fn input_stats(&self) -> (u64, u64, u64, usize, i64) {
+        (
+            self.text_input_count,
+            self.mark_input_count,
+            self.programmatic_set_count,
+            self.last_text_len,
+            self.last_edit_at_ms,
+        )
     }
 
     pub fn marked_range(&self) -> Option<Range<usize>> {
@@ -86,6 +114,9 @@ impl AddressInput {
         }
         let end = content.len();
         self.content = content;
+        self.programmatic_set_count = self.programmatic_set_count.saturating_add(1);
+        self.last_text_len = self.content.len();
+        self.last_edit_at_ms = now_ms();
         self.selected_range = end..end;
         self.selection_reversed = false;
         self.marked_range = None;
@@ -365,6 +396,9 @@ impl EntityInputHandler for AddressInput {
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.selection_reversed = false;
         self.marked_range.take();
+        self.text_input_count = self.text_input_count.saturating_add(1);
+        self.last_text_len = self.content.len();
+        self.last_edit_at_ms = now_ms();
         cx.notify();
     }
 
@@ -395,6 +429,9 @@ impl EntityInputHandler for AddressInput {
             .map(|new_range| new_range.start + range.start..new_range.end + range.start)
             .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
         self.selection_reversed = false;
+        self.mark_input_count = self.mark_input_count.saturating_add(1);
+        self.last_text_len = self.content.len();
+        self.last_edit_at_ms = now_ms();
         cx.notify();
     }
 

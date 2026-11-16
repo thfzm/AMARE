@@ -507,6 +507,9 @@ struct AmareApp {
     address_enter_count: u64,
     address_submit_count: u64,
     address_focused: bool,
+    address_was_focused: bool,
+    address_focus_gained_count: u64,
+    address_focus_lost_count: u64,
     address_bounds: Option<serde_json::Value>,
     last_submit_at_ms: i64,
     last_submit_result: String,
@@ -823,6 +826,9 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_was_focused: false,
+            address_focus_gained_count: 0,
+            address_focus_lost_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -940,6 +946,9 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_was_focused: false,
+            address_focus_gained_count: 0,
+            address_focus_lost_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -1107,6 +1116,9 @@ impl AmareApp {
             address_enter_count: 0,
             address_submit_count: 0,
             address_focused: false,
+            address_was_focused: false,
+            address_focus_gained_count: 0,
+            address_focus_lost_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -1250,6 +1262,13 @@ impl AmareApp {
         }
         let input = self.address_input.read(cx);
         let address = input.content();
+        let (
+            address_text_input_count,
+            address_mark_input_count,
+            address_set_count,
+            address_last_text_len,
+            address_last_edit_at_ms,
+        ) = input.input_stats();
         let marked = input
             .marked_range()
             .map(|range| serde_json::json!([range.start, range.end]));
@@ -1440,6 +1459,13 @@ impl AmareApp {
             "address_enter_count": self.address_enter_count,
             "address_submit_count": self.address_submit_count,
             "address_focused": self.address_focused,
+            "address_focus_gained_count": self.address_focus_gained_count,
+            "address_focus_lost_count": self.address_focus_lost_count,
+            "address_text_input_count": address_text_input_count,
+            "address_mark_input_count": address_mark_input_count,
+            "address_set_count": address_set_count,
+            "address_last_text_len": address_last_text_len,
+            "address_last_edit_at_ms": address_last_edit_at_ms,
             "address_bounds": self.address_bounds,
             "last_submit_at_ms": self.last_submit_at_ms,
             "last_submit_result": self.last_submit_result,
@@ -5176,6 +5202,12 @@ impl Render for AmareApp {
             self.start_status_poll(cx);
         }
         self.address_focused = self.address_input.read(cx).is_focused(window);
+        if self.address_focused && !self.address_was_focused {
+            self.address_focus_gained_count = self.address_focus_gained_count.saturating_add(1);
+        } else if !self.address_focused && self.address_was_focused {
+            self.address_focus_lost_count = self.address_focus_lost_count.saturating_add(1);
+        }
+        self.address_was_focused = self.address_focused;
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);

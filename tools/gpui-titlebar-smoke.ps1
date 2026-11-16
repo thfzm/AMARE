@@ -224,10 +224,19 @@ try {
                 continue
             }
         }
-        if (-not (Wait-WindowReady $hwnd 12)) {
+        Write-Host "TITLEBAR $label ready-check start"
+        $ready = Wait-WindowReady $hwnd 12
+        Write-Host "TITLEBAR $label ready-check end ready=$ready"
+        if (-not $ready) {
             Add-Result "$label-ready" "UNVERIFIED" "window did not reach webview=true/loading=false before input"
             continue
         }
+        $proc = Get-Process -Id $script:app.Id -ErrorAction SilentlyContinue
+        if ($null -eq $proc -or -not $proc.Responding) {
+            Add-Result "$label-responsive" "UNVERIFIED" "process missing or not responding before input"
+            continue
+        }
+        Add-Result "$label-responsive" "PASS" "process responding"
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 300
         $maximize = Try-Click-State $hwnd "window_max" { [AmareTitlebar]::IsZoomed($hwnd) } 4

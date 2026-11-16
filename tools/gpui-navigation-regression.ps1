@@ -127,6 +127,9 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $keyBefore = [int64]$state.key_down_count
     $requestBefore = [int64]$state.navigation_requests
     $submitBefore = [int64]$state.address_submit_count
+    $textBefore = [int64]$state.address_text_input_count
+    $enterBefore = [int64]$state.address_enter_count
+    $focusGainedBefore = [int64]$state.address_focus_gained_count
     $activeTab = @($state.tabs | Where-Object { $_.id -eq $state.active_tab })[0]
     $startedBefore = if ($null -ne $activeTab) { [int64]$activeTab.navigation_started } else { 0 }
     $selected = Focus-Address $hwnd -SkipClick:$SkipClick
@@ -134,7 +137,23 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     Add-Result "input-delivery-$($script:case)" "PASS" "mouse_delta=$([int64]$state.mouse_down_count - $mouseBefore) selected=$selected focused=$($state.address_focused) foreground=$([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)"
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
     Send-Keys $url
+    try {
+        [void](Wait-State $hwnd { param($s) [int64]$s.address_text_input_count -gt [int64]$textBefore } 6 "address text input")
+    } catch {
+        $now = Read-State $hwnd
+        Add-Result "text-input-$($script:case)" "FAIL" "address_text_input_count=$($now.address_text_input_count) focused=$($now.address_focused) selected=$($now.selected_range -join ',')"
+        return $null
+    }
+    Add-Result "text-input-$($script:case)" "PASS" "text_count=$((Read-State $hwnd).address_text_input_count) focus_gained_delta=$([int64](Read-State $hwnd).address_focus_gained_count - $focusGainedBefore)"
     Send-Keys "{ENTER}"
+    try {
+        [void](Wait-State $hwnd { param($s) [int64]$s.address_enter_count -gt [int64]$enterBefore } 6 "address enter event")
+    } catch {
+        $now = Read-State $hwnd
+        Add-Result "enter-event-$($script:case)" "FAIL" "address_enter_count=$($now.address_enter_count) focused=$($now.address_focused)"
+        return $null
+    }
+    Add-Result "enter-event-$($script:case)" "PASS" "enter_count=$((Read-State $hwnd).address_enter_count)"
     $submitOk = $false
     for ($submitAttempt = 0; $submitAttempt -lt 2; $submitAttempt++) {
         try {
