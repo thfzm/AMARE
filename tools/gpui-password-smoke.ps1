@@ -47,13 +47,22 @@ function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($k
 function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmarePassword+POINT
     [void][AmarePassword]::ClientToScreen($hwnd, [ref]$point)
-    [void](Force-AmareForeground $hwnd)
-    [void][AmarePassword]::SetCursorPos(($point.X + $x), ($point.Y + $y))
-    Start-Sleep -Milliseconds 120
-    [AmarePassword]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 80
-    [AmarePassword]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 350
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $before = [int64](Read-State).mouse_down_count
+        [void](Force-AmareForeground $hwnd)
+        Start-Sleep -Milliseconds 100
+        [void][AmarePassword]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+        Start-Sleep -Milliseconds 80
+        [AmarePassword]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 60
+        [AmarePassword]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        $deadline = (Get-Date).AddSeconds(2)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State
+            if ($null -ne $state -and [int64]$state.mouse_down_count -gt $before) { return }
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 function Click-Web([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmarePassword+POINT

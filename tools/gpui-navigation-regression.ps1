@@ -67,6 +67,15 @@ function Wait-States([int]$count, [int]$seconds, [string]$label) {
     }
     throw "Timed out waiting for $label (states=$(@(Read-AllStates).Count))"
 }
+function Wait-StatesAtLeast([int]$count, [int]$seconds, [string]$label) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $states = @(Read-AllStates)
+        if ($states.Count -ge $count) { return $states }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "Timed out waiting for $label (states=$(@(Read-AllStates).Count))"
+}
 function Wait-State([IntPtr]$hwnd, [scriptblock]$condition, [int]$seconds, [string]$label) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
@@ -109,6 +118,8 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $keyBefore = [int64]$state.key_down_count
     $requestBefore = [int64]$state.navigation_requests
     $submitBefore = [int64]$state.address_submit_count
+    $activeTab = @($state.tabs | Where-Object { $_.id -eq $state.active_tab })[0]
+    $startedBefore = if ($null -ne $activeTab) { [int64]$activeTab.navigation_started } else { 0 }
     $selected = Focus-Address $hwnd -SkipClick:$SkipClick
     $state = Read-State $hwnd
     Add-Result "input-delivery-$($script:case)" "PASS" "mouse_delta=$([int64]$state.mouse_down_count - $mouseBefore) selected=$selected focused=$($state.address_focused) foreground=$([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)"
@@ -124,13 +135,23 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     }
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.navigation_requests -gt [int64]$requestBefore } 10 "navigation request")
+        $startedSeen = $false
+        try {
+            [void](Wait-State $hwnd {
+                param($s)
+                $t = @($s.tabs | Where-Object { $_.id -eq $s.active_tab })[0]
+                $null -ne $t -and [int64]$t.navigation_started -gt [int64]$startedBefore
+            } 10 "NavigationStarting")
+            $startedSeen = $true
+        } catch { }
         $pendingSeen = $false
         try {
             [void](Wait-State $hwnd { param($s) @($s.tabs | Where-Object { $_.id -eq $s.active_tab -and $null -ne $_.pending_navigation }).Count -ge 1 } 2 "pending navigation")
             $pendingSeen = $true
         } catch { }
         $done = Wait-State $hwnd { param($s) $s.source -like "$url*" -and @($s.tabs | Where-Object { $_.id -eq $s.active_tab })[0].loading -eq $false } $seconds "navigation complete"
-        Add-Result "navigation-$($script:case)" "PASS" "source=$($done.source) loading=false pending_seen=$pendingSeen requests=$($done.navigation_requests) submit_result=$($done.last_submit_result)"
+        $doneTab = @($done.tabs | Where-Object { $_.id -eq $done.active_tab })[0]
+        Add-Result "navigation-$($script:case)" "PASS" "source=$($done.source) loading=false pending_seen=$pendingSeen started_seen=$startedSeen nav_started=$($doneTab.navigation_started) nav_completed=$($doneTab.navigation_completed) requests=$($done.navigation_requests) submit_result=$($done.last_submit_result)"
         return $done
     } catch {
         $state = Read-State $hwnd
@@ -156,7 +177,7 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     $script:lastNavErr = $errLog
     $script:app = $process
     $count = if ($SecondWindow) { 2 } else { 1 }
-    $states = Wait-States $count 60 "app windows"
+    $states = Wait-StatesAtLeast $count 60 "app windows"
     $hwnd = [IntPtr][int64]$states[0].window_handle
     [void](Force-AmareForeground $hwnd)
     return @($process, $hwnd)
@@ -204,7 +225,7 @@ try {
     $secondCreated = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         Send-GpuiShortcut $script:hwnd 0x4E
-        try { $states = Wait-States 2 8 "second window"; $secondCreated = $true; break } catch { Start-Sleep -Milliseconds 500 }
+        try { $states = Wait-StatesAtLeast 2 8 "second window"; $secondCreated = $true; break } catch { Start-Sleep -Milliseconds 500 }
     }
     if (-not $secondCreated) { $states = @(Read-AllStates) }
     $second = $states | Where-Object { [int64]$_.window_handle -ne $script:hwnd.ToInt64() } | Select-Object -First 1

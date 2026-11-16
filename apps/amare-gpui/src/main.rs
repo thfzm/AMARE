@@ -1303,11 +1303,23 @@ impl AmareApp {
                 };
                 #[cfg(not(target_os = "windows"))]
                 let tab_source = String::new();
+                #[cfg(target_os = "windows")]
+                let (nav_started, nav_completed, nav_started_at, nav_completed_at) = tab
+                    .webview
+                    .as_ref()
+                    .map(|webview| webview.navigation_lifecycle())
+                    .unwrap_or((0, 0, 0, 0));
+                #[cfg(not(target_os = "windows"))]
+                let (nav_started, nav_completed, nav_started_at, nav_completed_at) = (0, 0, 0, 0);
                 serde_json::json!({
                     "id": tab.id,
                     "title": tab.title,
                     "url": tab.url,
                     "source": tab_source,
+                    "navigation_started": nav_started,
+                    "navigation_completed": nav_completed,
+                    "last_started_at_ms": nav_started_at,
+                    "last_completed_at_ms": nav_completed_at,
                     "loading": tab.loading,
                     "error": tab.error,
                     "can_go_back": tab.can_go_back,

@@ -2,6 +2,7 @@
 use std::{
     cell::RefCell,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(target_os = "windows")]
@@ -59,6 +60,10 @@ use windows::{
 pub struct TabSignals {
     pub loading: bool,
     pub error: Option<String>,
+    pub navigation_started: u64,
+    pub navigation_completed: u64,
+    pub last_started_at_ms: i64,
+    pub last_completed_at_ms: i64,
 }
 
 #[cfg(target_os = "windows")]
@@ -389,6 +394,12 @@ impl WebViewHost {
                     if let Ok(mut signals) = starting_signals.lock() {
                         signals.loading = true;
                         signals.error = None;
+                        signals.navigation_started = signals.navigation_started.saturating_add(1);
+                        signals.last_started_at_ms = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            as i64;
                     }
                     Ok(())
                 }));
@@ -409,6 +420,13 @@ impl WebViewHost {
                     }
                     if let Ok(mut signals) = completed_signals.lock() {
                         signals.loading = false;
+                        signals.navigation_completed =
+                            signals.navigation_completed.saturating_add(1);
+                        signals.last_completed_at_ms = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            as i64;
                         signals.error = if success {
                             None
                         } else {
@@ -999,6 +1017,20 @@ impl WebViewHost {
             .lock()
             .map(|signals| (signals.loading, signals.error.clone()))
             .unwrap_or((false, None))
+    }
+
+    pub fn navigation_lifecycle(&self) -> (u64, u64, i64, i64) {
+        self.signals
+            .lock()
+            .map(|signals| {
+                (
+                    signals.navigation_started,
+                    signals.navigation_completed,
+                    signals.last_started_at_ms,
+                    signals.last_completed_at_ms,
+                )
+            })
+            .unwrap_or((0, 0, 0, 0))
     }
 
     fn execute_script(&self, script: &str) -> Result<String, String> {

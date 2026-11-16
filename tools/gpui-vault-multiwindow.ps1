@@ -96,14 +96,22 @@ function Click-Client([IntPtr]$hwnd, [int]$x, [int]$y) {
     $point = New-Object AmareVaultWin+POINT
     [void][AmareVaultWin]::ClientToScreen($hwnd, [ref]$point)
     try { if ([AmareVaultWin]::IsIconic($hwnd)) { [void][AmareVaultWin]::ShowWindow($hwnd, 9) } } catch {}
-    Focus-Window $hwnd
-    Start-Sleep -Milliseconds 200
-    [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + $y))
-    Start-Sleep -Milliseconds 120
-    [AmareVaultWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 80
-    [AmareVaultWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 350
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $before = [int64](Read-State $hwnd).mouse_down_count
+        Focus-Window $hwnd
+        Start-Sleep -Milliseconds 150
+        [void][AmareVaultWin]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+        Start-Sleep -Milliseconds 100
+        [AmareVaultWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 60
+        [AmareVaultWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        $deadline = (Get-Date).AddSeconds(2)
+        while ((Get-Date) -lt $deadline) {
+            $state = Read-State $hwnd
+            if ($null -ne $state -and [int64]$state.mouse_down_count -gt $before) { return }
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 function Click-VaultTitlebar([IntPtr]$hwnd, [string]$name) {
     $state = Read-State $hwnd
