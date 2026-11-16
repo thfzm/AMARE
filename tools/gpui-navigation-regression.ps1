@@ -93,7 +93,7 @@ function Focus-Address([IntPtr]$hwnd, [switch]$SkipClick) {
         [void](Wait-State $hwnd { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 6 "address selected")
         return $true
     } catch {
-        Click-Client $hwnd 420 70
+        Click-Client $hwnd 420 105
         Send-GpuiShortcut $hwnd 0x4C
         try {
             [void](Wait-State $hwnd { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 6 "address selected retry")
@@ -187,8 +187,12 @@ try {
 
     # 3. New window first navigation.
     $script:case = "new-window-first"
-    Send-GpuiShortcut $script:hwnd 0x4E
-    $states = Wait-States 2 25 "second window"
+    $secondCreated = $false
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        Send-GpuiShortcut $script:hwnd 0x4E
+        try { $states = Wait-States 2 8 "second window"; $secondCreated = $true; break } catch { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $secondCreated) { $states = @(Read-AllStates) }
     $second = $states | Where-Object { [int64]$_.window_handle -ne $script:hwnd.ToInt64() } | Select-Object -First 1
     if ($null -ne $second) {
         $secondHwnd = [IntPtr][int64]$second.window_handle
