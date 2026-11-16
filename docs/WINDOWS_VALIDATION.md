@@ -82,14 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.70.0)
+## 5. 현재 실행 상태 (0.71.0)
 
-- Windows CI [43732722790](https://github.com/thfzm/AMARE/actions/runs/43732722790): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43732722784](https://github.com/thfzm/AMARE/actions/runs/43732722784): **SUCCESS**.
-- GPUI 반복: [#43732722754](https://github.com/thfzm/AMARE/actions/runs/43732722754) **2 FAIL/17 UNVERIFIED**, [#43735180784](https://github.com/thfzm/AMARE/actions/runs/43735180784) **3/18**, [#43735187244](https://github.com/thfzm/AMARE/actions/runs/43735187244) **1 FAIL/17 UNVERIFIED** — 3회 연속 0 FAIL **미달**.
-- GPUI 최고 반복: password **51/0/1**, multiwindow **12/1/0**, input **25/0/4**, tab **21/0/7**, library **20/0/0**, download **7/0/1**, settings **22/0/4**, session **10/0/5**.
-- GPUI 0.70: WebView2 create/navigate/focus를 entity borrow 밖으로 이동해 `RefCell already borrowed` panic 제거, titlebar minimize/maximize 실제 mouse **PASS**, Alt+F4 두 창 순차 종료 **PASS**, WebView2 cleanup **PASS**.
-- 남은 미해결: titlebar restore/close, 다중 창 Session Restore(`windows=1`), session scroll/geometry/maximized/corrupt fallback, 마지막 탭 `WM_CLOSE` 종료, multiwindow `dave` delete **FAIL**.
-- 실제 Windows 11 사용자 키보드/창 chrome 검증, titlebar double-click, Snap, Alt+Tab, 작업 표시줄, Korean IME 실기기, DPI 125/150/200%, 다중 모니터는 **UNVERIFIED**.
-- ALL_SITE 삭제는 **read-only/BLOCKED**, unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**.
-- Windows 11 실기기, 다른 Windows 사용자 계정/DPAPI 권한 실패, DPI/multi-monitor는 **UNVERIFIED/BLOCKED**.
+- Windows CI [43774705662](https://github.com/thfzm/AMARE/actions/runs/43774705662): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [43774705622](https://github.com/thfzm/AMARE/actions/runs/43774705622): **SUCCESS**.
+- GPUI 3회 완전 반복(동일 `7253c68`): **5 FAIL/2 UNVERIFIED**, **6/6**, **6/6** — 3회 연속 0 FAIL **미달**. 별도 run `43774716984`는 canceled/session skipped로 제외.
+- GPUI titlebar: 두 창 maximize/restore/minimize **16/0/0**, 3회 완전 반복 모두 PASS.
+- GPUI session: multi-window **saved 2/restored 2**, active URL, scroll `scrollY=2181`, client `1028x779`, maximized `IsZoomed=true` **PASS**; corrupt metadata/empty/corrupt DB **PASS**, corrupt JSON **UNVERIFIED**.
+- GPUI Vault: dave delete confirm/applied/propagation, tombstone, restart integrity **PASS** (최고 29/0/0).
+- 남은 FAIL은 password reveal, vault form, tab/library 첫 navigation, settings 첫 category/search 등 **자동화 click/focus/timing**입니다.
+- 실제 Windows 11 사용자, titlebar double-click, Snap, Alt+Tab, taskbar, DPI 125/150/200%, 다중 모니터는 **UNVERIFIED**.
+- unsigned MSIX 설치는 `0x80073D2C`로 **UNVERIFIED**, ALL_SITE 삭제는 **read-only/BLOCKED**입니다.
