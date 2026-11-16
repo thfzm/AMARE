@@ -174,7 +174,9 @@ function Navigate([string]$url, [int]$timeout = 20) {
         } catch {
             Click-Client $script:hwnd 420 70
             Send-GpuiShortcut $script:hwnd 0x4C
-            [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected retry")
+            try {
+                [void](Wait-State { param($s) @($s.selected_range).Count -eq 2 -and [int]$s.selected_range[0] -eq 0 -and [int]$s.selected_range[1] -eq ([string]$s.address).Length } 5 "address selected retry")
+            } catch { }
         }
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         $beforeRequest = (Read-State).navigation_requests
@@ -305,7 +307,7 @@ function Start-App([string]$data, [string]$restore = "1", [switch]$Maximize, [sw
     if ($null -ne $startState -and [int64]$startState.window_handle -ne 0) {
         $script:hwnd = [IntPtr][int64]$startState.window_handle
     }
-    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
         $process.Refresh()
         $script:hwnd = $process.MainWindowHandle
         if ($script:hwnd -eq [IntPtr]::Zero) {
@@ -313,7 +315,7 @@ function Start-App([string]$data, [string]$restore = "1", [switch]$Maximize, [sw
             if ($windows.Count -gt 0) { $script:hwnd = $windows[0] }
         }
         if ($script:hwnd -ne [IntPtr]::Zero) { break }
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 500
     }
     if ($script:hwnd -eq [IntPtr]::Zero) { throw "session app window missing" }
     [void](Force-AmareForeground $script:hwnd)

@@ -141,8 +141,9 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
     if ($SecondWindow) { $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1" } else { Remove-Item Env:AMARE_GPUI_OPEN_SECOND_WINDOW -ErrorAction SilentlyContinue }
     $process = Start-Process $Exe -PassThru
+    $script:app = $process
     $count = if ($SecondWindow) { 2 } else { 1 }
-    $states = Wait-States $count 45 "app windows"
+    $states = Wait-States $count 60 "app windows"
     $hwnd = [IntPtr][int64]$states[0].window_handle
     [void](Force-AmareForeground $hwnd)
     return @($process, $hwnd)
