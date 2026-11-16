@@ -180,7 +180,9 @@ static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct SessionTabSnapshot {
+    #[serde(default)]
     url: String,
+    #[serde(default)]
     title: String,
     #[serde(default)]
     scroll_x: i64,
@@ -192,13 +194,21 @@ struct SessionTabSnapshot {
 struct SessionWindowSnapshot {
     #[serde(default)]
     revision: u64,
+    #[serde(default)]
     window_id: u64,
+    #[serde(default)]
     x: f32,
+    #[serde(default)]
     y: f32,
+    #[serde(default)]
     width: f32,
+    #[serde(default)]
     height: f32,
+    #[serde(default)]
     maximized: bool,
+    #[serde(default)]
     active: usize,
+    #[serde(default)]
     tabs: Vec<SessionTabSnapshot>,
     #[serde(default)]
     saved_at_ms: i64,
@@ -373,6 +383,7 @@ struct TabState {
     restored: bool,
     #[cfg(target_os = "windows")]
     pending_scroll: Option<(i64, i64)>,
+    pending_navigation: Option<String>,
     scroll_restore_attempts: u8,
     #[cfg(target_os = "windows")]
     webview: Option<webview::WebViewHost>,
@@ -490,10 +501,15 @@ struct AmareApp {
     diagnostics: Vec<String>,
     next_input_id: u64,
     pending_input_id: Option<u64>,
+    last_action: Option<String>,
+    navigation_requests: u64,
+    last_navigation_url: String,
+    last_navigation_at_ms: i64,
     layout_bounds: Option<serde_json::Value>,
     window_state: Option<serde_json::Value>,
     password_action_bounds: Vec<serde_json::Value>,
     password_form_save: Option<serde_json::Value>,
+    password_reveal_bounds: Vec<serde_json::Value>,
 }
 
 impl AmareApp {
@@ -602,6 +618,20 @@ impl AmareApp {
         }
     }
 
+    fn record_password_reveal(&mut self, id: u64, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
+        if let Some(b) = bounds.first() {
+            self.password_reveal_bounds
+                .retain(|value| value["id"] != id);
+            self.password_reveal_bounds.push(serde_json::json!({
+                "id": id,
+                "x": f32::from(b.origin.x),
+                "y": f32::from(b.origin.y),
+                "width": f32::from(b.size.width),
+                "height": f32::from(b.size.height),
+            }));
+        }
+    }
+
     fn record_password_form_save(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
         if let Some(b) = bounds.first() {
             self.password_form_save = Some(serde_json::json!({
@@ -614,6 +644,7 @@ impl AmareApp {
     }
 
     fn trace_action(&mut self, action: &str) {
+        self.last_action = Some(action.to_string());
         let input = self.pending_input_id.take();
         self.trace_event(format!("action={action} input={input:?}"));
     }
@@ -699,6 +730,7 @@ impl AmareApp {
             restored: false,
             #[cfg(target_os = "windows")]
             pending_scroll: None,
+            pending_navigation: None,
             scroll_restore_attempts: 0,
             #[cfg(target_os = "windows")]
             webview: first_webview,
@@ -759,10 +791,15 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            last_action: None,
+            navigation_requests: 0,
+            last_navigation_url: String::new(),
+            last_navigation_at_ms: 0,
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
             password_form_save: None,
+            password_reveal_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
 
@@ -856,10 +893,15 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            last_action: None,
+            navigation_requests: 0,
+            last_navigation_url: String::new(),
+            last_navigation_at_ms: 0,
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
             password_form_save: None,
+            password_reveal_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
         #[cfg(target_os = "windows")]
@@ -917,6 +959,7 @@ impl AmareApp {
                 restored: true,
                 #[cfg(target_os = "windows")]
                 pending_scroll,
+                pending_navigation: None,
                 scroll_restore_attempts: 0,
                 #[cfg(target_os = "windows")]
                 webview: None,
@@ -939,6 +982,7 @@ impl AmareApp {
                 restored: false,
                 #[cfg(target_os = "windows")]
                 pending_scroll: None,
+                pending_navigation: None,
                 scroll_restore_attempts: 0,
                 #[cfg(target_os = "windows")]
                 webview: None,
@@ -1001,10 +1045,15 @@ impl AmareApp {
             diagnostics: Vec::new(),
             next_input_id: 1,
             pending_input_id: None,
+            last_action: None,
+            navigation_requests: 0,
+            last_navigation_url: String::new(),
+            last_navigation_at_ms: 0,
             layout_bounds: None,
             window_state: None,
             password_action_bounds: Vec::new(),
             password_form_save: None,
+            password_reveal_bounds: Vec::new(),
         };
         apply_platform_settings(&app.settings);
         app.restore_progress = Some(RestoreProgress {
@@ -1211,6 +1260,7 @@ impl AmareApp {
                     "scroll_x": tab.scroll_x,
                     "scroll_y": tab.scroll_y,
                     "restored": tab.restored,
+                    "pending_navigation": tab.pending_navigation,
                     "webview": webview_attached
                 })
             })
@@ -1299,7 +1349,12 @@ impl AmareApp {
             "window_state": self.window_state,
             "password_actions": self.password_action_bounds,
             "password_form_save": self.password_form_save,
+            "password_reveals": self.password_reveal_bounds,
             "pending_input_id": self.pending_input_id,
+            "last_action": self.last_action,
+            "navigation_requests": self.navigation_requests,
+            "last_navigation_url": self.last_navigation_url,
+            "last_navigation_at_ms": self.last_navigation_at_ms,
             "capture_count": self.capture_count,
             "last_capture_path": self.last_capture_path,
             "last_capture_error": self.last_capture_error,
@@ -2183,6 +2238,13 @@ impl AmareApp {
         let mut restore_failed = 0usize;
         for tab in &mut self.tabs {
             let was_loading = tab.loading;
+            if let Some(pending) = tab.pending_navigation.clone() {
+                if let Some(webview) = &tab.webview {
+                    webview.navigate(&pending);
+                    webview.focus();
+                    tab.pending_navigation = None;
+                }
+            }
             let Some(webview) = &tab.webview else {
                 // Restored tabs intentionally have no controller until the
                 // deferred attach runs. Do not report a failure before that.
@@ -2295,11 +2357,25 @@ impl AmareApp {
         tab.title = title_for(&url).into();
         tab.loading = true;
         tab.error = None;
+        self.navigation_requests = self.navigation_requests.saturating_add(1);
+        self.last_navigation_url = url.clone();
+        self.last_navigation_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         self.set_address(url.clone(), cx);
         #[cfg(target_os = "windows")]
-        if let Some(webview) = &self.tabs[self.active].webview {
-            webview.navigate(&url);
-            webview.focus();
+        {
+            let index = self.active;
+            if let Some(webview) = &self.tabs[index].webview {
+                webview.navigate(&url);
+                webview.focus();
+                self.tabs[index].pending_navigation = None;
+            } else {
+                // The controller is attached asynchronously (new/restored tab).
+                // Queue the navigation so the first address submit is not lost.
+                self.tabs[index].pending_navigation = Some(url);
+            }
         }
     }
 
@@ -2409,6 +2485,7 @@ impl AmareApp {
             restored: false,
             #[cfg(target_os = "windows")]
             pending_scroll: None,
+            pending_navigation: None,
             scroll_restore_attempts: 0,
             #[cfg(target_os = "windows")]
             webview: None,
@@ -2627,6 +2704,7 @@ impl AmareApp {
     }
 
     fn submit_address(&mut self, _: &SubmitAddress, _window: &mut Window, cx: &mut Context<Self>) {
+        self.trace_action("SubmitAddress");
         if self.panel == LibraryPanel::Settings {
             self.sync_settings_text(true, cx);
             cx.notify();
@@ -3670,6 +3748,7 @@ impl AmareApp {
     fn render_password_panel(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         self.password_action_bounds.clear();
         self.password_form_save = None;
+        self.password_reveal_bounds.clear();
         let dark = effective_dark(&self.settings.theme, window);
         let background = if dark { rgb(0x111318) } else { rgb(0xf7f8fb) };
         let surface = if dark { rgb(0x1c1f27) } else { rgb(0xffffff) };
@@ -4042,6 +4121,14 @@ impl AmareApp {
                             )
                             .child(
                                 div()
+                                    .on_children_prepainted({
+                                        let weak = password_weak.clone();
+                                        move |bounds, _window, cx| {
+                                            let _ = weak.update(cx, |this, _cx| {
+                                                this.record_password_reveal(id, bounds);
+                                            });
+                                        }
+                                    })
                                     .id(SharedString::from(format!("password-reveal-{id}")))
                                     .text_xs()
                                     .text_color(muted)
@@ -5721,15 +5808,24 @@ fn sanitize_session_windows(
         window.tabs.truncate(100);
         let mut tabs = Vec::new();
         for mut tab in window.tabs {
-            if tab.url.trim().is_empty() {
+            let valid_url = tab.url.starts_with("http://")
+                || tab.url.starts_with("https://")
+                || tab.url.starts_with("file:")
+                || tab.url.starts_with("about:");
+            if tab.url.trim().is_empty() || !valid_url {
                 tab.url = "about:blank".into();
-                problems.push(format!("window {} empty tab URL", window.window_id));
+                problems.push(format!("window {} invalid tab URL", window.window_id));
             }
             if tab.title.trim().is_empty() {
                 tab.title = tab.url.clone();
             }
-            tab.scroll_x = tab.scroll_x.max(0);
-            tab.scroll_y = tab.scroll_y.max(0);
+            let clamped_x = tab.scroll_x.clamp(0, 10_000_000);
+            let clamped_y = tab.scroll_y.clamp(0, 10_000_000);
+            if clamped_x != tab.scroll_x || clamped_y != tab.scroll_y {
+                problems.push(format!("window {} scroll clamp", window.window_id));
+            }
+            tab.scroll_x = clamped_x;
+            tab.scroll_y = clamped_y;
             tabs.push(tab);
         }
         if tabs.is_empty() {
@@ -5742,7 +5838,11 @@ fn sanitize_session_windows(
             problems.push(format!("window {} had no tabs", window.window_id));
         }
         window.tabs = tabs;
-        window.active = window.active.min(window.tabs.len() - 1);
+        let clamped_active = window.active.min(window.tabs.len() - 1);
+        if clamped_active != window.active {
+            problems.push(format!("window {} active index", window.window_id));
+        }
+        window.active = clamped_active;
         sanitized.push(window);
     }
     if original_count > 16 {
@@ -5785,7 +5885,12 @@ fn load_session_windows(
                     persisted_revision.saturating_add(1).max(1),
                     Ordering::SeqCst,
                 );
-                sanitize_session_windows(windows)
+                let (windows, message) = sanitize_session_windows(windows);
+                if message.is_some() {
+                    // Preserve the exact raw payload for mixed/partial data too.
+                    let _ = library::save_corrupt_session(&json);
+                }
+                (windows, message)
             }
             Err(error) => {
                 let _ = library::save_corrupt_session(&json);

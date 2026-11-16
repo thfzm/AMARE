@@ -306,8 +306,25 @@ try {
     [void](Wait-State { param($s) @($s.password_vault.entries).Count -eq 2 } 8 "second account saved")
     Shot "03-saved-accounts.png"
 
-    Click-Client $script:hwnd 995 270
-    [void](Wait-State { param($s) $null -ne $s.password_vault.reveal } 6 "password reveal")
+    $revealState = Read-State
+    $aliceEntry = @($revealState.password_vault.entries | Where-Object username -eq "alice")[0]
+    $revealClicked = $false
+    if ($null -ne $aliceEntry) {
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
+            $revealState = Read-State
+            $b = @($revealState.password_reveals | Where-Object { [int64]$_.id -eq [int64]$aliceEntry.id })[0]
+            if ($null -ne $b) {
+                Click-Client $script:hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+            } else {
+                Click-Client $script:hwnd 995 270
+            }
+            try {
+                [void](Wait-State { param($s) $null -ne $s.password_vault.reveal } 3 "password reveal")
+                $revealClicked = $true; break
+            } catch { Start-Sleep -Milliseconds 300 }
+        }
+    }
+    if (-not $revealClicked) { throw "Timed out waiting for password reveal" }
     Shot "06-password-reveal.png"
 
     $edit = $false

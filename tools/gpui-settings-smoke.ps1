@@ -307,9 +307,15 @@ try {
     Select-Category "advanced" 377
     Shot "08-advanced-settings.png"
 
-    Click-Client $script:hwnd 300 114
-    Send-Keys "^a"; Send-Keys "download"; Start-Sleep -Milliseconds 600
-    [void](Wait-State { param($s) $s.settings_query -eq "download" } 6 "settings search query")
+    [void](Force-AmareForeground $script:hwnd)
+    $searchSet = $false
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Click-Client $script:hwnd 300 114
+        Click-Client $script:hwnd 300 114
+        Send-Keys "^a"; Send-Keys "download"; Start-Sleep -Milliseconds 600
+        try { [void](Wait-State { param($s) $s.settings_query -eq "download" } 5 "settings search query"); $searchSet = $true; break } catch { }
+    }
+    if (-not $searchSet) { throw "Timed out waiting for settings search query" }
     Shot "09-settings-search-results.png"
 
     Select-Category "appearance" 167

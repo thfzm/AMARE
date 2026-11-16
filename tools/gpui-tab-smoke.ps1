@@ -190,9 +190,11 @@ function Navigate([string]$url, [int]$timeout = 20) {
         Start-Sleep -Milliseconds 250
         Send-Keys "^a"
         Send-Keys "{BACKSPACE}"
+        $beforeRequest = (Read-State).navigation_requests
         Send-Keys $url
         Send-Keys "{ENTER}"
         try {
+            [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
             return Wait-State { param($s) $s.source -eq $url } $timeout "navigation $url"
         } catch {
             if ($attempt -eq 4) { throw }

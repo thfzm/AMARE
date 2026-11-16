@@ -399,10 +399,13 @@ pub fn save_corrupt_session(json: &str) -> Result<(), String> {
         let profile = service.profile_store(context).map_err(|e| e.to_string())?;
         profile
             .settings()
+            // Raw corrupt payloads are not valid JSON in the general case
+            // (empty/truncated/invalid syntax). Store them as text so the
+            // original evidence is always preserved.
             .set(
                 "gpui.session.corrupt",
                 "browser",
-                SettingValue::Json(json.to_string()),
+                SettingValue::Text(json.to_string()),
             )
             .map(|_| ())
             .map_err(|e| e.to_string())
