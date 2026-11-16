@@ -1174,9 +1174,10 @@ impl AmareApp {
                         if let Some(view) = &webview {
                             view.navigate(&url);
                             view.set_active(active_id == Some(id));
-                            if active_id == Some(id) {
-                                view.focus();
-                            }
+                            // Keep the restored window's address input focused.
+                            // Calling view.focus() here overrides the address
+                            // focus set by new_restored and makes the first
+                            // typed URL go to WebView2 instead of the address.
                         }
                         created.push((id, url, webview, error));
                     }
