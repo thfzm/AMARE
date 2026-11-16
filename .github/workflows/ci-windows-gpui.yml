@@ -341,7 +341,7 @@ jobs:
       - name: GPUI titlebar multi-window test
         shell: pwsh
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 8
         env:
           AMARE_GPUI_WINDOW_SIZE: "1044x788"
         run: |

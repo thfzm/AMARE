@@ -234,21 +234,13 @@ function Add-Account([IntPtr]$hwnd, [string]$origin, [string]$user, [string]$pas
     $count = @($before.password_vault.entries).Count
     Click-Client $hwnd 990 159
     [void](Wait-State $hwnd { param($s) $s.password_vault.form_open } 8 "add form")
-    # begin_password_add focuses the origin field. Use the form's natural
-    # Tab order so add does not depend on absolute field coordinates.
-    Focus-Window $hwnd
-    Start-Sleep -Milliseconds 250
-    Send-Keys "^a"; [System.Windows.Forms.SendKeys]::SendWait($origin)
-    Send-Keys "{TAB}"; Send-Keys "^a"; [System.Windows.Forms.SendKeys]::SendWait($user)
-    Send-Keys "{TAB}"; Send-Keys "^a"; [System.Windows.Forms.SendKeys]::SendWait($password)
-    Start-Sleep -Milliseconds 500
-    $state = Read-State $hwnd
-    if ($null -eq $state -or $state.password_vault.form_origin -ne $origin -or $state.password_vault.form_username -ne $user -or [int]$state.password_vault.form_password_len -ne $password.Length) {
-        throw "keyboard form fill mismatch for $user"
-    }
+    if (-not (Fill-VaultField $hwnd "origin" $origin @(250,258,266,274,282,290))) { throw "origin field not focused" }
+    if (-not (Fill-VaultField $hwnd "username" $user @(300,308,316,324,332,340,348))) { throw "username field not focused" }
+    if (-not (Fill-VaultField $hwnd "password" $password @(358,366,374,382,390,398))) { throw "password field not focused" }
     [void](Save-Form $hwnd)
     [void](Wait-State $hwnd { param($s) -not $s.password_vault.form_open -and @($s.password_vault.entries).Count -eq $count + 1 } 12 "account save")
 }
+
 function Get-EntryIndex($state, [string]$user) {
     $entries = @($state.password_vault.entries)
     for ($i = 0; $i -lt $entries.Count; $i++) {

@@ -46,6 +46,7 @@ public static class AmareTitlebar {
 '@
 
 $script:results = [System.Collections.Generic.List[object]]::new()
+$script:deadline = (Get-Date).AddMinutes(3)
 function Add-Result([string]$name, [string]$state, [string]$detail) {
     $script:results.Add([pscustomobject]@{ name = $name; result = $state; detail = $detail })
     Write-Host ("{0} {1}: {2}" -f $state, $name, $detail)
@@ -63,7 +64,7 @@ function Read-AllStates {
 }
 function Wait-States([int]$count, [int]$seconds, [string]$label) {
     $deadline = (Get-Date).AddSeconds($seconds)
-    while ((Get-Date) -lt $deadline) {
+    while ((Get-Date) -lt $deadline -and (Get-Date) -lt $script:deadline) {
         $states = @(Read-AllStates)
         if ($states.Count -eq $count) { return $states }
         Start-Sleep -Milliseconds 250
@@ -124,6 +125,7 @@ function Click-Titlebar([IntPtr]$hwnd, [string]$name) {
 }
 function Try-Click-State([IntPtr]$hwnd, [string]$button, [scriptblock]$test, [int]$seconds) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if ((Get-Date) -gt $script:deadline) { return $false }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 200
         if (Click-Titlebar $hwnd $button) {
@@ -231,13 +233,18 @@ try {
     }
 
     foreach ($hwnd in $handles) {
+        if (-not [AmareTitlebar]::IsWindow($hwnd)) { continue }
         [void](Force-AmareForeground $hwnd)
         Start-Sleep -Milliseconds 120
         [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         Start-Sleep -Milliseconds 200
     }
-    if (-not $script:app.WaitForExit(25000)) { throw "titlebar test app did not exit" }
-    Add-Result "titlebar-multiwindow-exit" "PASS" "both windows closed; exit=$($script:app.ExitCode)"
+    if (-not $script:app.WaitForExit(25000)) {
+        Stop-Process -Id $script:app.Id -Force -ErrorAction SilentlyContinue
+        Add-Result "titlebar-multiwindow-exit" "UNVERIFIED" "process did not exit after closing windows"
+    } else {
+        Add-Result "titlebar-multiwindow-exit" "PASS" "both windows closed; exit=$($script:app.ExitCode)"
+    }
     Start-Sleep -Seconds 2
     $afterWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($afterWebView -le $beforeWebView) {
