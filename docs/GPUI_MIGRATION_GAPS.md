@@ -1,19 +1,19 @@
-# GPUI migration gaps and P0/P1 plan (0.74.0)
+# GPUI migration gaps and P0/P1 plan (0.75.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.74.0 status
+## 0.75.0 status
 
-- AddressInput: submit callback, navigation dispatch, final Source and focus
-  are separately observable. Submit callbacks pass in the regression suite.
-- Navigation regression remains flaky on second-window state counting,
-  restore banner and corrupt-resave fixtures.
+- Navigation lifecycle: per-tab started/completed/timestamps and submit
+  callback/dispatch/source separation. New-tab/rapid/new-window submit PASS;
+  restore-first/corrupt-resave submit FAIL.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Session persistence core: multi-window 2→2, active URL, scroll, geometry,
-  maximized, immediate close and no-resurrection PASS in two repeats.
-- Titlebar independent workflow: **16/0/0 PASS twice**, one window2 hang.
-- Three complete repeats: **10/8/8 FAIL**; first-click/submit automation and
+- Session persistence: **29/0/0** twice; multi-window 2→2, active URL, scroll,
+  geometry, maximized, immediate close and no-resurrection PASS.
+- Vault: **29/0/0** twice.
+- Titlebar independent workflow: **1/5 PASS**, four window2 hangs.
+- Three complete repeats: **9/9/10 FAIL**; first-click/submit automation and
   titlebar window2 hang remain.
 - AI/updater/site permissions remain not implemented.
 
@@ -25,7 +25,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.74.0.
+WinUI remains the default package. GPUI is not switched to default in 0.75.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -70,7 +70,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.74.0.
+- no public release is created by CI in 0.75.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
