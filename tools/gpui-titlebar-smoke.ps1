@@ -23,6 +23,7 @@ public static class AmareTitlebar {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
@@ -190,6 +191,7 @@ try {
     for ($i = 0; $i -lt $handles.Count; $i++) {
         $hwnd = $handles[$i]
         $label = "window$($i + 1)"
+        Write-Host "TITLEBAR window=$i handle=$($hwnd.ToInt64())"
         if (-not [AmareTitlebar]::IsWindow($hwnd)) {
             Add-Result "$label-handle" "FAIL" "window handle is no longer valid"
             continue
@@ -199,14 +201,12 @@ try {
         $maximize = Try-Click-State $hwnd "window_max" { [AmareTitlebar]::IsZoomed($hwnd) } 4
         if ($maximize) {
             Add-Result "$label-titlebar-maximize" "PASS" "IsZoomed=true via real mouse"
-            Shot $hwnd ("0$($i + 1)-$label-maximized.png")
         } else {
             Add-Result "$label-titlebar-maximize" "UNVERIFIED" "window did not maximize"
         }
         $restore = Try-Click-State $hwnd "window_max" { -not [AmareTitlebar]::IsZoomed($hwnd) } 4
         if ($restore) {
             Add-Result "$label-titlebar-restore" "PASS" "IsZoomed=false via real mouse"
-            Shot $hwnd ("1$($i + 1)-$label-restored.png")
         } else {
             Add-Result "$label-titlebar-restore" "UNVERIFIED" "window did not restore"
         }
@@ -234,10 +234,8 @@ try {
 
     foreach ($hwnd in $handles) {
         if (-not [AmareTitlebar]::IsWindow($hwnd)) { continue }
-        [void](Force-AmareForeground $hwnd)
-        Start-Sleep -Milliseconds 120
-        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-        Start-Sleep -Milliseconds 200
+        [void][AmareTitlebar]::PostMessage($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        Start-Sleep -Milliseconds 300
     }
     if (-not $script:app.WaitForExit(25000)) {
         Stop-Process -Id $script:app.Id -Force -ErrorAction SilentlyContinue
