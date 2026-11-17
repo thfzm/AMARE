@@ -205,7 +205,10 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
             }
         }
     }
+    $forced = Force-AmareForeground $hwnd
+    $foregroundBeforeEnter = [AmareTestFocus]::GetForegroundWindow()
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) focus_class=$((Read-State $hwnd).os_focus.focus_class) address_focused=$((Read-State $hwnd).address_focused) ime_open=$((Read-State $hwnd).ime_open) ime_conversion=$((Read-State $hwnd).ime_conversion) layout=$((Read-State $hwnd).keyboard_layout)"
     Send-Keys "{ENTER}"
     $enterObserved = $false
     try {
@@ -224,6 +227,12 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     } else {
         Add-Result "enter-window-keydown-$($script:case)" "UNVERIFIED" "no WM_KEYDOWN VK_RETURN observed after Enter; message_trace_len=$(@($afterEnter.message_trace).Count) ime_open=$($afterEnter.ime_open) ime_conversion=$($afterEnter.ime_conversion) layout=$($afterEnter.keyboard_layout) marked=$($afterEnter.marked_range -join ',')"
     }
+    try {
+        $imeAfter = @($afterEnter.message_trace | Where-Object { @(269,270,271,641) -contains [int]$_.message -and [int64]$_.at_ms -ge [int64]$enterBeforeMs })
+        $keyupAfter = @($afterEnter.message_trace | Where-Object { [int]$_.message -eq 257 -and [int64]$_.vk -eq 13 -and [int64]$_.at_ms -ge [int64]$enterBeforeMs })
+        $imeSummary = ($imeAfter | Select-Object -Last 4 | ForEach-Object { "msg=$($_.message) wp=$($_.wparam) lp=$($_.lparam) focus=$($_.focus_class)" }) -join " || "
+        Add-Result "enter-ime-messages-$($script:case)" "PASS" "ime_count=$($imeAfter.Count) keyup_count=$($keyupAfter.Count) $imeSummary"
+    } catch { }
     if ($null -ne $enterTrace) {
         if ([string]$enterTrace.action -match "SubmitAddress") {
             Add-Result "enter-keybinding-$($script:case)" "PASS" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
@@ -233,6 +242,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     } else {
         $firstEnterDetail = if ($enterObserved) { "root keydown observed but keystroke trace missing" } else { "Enter was not observed by GPUI keystroke observer; root keydown also missing" }
         Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "class=TEST_AUTOMATION_BUG first Enter not observed; $firstEnterDetail"
+        [void](Force-AmareForeground $hwnd)
         $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         Send-Keys "{ENTER}"
         try { [void](Wait-State $hwnd { param($s) [int64]$s.address_enter_count -gt [int64]$enterBefore } 2 "enter retry") } catch { }
@@ -246,6 +256,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
             $enterObserved = $true
         } else {
             Add-Result "enter-keybinding-retry-$($script:case)" "UNVERIFIED" "Enter still not observed via SendKeys"
+            [void](Force-AmareForeground $hwnd)
             $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             Send-GpuiShortcut $hwnd 0x0D -NoCtrl
             Start-Sleep -Milliseconds 400
