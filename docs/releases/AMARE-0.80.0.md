@@ -11,6 +11,8 @@
 - restore text input: run1 **30자**, run2/3 **0자**
 - restore submit callback: run1 **FAIL**, run2/3는 text 입력 실패로 submit 미실행
 - corrupt-resave: submit **1 PASS / 2 FAIL**
+- corrupt-resave run1: submit PASS/requests=1이나 source 1자 누락(`amare-gui`)으로
+  navigation FAIL → 입력 누락 가능성, **UNRESOLVED**
 - Titlebar Win32 activation: **foreground HWND가 실제로 window2로 변경** (도달한 4회 모두)
 - GPUI `window_active=true`: **3/4 PASS**, 1회 UNVERIFIED
 - Titlebar 5회: **full PASS 2/5** — 2회 runner cancel, 1회 app crash
