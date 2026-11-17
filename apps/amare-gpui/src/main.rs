@@ -8,9 +8,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use amare_core::{Bookmark, HistoryEntry, SettingValue};
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
-    StatefulInteractiveElement, Timer, Window, WindowAppearance, WindowBounds, WindowControlArea,
-    WindowOptions, actions, div, point, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, DispatchPhase, FocusHandle, Focusable, KeyBinding, Render,
+    SharedString, StatefulInteractiveElement, Timer, Window, WindowAppearance, WindowBounds,
+    WindowControlArea, WindowOptions, actions, div, point, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
@@ -2850,11 +2850,21 @@ impl AmareApp {
     }
 
     fn submit_address(&mut self, _: &SubmitAddress, window: &mut Window, cx: &mut Context<Self>) {
-        self.address_submit_count = self.address_submit_count.saturating_add(1);
-        self.last_submit_at_ms = SystemTime::now()
+        self.submit_address_now(window, cx);
+    }
+
+    fn submit_address_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
+        // A single Enter may reach both the explicit address key handler and
+        // the SubmitAddress keybinding. Dedupe that one physical key press.
+        if now.saturating_sub(self.last_submit_at_ms) < 40 {
+            return;
+        }
+        self.address_submit_count = self.address_submit_count.saturating_add(1);
+        self.last_submit_at_ms = now;
         self.last_submitted_len = self.address_value(cx).len();
         self.address_focused = self.address_input.read(cx).is_focused(window);
         self.trace_action("SubmitAddress");
@@ -5221,6 +5231,22 @@ impl Render for AmareApp {
             self.address_focus_lost_count = self.address_focus_lost_count.saturating_add(1);
         }
         self.address_was_focused = self.address_focused;
+        {
+            let weak = cx.weak_entity();
+            window.on_key_event::<gpui::KeyDownEvent>(move |event, phase, window, cx| {
+                if phase != DispatchPhase::Bubble
+                    || !event.keystroke.key.eq_ignore_ascii_case("enter")
+                    || event.keystroke.modifiers.number_of_modifiers() != 0
+                {
+                    return;
+                }
+                let _ = weak.update(cx, |this, cx| {
+                    if this.address_focused {
+                        this.submit_address_now(window, cx);
+                    }
+                });
+            });
+        }
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
