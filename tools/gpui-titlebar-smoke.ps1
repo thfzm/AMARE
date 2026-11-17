@@ -267,6 +267,10 @@ function Collect-TitlebarCrashDiagnostics([string]$Reason) {
             session_error = $_.session_error
             focus_history = @($_.focus_history | Select-Object -Last 20)
             keystroke_trace = @($_.keystroke_trace | Select-Object -Last 20)
+            message_trace = @($_.message_trace | Select-Object -Last 40)
+            ime_open = $_.ime_open
+            ime_conversion = $_.ime_conversion
+            keyboard_layout = $_.keyboard_layout
             diagnostics = @($_.diagnostics | Select-Object -Last 40)
         }
     })
