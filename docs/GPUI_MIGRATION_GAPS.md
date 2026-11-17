@@ -6,9 +6,11 @@ items are implemented.
 ## 0.80.0 status
 
 - 0.79 submit dedupe removed; no explicit Enter interceptor remains.
-- Restore text input 0/30/0; submit callback still FAIL.
-- Titlebar Win32 foreground changes to window2, GPUI window_active usually
-  true, but full titlebar sequence passes only 2/5.
+- Restore: run1 text 30 chars but Enter/submit FAIL; run2/3 text 0 chars
+  while `address_focused=True` (focus ownership).
+- Titlebar Win32 foreground changes to window2 in all 4 runs that reach it;
+  GPUI `window_active` is true in 3/4. Full sequence passes 2/5: 2 runner
+  cancels and 1 app exit `0xC0000409`.
 - Corrupt session: **14/14 PASS** in all three repeats.
 - Three repeats: **10/10/10 FAIL**.
 - AI/updater/site permissions remain not implemented.
