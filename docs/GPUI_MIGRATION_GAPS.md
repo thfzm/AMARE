@@ -1,18 +1,19 @@
-# GPUI migration gaps and P0/P1 plan (0.80.0)
+# GPUI migration gaps and P0/P1 plan (0.81.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.80.0 status
+## 0.81.0 status
 
-- 0.79 submit dedupe removed; no explicit Enter interceptor remains.
-- Restore: run1 text 30 chars but Enter/submit FAIL; run2/3 text 0 chars
-  while `address_focused=True` (focus ownership).
-- Titlebar Win32 foreground changes to window2 in all 4 runs that reach it;
-  GPUI `window_active` is true in 3/4. Full sequence passes 2/5: 2 runner
-  cancels and 1 app exit `0xC0000409`.
+- `0xC0000409` root cause confirmed: status poll re-entered GPUI during paint
+  (`RefCell already borrowed`), causing a ucrtbase fail-fast. Poll removed;
+  status writes happen from render.
+- Titlebar 5 repeats: no crash, 3 full PASS, 2 runner cancellations.
+- Restore-first: single-window fixture and native focus reassert added. Text
+  input reaches 64–72 chars; Enter/submit is still intermittent/unresolved.
+- Exit code harness now distinguishes non-zero/NTSTATUS/timeout/cancel.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **10/10/10 FAIL**.
+- Three repeats: **13/13/13 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -23,7 +24,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.80.0.
+WinUI remains the default package. GPUI is not switched to default in 0.81.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -68,7 +69,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.80.0.
+- no public release is created by CI in 0.81.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

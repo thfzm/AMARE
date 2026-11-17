@@ -82,14 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.80.0)
+## 5. 현재 실행 상태 (0.81.0)
 
-- Windows CI [44040753851](https://github.com/thfzm/AMARE/actions/runs/44040753851): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**. 1차 run은 UIA race 1건(48/49, 142/0/10/1)이었고 재실행 성공을 별도 기록.
-- Linux CI [44035390244](https://github.com/thfzm/AMARE/actions/runs/44035390244): **SUCCESS**.
-- GPUI 3회(`1a23e2e`): **10/10**, **10/7**, **10/8** — 3회 연속 0 FAIL **미달**.
-- 0.79 dedupe 제거, explicit Enter interceptor 잔존 없음.
-- Restore: run1 text 30자·submit FAIL, run2/3 text 0자(focus ownership).
-- Titlebar Win32: ShowWindow/SetForegroundWindow true, 실제 window2 foreground 전환; GPUI window_active 3/4. Full sequence **2/5 PASS** — 2회 runner cancel(ENVIRONMENT_LIMITATION), 1회 app exit `0xC0000409`(PRODUCT_BUG/UNRESOLVED).
+- Windows CI [44099436225](https://github.com/thfzm/AMARE/actions/runs/44099436225): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [44110507502](https://github.com/thfzm/AMARE/actions/runs/44110507502): **SUCCESS**.
+- Exit code classifier: **7/7 PASS** (`0`, non-zero, `0xC0000409`, timeout, cancel, invalid handle).
+- `0xC0000409` 원인: status poll의 paint 중 GPUI 재진입 → `RefCell already borrowed` panic → `ucrtbase` fail-fast. poll 제거로 수정.
+- Titlebar 5회: crash **0/5**, full PASS **3/5**, 2회 runner cancel.
+- Restore-first: text input 개선, Enter/submit 최종 3회 미관측 (**UNRESOLVED**).
+- 동일 코드 3회: **13/14**, **13/18**, **13/28** — 3회 연속 0 FAIL **미달**.
 - Corrupt **14/14** 3회.
 - 실제 Windows 11/DPI/Snap/Alt+Tab **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
