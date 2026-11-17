@@ -149,11 +149,12 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $clearFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterClear.gui_thread_id)
     Add-Result "focus-after-clear-$($script:case)" ($(if ($clearFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $clearFocus.focus_hwnd) class=$($clearFocus.focus_class) address_len=$(([string]$afterClear.address).Length) address_focused=$($afterClear.address_focused) trace_len=$(@($afterClear.keystroke_trace).Count)"
     $traceBeforeType = @($afterClear.keystroke_trace).Count
+    $keyTotalBeforeType = [int64]$afterClear.keystroke_total
     Send-TextKeys $url
     $afterType = Read-State $hwnd
     $typeFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterType.gui_thread_id)
     $typeTrace = @($afterType.keystroke_trace | Select-Object -Last 8 | ForEach-Object { $_.keystroke })
-    Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) last_keys=$($typeTrace -join '|')"
+    Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) key_count_delta=$([int64]$afterType.keystroke_total - $keyTotalBeforeType) expected_keys=$($url.Length) last_keys=$($typeTrace -join '|')"
     $focusHistory = @($afterType.focus_history | Select-Object -Last 8)
     if ($focusHistory.Count -gt 0) {
         $lastFocusClass = [string](@($afterType.focus_history)[-1] -replace '^.*class=', '' -replace ' .*$', '')
@@ -169,7 +170,10 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $typed = Read-State $hwnd
     Add-Result "text-input-$($script:case)" "PASS" "text_count=$($typed.address_text_input_count) focus_gained_delta=$([int64]$typed.address_focus_gained_count - $focusGainedBefore) typed_len=$($typed.address.Length)"
     if ([string]$typed.address -ne [string]$url) {
-        Add-Result "input-mismatch-$($script:case)" "UNVERIFIED" "class=TEST_AUTOMATION_BUG expected_len=$($url.Length) actual_len=$($typed.address.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
+        $keyDelta = [int64]$typed.keystroke_total - $keyTotalBeforeType
+        $class = if ($keyDelta -lt ([int64]$url.Length - 2)) { "TEST_AUTOMATION_BUG" } else { "PRODUCT_BUG_CANDIDATE" }
+        $state = if ($class -eq "TEST_AUTOMATION_BUG") { "UNVERIFIED" } else { "FAIL" }
+        Add-Result "input-mismatch-$($script:case)" $state "class=$class expected_len=$($url.Length) actual_len=$(([string]$typed.address).Length) key_delta=$keyDelta expected_keys=$($url.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
     }
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     Send-Keys "{ENTER}"
@@ -265,7 +269,9 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     $script:app = $process
     $count = if ($SecondWindow) { 2 } else { 1 }
     $states = Wait-StatesAtLeast $count 60 "app windows"
-    $hwnd = [IntPtr][int64]$states[0].window_handle
+    $activeState = @($states | Where-Object { $_.window_active -eq $true } | Select-Object -First 1)[0]
+    if ($null -eq $activeState) { $activeState = $states[0] }
+    $hwnd = [IntPtr][int64]$activeState.window_handle
     [void](Force-AmareForeground $hwnd)
     return @($process, $hwnd)
 }
@@ -319,11 +325,18 @@ try {
     if ($null -ne $second) {
         $secondHwnd = [IntPtr][int64]$second.window_handle
         [void](Submit-Url $secondHwnd "$BaseUrl`?nav=newwindow" 25)
+        [void][AmareNav]::PostMessage($secondHwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        try {
+            [void](Wait-States 1 15 "single window before restore")
+            Add-Result "restore-session-single-window" "PASS" "second window closed before save"
+        } catch {
+            Add-Result "restore-session-single-window" "UNVERIFIED" "session still has $(@(Read-AllStates).Count) windows before restore"
+        }
     } else {
         Add-Result "navigation-new-window-first" "FAIL" "second window missing"
     }
 
-    # 4. Restore first navigation.
+    # 4. Restore first navigation against a single-window session.
     Stop-App $script:app $script:hwnd
     $script:case = "restore-first"
     $started = Start-App $base

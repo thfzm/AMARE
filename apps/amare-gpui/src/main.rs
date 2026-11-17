@@ -183,6 +183,7 @@ fn apply_platform_settings(settings: &library::BrowserSettings) {
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
 static KEYSTROKE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+static KEYSTROKE_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -216,6 +217,7 @@ fn record_keystroke(event: &gpui::KeystrokeEvent, window: &Window) {
         "contexts": format!("{:?}", event.context_stack),
         "window_active": window.is_window_active(),
     });
+    KEYSTROKE_TOTAL.fetch_add(1, Ordering::Relaxed);
     if let Ok(mut trace) = KEYSTROKE_TRACE.lock() {
         trace.push(entry);
         if trace.len() > 60 {
@@ -1578,6 +1580,7 @@ impl AmareApp {
                 self.last_focus_class = focus_class;
             }
         }
+        let keystroke_total = KEYSTROKE_TOTAL.load(Ordering::Relaxed);
         let keystroke_trace = KEYSTROKE_TRACE
             .lock()
             .map(|trace| trace.clone())
@@ -1641,6 +1644,7 @@ impl AmareApp {
             "gui_thread_id": gui_thread_id,
             "os_focus": os_focus,
             "focus_history": self.focus_history,
+            "keystroke_total": keystroke_total,
             "keystroke_trace": keystroke_trace,
             "navigation_requests": self.navigation_requests,
             "last_navigation_url": self.last_navigation_url,
