@@ -169,11 +169,27 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     }
     $typed = Read-State $hwnd
     Add-Result "text-input-$($script:case)" "PASS" "text_count=$($typed.address_text_input_count) focus_gained_delta=$([int64]$typed.address_focus_gained_count - $focusGainedBefore) typed_len=$($typed.address.Length)"
+    $mismatchState = $null
     if ([string]$typed.address -ne [string]$url) {
         $keyDelta = [int64]$typed.keystroke_total - $keyTotalBeforeType
         $class = if ($keyDelta -lt ([int64]$url.Length - 2)) { "TEST_AUTOMATION_BUG" } else { "PRODUCT_BUG_CANDIDATE" }
-        $state = if ($class -eq "TEST_AUTOMATION_BUG") { "UNVERIFIED" } else { "FAIL" }
-        Add-Result "input-mismatch-$($script:case)" $state "class=$class expected_len=$($url.Length) actual_len=$(([string]$typed.address).Length) key_delta=$keyDelta expected_keys=$($url.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
+        $mismatchState = if ($class -eq "TEST_AUTOMATION_BUG") { "UNVERIFIED" } else { "FAIL" }
+        Add-Result "input-mismatch-attempt1-$($script:case)" $mismatchState "class=$class expected_len=$($url.Length) actual_len=$(([string]$typed.address).Length) key_delta=$keyDelta expected_keys=$($url.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
+        # Keep the first failure above. One explicit retry separates a dropped
+        # SendKeys character from a product text-input defect.
+        Click-Address $hwnd -Fallback
+        Send-GpuiShortcut $hwnd 0x4C
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        $retryKeyBefore = [int64](Read-State $hwnd).keystroke_total
+        Send-TextKeys $url
+        $typed = Read-State $hwnd
+        $retryKeyDelta = [int64]$typed.keystroke_total - $retryKeyBefore
+        if ([string]$typed.address -eq [string]$url) {
+            Add-Result "input-retry-$($script:case)" "PASS" "retry matched; first failure preserved; key_delta=$retryKeyDelta"
+            $mismatchState = $null
+        } else {
+            Add-Result "input-retry-$($script:case)" "UNVERIFIED" "retry still mismatched; actual_len=$(([string]$typed.address).Length) key_delta=$retryKeyDelta"
+        }
     }
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     Send-Keys "{ENTER}"
@@ -193,10 +209,23 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         } else {
             Add-Result "enter-keybinding-$($script:case)" "FAIL" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
         }
-    } elseif ($enterObserved) {
-        Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "root keydown observed but keystroke trace missing"
     } else {
-        Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "Enter was not observed by GPUI keystroke observer; root keydown also missing"
+        $firstEnterDetail = if ($enterObserved) { "root keydown observed but keystroke trace missing" } else { "Enter was not observed by GPUI keystroke observer; root keydown also missing" }
+        Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "class=TEST_AUTOMATION_BUG first Enter not observed; $firstEnterDetail"
+        $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        Send-Keys "{ENTER}"
+        try { [void](Wait-State $hwnd { param($s) [int64]$s.address_enter_count -gt [int64]$enterBefore } 2 "enter retry") } catch { }
+        try {
+            $retryEnter = Read-State $hwnd
+            $enterTrace = @($retryEnter.keystroke_trace | Where-Object { $_.keystroke -match "enter" -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
+        } catch { }
+        if ($null -ne $enterTrace) {
+            $retryState = if ([string]$enterTrace.action -match "SubmitAddress") { "PASS" } else { "FAIL" }
+            Add-Result "enter-keybinding-retry-$($script:case)" $retryState "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
+            $enterObserved = $true
+        } else {
+            Add-Result "enter-keybinding-retry-$($script:case)" "UNVERIFIED" "Enter still not observed by GPUI keystroke observer"
+        }
     }
     if ($enterObserved) {
         Add-Result "enter-event-$($script:case)" "PASS" "enter_count=$((Read-State $hwnd).address_enter_count)"
