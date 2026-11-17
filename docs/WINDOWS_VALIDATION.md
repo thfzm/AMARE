@@ -82,15 +82,13 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.77.0)
+## 5. 현재 실행 상태 (0.78.0)
 
-- Windows CI [43918766969](https://github.com/thfzm/AMARE/actions/runs/43918766969): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [43918767315](https://github.com/thfzm/AMARE/actions/runs/43918767315): **SUCCESS**.
-- GPUI 3회(`e6bee49`): **12/9**, **9/10**, **9/13** — 3회 연속 0 FAIL **미달**.
-- AddressInput 내부 text/focus/edit count 추가; root Enter count는 AddressInput Enter를 관측하지 못함.
-- 복원 active WebView2의 `view.focus()`가 address focus를 덮어쓰던 제품 경로 제거.
-- new-tab/rapid/new-window text+submit PASS; restore-first/corrupt-resave submit 불안정.
+- Windows CI [44021496091](https://github.com/thfzm/AMARE/actions/runs/44021496091): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**. 1차 run은 UIA race 1건(48/49, 142/0/10/1)이었고 재실행 성공을 별도 기록.
+- Linux CI [44016069309](https://github.com/thfzm/AMARE/actions/runs/44016069309): **SUCCESS**.
+- GPUI 3회(`4c4e8aa`): **9/10**, **8/11**, **9/17** — 3회 연속 0 FAIL **미달**.
+- 복원 attach 후 AddressInput 재focus 추가; restore text 1~5자 관측, submit callback FAIL.
+- Titlebar staged readiness: HWND/IsWindow/webview/loading/responsive PASS, window2 단계 5/5 FAIL.
 - Corrupt session **14/14** 3회, session **29/0/0** 1회.
-- Titlebar 별도 5회: **1 PASS / 4 FAIL**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.77.0)
+# AMARE GPUI Windows Shell (0.78.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.77.0)
+## Verified in Windows CI (0.78.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.78 re-requests AddressInput focus after restored WebView2 attach and splits titlebar readiness into HWND/IsWindow/webview/loading/responsive stages. Restore text input is now observed (1–5 chars), but submit still fails; titlebar fails all five runs at window2. Corrupt session is 14/0; session reaches 29/0/0 once. Three repeats are 9/8/9 FAIL, so GPUI is not the default build.
 - 0.77 adds AddressInput-internal text/focus/edit counters and removes restored WebView2 focus stealing. New-tab/rapid/new-window submit passes; restore/corrupt submit is still unstable. Corrupt session is 14/0; session reaches 29/0/0 once. Titlebar passes 18/0/0 once and fails four times. Three repeats are 12/9/9 FAIL, so GPUI is not the default build.
 - 0.76 adds exact address bounds and a titlebar window-readiness gate. Corrupt session is 14/0; session reaches 29/0/0 and Vault 17/0/0 in one repeat. Restore-first/corrupt-resave submit still fails even with exact address clicks. Titlebar passes 16/0/0 twice and hangs three times. Three repeats are 11/6/9 FAIL, so GPUI is not the default build.
 - 0.75 adds per-tab navigation started/completed timestamps and keeps submit callback/dispatch/source separate. New-tab/rapid/new-window submit passes; restore/corrupt submit fails. Corrupt session is 14/0 in all three repeats; session core and Vault reach 29/0/0 in two repeats. The separate titlebar workflow passes once and hangs at window2 four times. Three repeats are 9/9/10 FAIL, so GPUI is not the default build.
