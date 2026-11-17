@@ -210,7 +210,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $preState = Read-State $hwnd
     $preFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$preState.gui_thread_id)
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd -and $preFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced click_used=$script:AmareForegroundClicked foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) external_focus=0x$('{0:X}' -f $preFocus.focus_hwnd) external_class=$($preFocus.focus_class) external_is_window=$($preFocus.focus_is_window) window_active=$($preState.window_active) address_focused=$($preState.address_focused) ime_context=$($preState.ime_context_state) ime_open=$($preState.ime_open) ime_conversion=$($preState.ime_conversion) layout=$($preState.keyboard_layout)"
+    Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd -and $preFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced click_used=$script:AmareForegroundClicked foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) external_focus=0x$('{0:X}' -f $preFocus.focus_hwnd) external_class=$($preFocus.focus_class) external_is_window=$($preFocus.focus_is_window) hook_tid=$($preState.message_trace_thread_id) gui_tid=$($preState.gui_thread_id) window_active=$($preState.window_active) address_focused=$($preState.address_focused) ime_context=$($preState.ime_context_state) ime_open=$($preState.ime_open) ime_conversion=$($preState.ime_conversion) layout=$($preState.keyboard_layout)"
     Send-GpuiShortcut $hwnd 0x0D -NoCtrl
     $enterObserved = $false
     try {
@@ -227,7 +227,8 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     if ($null -ne $enterWindowKey) {
         Add-Result "enter-window-keydown-$($script:case)" "PASS" "msg=$($enterWindowKey.message) vk=$($enterWindowKey.vk) hwnd=0x$('{0:X}' -f [int64]$enterWindowKey.hwnd) focus=0x$('{0:X}' -f [int64]$enterWindowKey.focus_hwnd) focus_class=$($enterWindowKey.focus_class) layout=$($enterWindowKey.keyboard_layout)"
     } else {
-        Add-Result "enter-window-keydown-$($script:case)" "UNVERIFIED" "no WM_KEYDOWN VK_RETURN observed after Enter; message_trace_len=$(@($afterEnter.message_trace).Count) ime_open=$($afterEnter.ime_open) ime_conversion=$($afterEnter.ime_conversion) layout=$($afterEnter.keyboard_layout) marked=$($afterEnter.marked_range -join ',')"
+        $llEnter = @($afterEnter.message_trace | Where-Object { $_.hook -eq "ll" -and [int64]$_.vk -eq 13 -and [int64]$_.at_ms -ge [int64]$enterBeforeMs })
+        Add-Result "enter-window-keydown-$($script:case)" "UNVERIFIED" "no WM_KEYDOWN VK_RETURN observed after Enter; message_trace_len=$(@($afterEnter.message_trace).Count) ll_enter=$($llEnter.Count) ll=$($llEnter | Select-Object -Last 2 | ForEach-Object { "flags=$($_.flags) injected=$($_.injected) fg=0x$('{0:X}' -f [int64]$_.hwnd)" }) ime_open=$($afterEnter.ime_open) ime_conversion=$($afterEnter.ime_conversion) layout=$($afterEnter.keyboard_layout) marked=$($afterEnter.marked_range -join ',')"
     }
     try {
         $imeAfter = @($afterEnter.message_trace | Where-Object { @(269,270,271,641) -contains [int]$_.message -and [int64]$_.at_ms -ge [int64]$enterBeforeMs })

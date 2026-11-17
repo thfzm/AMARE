@@ -24,11 +24,11 @@ use windows::Win32::{
         Input::KeyboardAndMouse::{GetAsyncKeyState, GetKeyboardLayout, SetFocus, VK_LBUTTON},
         WindowsAndMessaging::{
             CWPSTRUCT, CallNextHookEx, GA_ROOT, GUITHREADINFO, GetAncestor, GetClassNameW,
-            GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, MSG,
-            SW_RESTORE, SetWindowsHookExW, ShowWindow, WH_CALLWNDPROC, WH_GETMESSAGE, WM_ACTIVATE,
-            WM_CHAR, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT,
-            WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_SETFOCUS,
-            WM_SYSKEYDOWN, WM_SYSKEYUP,
+            GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId,
+            KBDLLHOOKSTRUCT, MSG, SW_RESTORE, SetWindowsHookExW, ShowWindow, WH_CALLWNDPROC,
+            WH_GETMESSAGE, WH_KEYBOARD_LL, WM_ACTIVATE, WM_CHAR, WM_IME_COMPOSITION,
+            WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN,
+            WM_KEYUP, WM_KILLFOCUS, WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP,
         },
     },
 };
@@ -191,6 +191,7 @@ static KEYSTROKE_TOTAL: AtomicU64 = AtomicU64::new(0);
 static MESSAGE_TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
 static MESSAGE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
 static MESSAGE_TRACE_INSTALLED: AtomicBool = AtomicBool::new(false);
+static MESSAGE_TRACE_THREAD_ID: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(target_os = "windows")]
 unsafe fn message_focus_snapshot() -> (usize, String, u32) {
@@ -267,8 +268,8 @@ fn record_window_message(
     });
     if let Ok(mut trace) = MESSAGE_TRACE.try_lock() {
         trace.push(entry);
-        if trace.len() > 160 {
-            let excess = trace.len() - 160;
+        if trace.len() > 240 {
+            let excess = trace.len() - 240;
             trace.drain(0..excess);
         }
     }
@@ -301,6 +302,39 @@ unsafe extern "system" fn get_message_proc(
 }
 
 #[cfg(target_os = "windows")]
+unsafe extern "system" fn low_level_keyboard_proc(
+    code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    if code >= 0 && MESSAGE_TRACE_ENABLED.load(Ordering::Relaxed) {
+        let key = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+        let foreground = GetForegroundWindow();
+        let entry = serde_json::json!({
+            "at_ms": now_ms(),
+            "hook": "ll",
+            "message": wparam.0 as u32,
+            "vk": key.vkCode,
+            "scan": key.scanCode,
+            "flags": key.flags.0,
+            "injected": (key.flags.0 & 0x10) != 0,
+            "hwnd": foreground.0 as usize,
+            "focus_hwnd": foreground.0 as usize,
+            "focus_class": "",
+            "keyboard_layout": (GetKeyboardLayout(0).0 as usize & 0xFFFF) as u32,
+        });
+        if let Ok(mut trace) = MESSAGE_TRACE.try_lock() {
+            trace.push(entry);
+            if trace.len() > 240 {
+                let excess = trace.len() - 240;
+                trace.drain(0..excess);
+            }
+        }
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+#[cfg(target_os = "windows")]
 fn install_message_trace() {
     if std::env::var("AMARE_GPUI_MESSAGE_TRACE").ok().as_deref() != Some("1") {
         return;
@@ -310,9 +344,11 @@ fn install_message_trace() {
     }
     use windows::Win32::System::Threading::GetCurrentThreadId;
     let tid = unsafe { GetCurrentThreadId() };
+    MESSAGE_TRACE_THREAD_ID.store(tid as u64, Ordering::Relaxed);
     unsafe {
         let _ = SetWindowsHookExW(WH_CALLWNDPROC, Some(call_wnd_proc), None, tid);
         let _ = SetWindowsHookExW(WH_GETMESSAGE, Some(get_message_proc), None, tid);
+        let _ = SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), None, 0);
     }
     MESSAGE_TRACE_ENABLED.store(true, Ordering::Relaxed);
 }
@@ -1713,6 +1749,7 @@ impl AmareApp {
         };
         #[cfg(not(target_os = "windows"))]
         let (ime_context_state, ime_open, ime_conversion, keyboard_layout) = (false, false, 0, 0);
+        let message_trace_thread_id = MESSAGE_TRACE_THREAD_ID.load(Ordering::Relaxed);
         let message_trace = MESSAGE_TRACE
             .lock()
             .map(|trace| trace.clone())
@@ -1828,6 +1865,7 @@ impl AmareApp {
             "ime_conversion": ime_conversion,
             "keyboard_layout": keyboard_layout,
             "message_trace": message_trace,
+            "message_trace_thread_id": message_trace_thread_id,
             "pid": std::process::id()
         });
         if let Some(parent) = std::path::Path::new(&path).parent() {
