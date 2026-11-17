@@ -154,7 +154,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $afterType = Read-State $hwnd
     $typeFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterType.gui_thread_id)
     $typeTrace = @($afterType.keystroke_trace | Select-Object -Last 8 | ForEach-Object { $_.keystroke })
-    Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) key_count_delta=$([int64]$afterType.keystroke_total - $keyTotalBeforeType) expected_keys=$($url.Length) last_keys=$($typeTrace -join '|')"
+    Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) key_count_delta=$([int64]$afterType.keystroke_total - $keyTotalBeforeType) expected_keys=$($url.Length) ime=$($afterType.ime_context) marked=$($afterType.marked_range -join ',') last_keys=$($typeTrace -join '|')"
     $focusHistory = @($afterType.focus_history | Select-Object -Last 8)
     if ($focusHistory.Count -gt 0) {
         $lastFocusClass = [string](@($afterType.focus_history)[-1] -replace '^.*class=', '' -replace ' .*$', '')

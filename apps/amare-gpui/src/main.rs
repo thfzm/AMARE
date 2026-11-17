@@ -570,6 +570,7 @@ struct AmareApp {
     last_click_y: f32,
     last_key: String,
     window_active: bool,
+    last_status_write_ms: i64,
     last_focus_hwnd: usize,
     last_focus_class: String,
     focus_history: Vec<String>,
@@ -893,6 +894,7 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_status_write_ms: 0,
             last_focus_hwnd: 0,
             last_focus_class: String::new(),
             focus_history: Vec::new(),
@@ -1017,6 +1019,7 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_status_write_ms: 0,
             last_focus_hwnd: 0,
             last_focus_class: String::new(),
             focus_history: Vec::new(),
@@ -1191,6 +1194,7 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_status_write_ms: 0,
             last_focus_hwnd: 0,
             last_focus_class: String::new(),
             focus_history: Vec::new(),
@@ -1288,23 +1292,6 @@ impl AmareApp {
             app.tabs.len()
         );
         app
-    }
-
-    fn start_status_poll(&mut self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            loop {
-                Timer::after(Duration::from_millis(250)).await;
-                if this.upgrade().is_none() {
-                    break;
-                }
-                this.update(cx, |app, cx| {
-                    app.maybe_auto_capture(cx);
-                    app.write_status(cx);
-                    cx.notify();
-                });
-            }
-        })
-        .detach();
     }
 
     fn write_status(&mut self, cx: &mut Context<Self>) {
@@ -5370,7 +5357,6 @@ impl Render for AmareApp {
                 self.tabs.len(),
                 self.active
             );
-            self.start_status_poll(cx);
         }
         self.window_active = window.is_window_active();
         self.address_focused = self.address_input.read(cx).is_focused(window);
@@ -5529,7 +5515,7 @@ impl Render for AmareApp {
             })
             .collect::<Vec<_>>();
 
-        div()
+        let root = div()
             .track_focus(&self.focus_handle)
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this: &mut Self, event: &gpui::MouseDownEvent, window, cx| {
                 this.mouse_down_count = this.mouse_down_count.saturating_add(1);
@@ -5954,7 +5940,20 @@ impl Render for AmareApp {
                     .when(self.panel != LibraryPanel::None, |el| {
                         el.child(self.render_library_panel(window, cx))
                     })
-            })
+            });
+
+        let now = now_ms();
+        if now.saturating_sub(self.last_status_write_ms) >= 100 {
+            self.last_status_write_ms = now;
+            self.write_status(cx);
+        }
+        if std::env::var("AMARE_GPUI_AUTO_CAPTURE_URL").is_ok() {
+            let weak = cx.weak_entity();
+            cx.defer(move |cx| {
+                let _ = weak.update(cx, |app, cx| app.maybe_auto_capture(cx));
+            });
+        }
+        root
     }
 }
 
