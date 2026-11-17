@@ -19,7 +19,8 @@ use zeroize::Zeroize;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
-    Foundation::POINT,
+    Foundation::{HINSTANCE, POINT},
+    System::LibraryLoader::GetModuleHandleW,
     UI::{
         Input::KeyboardAndMouse::{GetAsyncKeyState, GetKeyboardLayout, SetFocus, VK_LBUTTON},
         WindowsAndMessaging::{
@@ -345,10 +346,13 @@ fn install_message_trace() {
     use windows::Win32::System::Threading::GetCurrentThreadId;
     let tid = unsafe { GetCurrentThreadId() };
     MESSAGE_TRACE_THREAD_ID.store(tid as u64, Ordering::Relaxed);
+    let module = unsafe { GetModuleHandleW(None) }
+        .ok()
+        .map(|module| HINSTANCE(module.0));
     unsafe {
-        let _ = SetWindowsHookExW(WH_CALLWNDPROC, Some(call_wnd_proc), None, tid);
-        let _ = SetWindowsHookExW(WH_GETMESSAGE, Some(get_message_proc), None, tid);
-        let _ = SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), None, 0);
+        let _ = SetWindowsHookExW(WH_CALLWNDPROC, Some(call_wnd_proc), module, tid);
+        let _ = SetWindowsHookExW(WH_GETMESSAGE, Some(get_message_proc), module, tid);
+        let _ = SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), module, 0);
     }
     MESSAGE_TRACE_ENABLED.store(true, Ordering::Relaxed);
 }
