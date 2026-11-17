@@ -568,6 +568,9 @@ struct AmareApp {
     last_click_y: f32,
     last_key: String,
     window_active: bool,
+    last_focus_hwnd: usize,
+    last_focus_class: String,
+    focus_history: Vec<String>,
     navigation_requests: u64,
     last_navigation_url: String,
     last_navigation_at_ms: i64,
@@ -888,6 +891,9 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_focus_hwnd: 0,
+            last_focus_class: String::new(),
+            focus_history: Vec::new(),
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -1009,6 +1015,9 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_focus_hwnd: 0,
+            last_focus_class: String::new(),
+            focus_history: Vec::new(),
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -1180,6 +1189,9 @@ impl AmareApp {
             last_click_y: 0.0,
             last_key: String::new(),
             window_active: false,
+            last_focus_hwnd: 0,
+            last_focus_class: String::new(),
+            focus_history: Vec::new(),
             navigation_requests: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
@@ -1336,7 +1348,7 @@ impl AmareApp {
             .marked_range()
             .map(|range| serde_json::json!([range.start, range.end]));
         let selected = input.selected_range();
-        let active = self.active_tab();
+        let active_id = self.active_tab().map(|tab| tab.id);
         #[cfg(target_os = "windows")]
         let (source, title) = self
             .active_webview()
@@ -1390,7 +1402,7 @@ impl AmareApp {
                 #[cfg(not(target_os = "windows"))]
                 let webview_attached = false;
                 #[cfg(target_os = "windows")]
-                let tab_source = if active.map(|active| active.id) == Some(tab.id) {
+                let tab_source = if active_id == Some(tab.id) {
                     tab.webview
                         .as_ref()
                         .map(|webview| webview.source())
@@ -1543,6 +1555,29 @@ impl AmareApp {
         };
         #[cfg(not(target_os = "windows"))]
         let (gui_thread_id, os_focus) = (0u32, serde_json::json!({}));
+        #[cfg(target_os = "windows")]
+        {
+            let focus_hwnd = os_focus["focus_hwnd"].as_u64().unwrap_or(0) as usize;
+            let focus_class = os_focus["focus_class"].as_str().unwrap_or("").to_string();
+            if focus_hwnd != self.last_focus_hwnd || focus_class != self.last_focus_class {
+                self.focus_history.push(format!(
+                    "{} focus=0x{:X} class={} fg=0x{:X} active=0x{:X} window_active={} address_focused={}",
+                    now_ms(),
+                    focus_hwnd,
+                    focus_class,
+                    os_focus["foreground_hwnd"].as_u64().unwrap_or(0),
+                    os_focus["active_hwnd"].as_u64().unwrap_or(0),
+                    self.window_active,
+                    self.address_focused
+                ));
+                if self.focus_history.len() > 40 {
+                    let excess = self.focus_history.len() - 40;
+                    self.focus_history.drain(0..excess);
+                }
+                self.last_focus_hwnd = focus_hwnd;
+                self.last_focus_class = focus_class;
+            }
+        }
         let keystroke_trace = KEYSTROKE_TRACE
             .lock()
             .map(|trace| trace.clone())
@@ -1558,7 +1593,7 @@ impl AmareApp {
             "title": title,
             "window_id": self.window_id,
             "window_handle": window_handle,
-            "active_tab": active.map(|tab| tab.id),
+            "active_tab": active_id,
             "panel": panel,
             "history_query": self.history_query,
             "bookmarks": bookmarks,
@@ -1605,6 +1640,7 @@ impl AmareApp {
             "window_active": self.window_active,
             "gui_thread_id": gui_thread_id,
             "os_focus": os_focus,
+            "focus_history": self.focus_history,
             "keystroke_trace": keystroke_trace,
             "navigation_requests": self.navigation_requests,
             "last_navigation_url": self.last_navigation_url,

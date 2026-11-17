@@ -265,6 +265,8 @@ function Collect-TitlebarCrashDiagnostics([string]$Reason) {
             last_key = $_.last_key
             last_navigation_url = $_.last_navigation_url
             session_error = $_.session_error
+            focus_history = @($_.focus_history | Select-Object -Last 20)
+            keystroke_trace = @($_.keystroke_trace | Select-Object -Last 20)
             diagnostics = @($_.diagnostics | Select-Object -Last 40)
         }
     })

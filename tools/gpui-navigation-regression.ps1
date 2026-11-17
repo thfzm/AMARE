@@ -154,6 +154,11 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $typeFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterType.gui_thread_id)
     $typeTrace = @($afterType.keystroke_trace | Select-Object -Last 8 | ForEach-Object { $_.keystroke })
     Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) last_keys=$($typeTrace -join '|')"
+    $focusHistory = @($afterType.focus_history | Select-Object -Last 8)
+    if ($focusHistory.Count -gt 0) {
+        $lastFocusClass = [string](@($afterType.focus_history)[-1] -replace '^.*class=', '' -replace ' .*$', '')
+        Add-Result "focus-history-$($script:case)" ($(if ($lastFocusClass -eq "Zed::Window") { "PASS" } else { "UNVERIFIED" })) ($focusHistory -join " || ")
+    }
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.address_text_input_count -gt [int64]$textBefore } 6 "address text input")
     } catch {
