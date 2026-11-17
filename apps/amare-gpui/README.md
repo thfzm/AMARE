@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.82.0)
+# AMARE GPUI Windows Shell (0.83.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.82.0)
+## Verified in Windows CI (0.83.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.83 adds an isolated Enter probe. When address text is actually entered, normal and restored windows both reach `WM_KEYDOWN`, GPUI `SubmitAddress`, and submit. Failures are preceded by navigation-time WebView2 focus ownership (`Chrome_WidgetWin_1`) while GPUI `address_focused` is stale. Enter itself is not broken. Three main repeats are 12/13/13 FAIL.
 - 0.82 keeps the 0.81 status-poll crash fix and adds Win32/IME message tracing. Restore-first Enter does not produce `WM_KEYDOWN VK_RETURN` at the app HWND even when foreground, external focus, window_active and AddressInput focus are verified; new-window/corrupt Enter dispatches SubmitAddress. The restore Enter cause is unresolved. Titlebar 5 repeats had no crash (2 full PASS, 3 runner cancels). Three main repeats are 13/13/13 FAIL.
 - 0.81 reproduced `0xC0000409` with a WER dump and panic backtrace: `RefCell already borrowed` from the status-poll task re-entering GPUI during paint. The poll was removed; status is written from render. Five titlebar repeats produced no crash (3 full PASS, 2 runner cancels). Restore text input improved, but Enter/submit remains intermittent. Three repeats are 13/13/13 FAIL.
 - 0.80 removes the unevidenced submit dedupe and traces Win32/GPUI activation. Restore run1 reaches 30 chars but submit fails; run2/3 receive 0 chars despite `address_focused=True`. Win32 foreground changes to window2 and GPUI `window_active` is true in 3/4, but the full titlebar sequence passes 2/5 (2 runner cancels, 1 app exit `0xC0000409`). Corrupt session is 14/0. Three repeats are 10/10/10 FAIL, so GPUI is not the default build.

@@ -1,17 +1,18 @@
-# GPUI migration gaps and P0/P1 plan (0.82.0)
+# GPUI migration gaps and P0/P1 plan (0.83.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.82.0 status
+## 0.83.0 status
 
-- 0.81 `0xC0000409` fix and exit classifier remain green; titlebar crash 0/5.
-- Win32/IME message tracing added. Restore-first Enter produces no
-  `WM_KEYDOWN VK_RETURN` at the app HWND despite verified foreground/focus;
-  new-window/corrupt Enter dispatches `SubmitAddress`. Cause unresolved.
-- SendKeys loses characters before GPUI; paste is a separate fallback only.
+- Isolated Enter probe: text -> `WM_KEYDOWN` -> GPUI `SubmitAddress` -> submit
+  is green in normal and restored windows when address text is actually entered.
+- First loss point is navigation-time WebView2 focus ownership
+  (`Chrome_WidgetWin_1`) with stale GPUI `address_focused=true`.
+- Enter handler/keybinding unchanged; no synthetic Enter or interceptor.
+- SendKeys loses characters; paste is a separate fallback only.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **13/13/13 FAIL**.
+- Three repeats: **12/13/13 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -22,7 +23,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.82.0.
+WinUI remains the default package. GPUI is not switched to default in 0.83.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -67,7 +68,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.82.0.
+- no public release is created by CI in 0.83.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

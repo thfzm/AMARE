@@ -82,15 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.82.0)
+## 5. 현재 실행 상태 (0.83.0)
 
-- Windows CI [44140410424](https://github.com/thfzm/AMARE/actions/runs/44140410424): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [44140410517](https://github.com/thfzm/AMARE/actions/runs/44140410517): **SUCCESS**.
-- Exit code classifier **7/7 PASS**, `0xC0000409` 수정 유지, titlebar crash **0/5**.
-- Restore-first Enter: foreground/focus/window_active/AddressInput focus 정상이나 **WM_KEYDOWN VK_RETURN 미도달** → **UNRESOLVED**.
-- new-window/corrupt Enter: `WM_KEYDOWN vk=13` + `SubmitAddress` **PASS**.
-- SendKeys 55/67/70자, paste 74자 3/3 — 문자 손실은 **TEST_AUTOMATION_BUG**.
-- 동일 코드 3회: **13/20**, **13/23**, **13/25** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **2/5**.
+- Windows CI 재실행 [44178954839](https://github.com/thfzm/AMARE/actions/runs/44178954839): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**. 1차 run `44172872191`은 UI 48/49, 142/0/10/1.
+- Linux CI [44170498340](https://github.com/thfzm/AMARE/actions/runs/44170498340): **SUCCESS**.
+- 격리 Enter probe: 텍스트가 실제 입력된 normal/restore round는 `WM_KEYDOWN` + `SubmitAddress` + submit **PASS**.
+- 최초 손실 지점: navigation 이후 external focus `Chrome_WidgetWin_1`, GPUI `address_focused=true` stale.
+- Enter 우회 코드 추가 없음. SendKeys 손실/paste fallback 분리.
+- Titlebar 5회: crash **0/5**, full PASS **2/5**, 3회 runner cancel.
+- 동일 코드 3회: **12/20**, **13/20**, **13/19** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
