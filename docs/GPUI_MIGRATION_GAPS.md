@@ -1,16 +1,16 @@
-# GPUI migration gaps and P0/P1 plan (0.79.0)
+# GPUI migration gaps and P0/P1 plan (0.80.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.79.0 status
+## 0.80.0 status
 
-- Restore submit: text/focus telemetry retained; explicit Enter interceptor
-  caused startup crash and was removed. Restore submit still FAILs.
-- Titlebar staged readiness: window1 stages PASS, window2 activation 5/5 FAIL.
+- 0.79 submit dedupe removed; no explicit Enter interceptor remains.
+- Restore text input 0/30/0; submit callback still FAIL.
+- Titlebar Win32 foreground changes to window2, GPUI window_active usually
+  true, but full titlebar sequence passes only 2/5.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Session 29/0/0 twice.
-- Three repeats: **6/9/9 FAIL**.
+- Three repeats: **10/10/10 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -21,7 +21,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.79.0.
+WinUI remains the default package. GPUI is not switched to default in 0.80.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -66,7 +66,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.79.0.
+- no public release is created by CI in 0.80.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

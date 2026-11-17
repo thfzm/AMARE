@@ -82,14 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.79.0)
+## 5. 현재 실행 상태 (0.80.0)
 
-- Windows CI [44027467341](https://github.com/thfzm/AMARE/actions/runs/44027467341): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [44027467410](https://github.com/thfzm/AMARE/actions/runs/44027467410): **SUCCESS**.
-- GPUI 3회(`6cb21c8`): **6/15**, **9/10**, **9/11** — 3회 연속 0 FAIL **미달**.
-- explicit Enter interceptor 시도: 앱 startup crash → 제거.
-- restore-first: text 0~1자, submit callback **FAIL**.
-- Titlebar staged readiness: window1 PASS, window2 단계 **5/5 FAIL**.
-- Corrupt **14/14** 3회, session **29/0/0** 2회.
+- Windows CI [44040753851](https://github.com/thfzm/AMARE/actions/runs/44040753851): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**. 1차 run은 UIA race 1건(48/49, 142/0/10/1)이었고 재실행 성공을 별도 기록.
+- Linux CI [44035390244](https://github.com/thfzm/AMARE/actions/runs/44035390244): **SUCCESS**.
+- GPUI 3회(`1a23e2e`): **10/10**, **10/7**, **10/8** — 3회 연속 0 FAIL **미달**.
+- 0.79 dedupe 제거, explicit Enter interceptor 잔존 없음.
+- Restore text 0/30/0자, submit callback FAIL.
+- Titlebar Win32: ShowWindow/SetForegroundWindow true, window2 foreground 전환; GPUI window_active true(대부분). 5회 중 **2 PASS**.
+- Corrupt **14/14** 3회.
 - 실제 Windows 11/DPI/Snap/Alt+Tab **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
