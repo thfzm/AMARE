@@ -328,6 +328,9 @@ function Collect-TitlebarCrashDiagnostics([string]$Reason) {
         event_log = $events
         wer_files = $werFiles
         dump_files = $dumpFiles
+        lifecycle = @(Get-ChildItem $StatusDir -Filter "lifecycle-*.log" -File -ErrorAction SilentlyContinue | ForEach-Object { @{ path = $_.FullName; lines = @(Get-Content $_.FullName -Tail 80) } })
+        app_stdout = @(if (Test-Path $appStdout) { Get-Content $appStdout -Tail 80 })
+        app_stderr = @(if (Test-Path $appStderr) { Get-Content $appStderr -Tail 120 })
     }
     $path = Join-Path $diagDir "titlebar-crash.json"
     $diag | ConvertTo-Json -Depth 12 | Set-Content $path -Encoding UTF8
@@ -336,6 +339,10 @@ function Collect-TitlebarCrashDiagnostics([string]$Reason) {
 }
 
 $script:app = $null
+$appDiagDir = Join-Path $ScreenshotDir "titlebar-diagnostics"
+New-Item -ItemType Directory -Force -Path $appDiagDir | Out-Null
+$appStdout = Join-Path $appDiagDir "app-stdout.log"
+$appStderr = Join-Path $appDiagDir "app-stderr.log"
 Remove-Item $StatusDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $StatusDir, $DataDir, $ScreenshotDir | Out-Null
@@ -352,7 +359,7 @@ Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -
 Start-Sleep -Seconds 2
 $beforeWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
 try {
-    $script:app = Start-Process $Exe -PassThru
+    $script:app = Start-Process $Exe -PassThru -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr
     $states = Wait-States 2 40 "two AMARE windows"
     $liveHandles = @([AmareTitlebar]::Windows([int]$script:app.Id))
     if ($liveHandles.Count -ge 2) {
