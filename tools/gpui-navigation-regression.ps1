@@ -313,8 +313,13 @@ try {
         Add-Result "navigation-last-url-wins" "FAIL" "source=$((Read-State $script:hwnd).source)"
     }
 
-    # 3. New window first navigation.
+    # 3. New window first navigation, in its own data directory so the
+    # multi-window session cannot pollute the single-window restore fixture.
     $script:case = "new-window-first"
+    Stop-App $script:app $script:hwnd
+    $windowBase = Join-Path $DataDir "newwindow"
+    $started = Start-App $windowBase
+    $script:app = $started[0]; $script:hwnd = $started[1]
     $secondCreated = $false
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         Send-GpuiShortcut $script:hwnd 0x4E
@@ -325,19 +330,13 @@ try {
     if ($null -ne $second) {
         $secondHwnd = [IntPtr][int64]$second.window_handle
         [void](Submit-Url $secondHwnd "$BaseUrl`?nav=newwindow" 25)
-        [void][AmareNav]::PostMessage($secondHwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
-        try {
-            [void](Wait-States 1 15 "single window before restore")
-            Add-Result "restore-session-single-window" "PASS" "second window closed before save"
-        } catch {
-            Add-Result "restore-session-single-window" "UNVERIFIED" "session still has $(@(Read-AllStates).Count) windows before restore"
-        }
     } else {
         Add-Result "navigation-new-window-first" "FAIL" "second window missing"
     }
-
-    # 4. Restore first navigation against a single-window session.
     Stop-App $script:app $script:hwnd
+
+    # 4. Restore first navigation against the single-window session in $base.
+    $script:case = "restore-first"
     $script:case = "restore-first"
     $started = Start-App $base
     $script:app = $started[0]; $script:hwnd = $started[1]
