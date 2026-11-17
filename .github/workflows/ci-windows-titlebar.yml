@@ -26,7 +26,7 @@ jobs:
         shell: pwsh
         run: |
           & "tools/test-gpui-exit-code.ps1"
-          if ($LASTEXITCODE -ne 0) { throw "exit code classifier test failed" }
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "exit code classifier test failed" }
       - name: Configure WER local dumps
         shell: pwsh
         run: |

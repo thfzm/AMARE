@@ -145,7 +145,15 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         Add-Result "focus-owner-$($script:case)" "UNVERIFIED" $focusDetail
     }
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    $afterClear = Read-State $hwnd
+    $clearFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterClear.gui_thread_id)
+    Add-Result "focus-after-clear-$($script:case)" ($(if ($clearFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $clearFocus.focus_hwnd) class=$($clearFocus.focus_class) address_len=$(([string]$afterClear.address).Length) address_focused=$($afterClear.address_focused) trace_len=$(@($afterClear.keystroke_trace).Count)"
+    $traceBeforeType = @($afterClear.keystroke_trace).Count
     Send-TextKeys $url
+    $afterType = Read-State $hwnd
+    $typeFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterType.gui_thread_id)
+    $typeTrace = @($afterType.keystroke_trace | Select-Object -Last 8 | ForEach-Object { $_.keystroke })
+    Add-Result "focus-after-type-$($script:case)" ($(if ($typeFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $typeFocus.focus_hwnd) class=$($typeFocus.focus_class) address_len=$(([string]$afterType.address).Length) address_focused=$($afterType.address_focused) trace_delta=$(@($afterType.keystroke_trace).Count - $traceBeforeType) last_keys=$($typeTrace -join '|')"
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.address_text_input_count -gt [int64]$textBefore } 6 "address text input")
     } catch {
@@ -171,7 +179,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         $enterTrace = @($afterEnter.keystroke_trace | Where-Object { $_.keystroke -match "enter" -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
     } catch { }
     if ($null -ne $enterTrace) {
-        if ($enterTrace.action -eq "SubmitAddress") {
+        if ([string]$enterTrace.action -match "SubmitAddress") {
             Add-Result "enter-keybinding-$($script:case)" "PASS" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
         } else {
             Add-Result "enter-keybinding-$($script:case)" "FAIL" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"

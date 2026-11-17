@@ -26,3 +26,4 @@ foreach ($case in $cases) {
 
 if ($failed -gt 0) { exit 1 }
 Write-Host "exit-code classifier: 7/7 PASS"
+exit 0
