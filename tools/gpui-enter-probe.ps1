@@ -79,7 +79,13 @@ function Wait-NavigationIdle([int]$seconds) {
 }
 function Ensure-AddressEmpty([IntPtr]$hwnd) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
-        Send-GpuiShortcut $hwnd 0x4C
+        $state = Read-State
+        if ($null -ne $state -and $null -ne $state.address_bounds) {
+            $b = $state.address_bounds
+            Send-RealClientClick $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+        } else {
+            Send-GpuiShortcut $hwnd 0x4C
+        }
         Start-Sleep -Milliseconds 250
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         Start-Sleep -Milliseconds 250
