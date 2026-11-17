@@ -510,6 +510,7 @@ struct AmareApp {
     address_was_focused: bool,
     address_focus_gained_count: u64,
     address_focus_lost_count: u64,
+    address_restore_focus_count: u64,
     address_bounds: Option<serde_json::Value>,
     last_submit_at_ms: i64,
     last_submit_result: String,
@@ -829,6 +830,7 @@ impl AmareApp {
             address_was_focused: false,
             address_focus_gained_count: 0,
             address_focus_lost_count: 0,
+            address_restore_focus_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -949,6 +951,7 @@ impl AmareApp {
             address_was_focused: false,
             address_focus_gained_count: 0,
             address_focus_lost_count: 0,
+            address_restore_focus_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -1119,6 +1122,7 @@ impl AmareApp {
             address_was_focused: false,
             address_focus_gained_count: 0,
             address_focus_lost_count: 0,
+            address_restore_focus_count: 0,
             address_bounds: None,
             last_submit_at_ms: 0,
             last_submit_result: String::new(),
@@ -1181,7 +1185,7 @@ impl AmareApp {
                         }
                         created.push((id, url, webview, error));
                     }
-                    let _ = handle.update(cx, |this, _window, cx| {
+                    let _ = handle.update(cx, |this, window, cx| {
                         for (id, _url, webview, error) in created {
                             let has_error = error.is_some();
                             if let Some(tab) = this.tabs.iter_mut().find(|tab| tab.id == id) {
@@ -1197,6 +1201,13 @@ impl AmareApp {
                                         Instant::now() + Duration::from_secs(6);
                                 }
                             }
+                        }
+                        if active_id.is_some_and(|id| {
+                            this.tabs.get(this.active).map(|tab| tab.id) == Some(id)
+                        }) {
+                            this.focus_address_input(window, cx);
+                            this.address_restore_focus_count =
+                                this.address_restore_focus_count.saturating_add(1);
                         }
                         cx.notify();
                     });
@@ -1462,6 +1473,7 @@ impl AmareApp {
             "address_focused": self.address_focused,
             "address_focus_gained_count": self.address_focus_gained_count,
             "address_focus_lost_count": self.address_focus_lost_count,
+            "address_restore_focus_count": self.address_restore_focus_count,
             "address_text_input_count": address_text_input_count,
             "address_mark_input_count": address_mark_input_count,
             "address_set_count": address_set_count,

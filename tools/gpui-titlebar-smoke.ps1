@@ -143,16 +143,47 @@ function Wait-StateBool([IntPtr]$hwnd, [scriptblock]$test, [int]$seconds) {
     }
     return $false
 }
-function Wait-WindowReady([IntPtr]$hwnd, [int]$seconds) {
+function Test-WindowStages([IntPtr]$hwnd, [string]$label, [int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
+    $state = $null
+    while ((Get-Date) -lt $deadline) {
+        $state = Get-State $hwnd
+        if ($null -ne $state) { break }
+        Start-Sleep -Milliseconds 200
+    }
+    if ($null -eq $state) {
+        Add-Result "$label-stage-hwnd" "FAIL" "status state not found for HWND"
+        return $false
+    }
+    Add-Result "$label-stage-hwnd" "PASS" "window_id=$($state.window_id) hwnd=$($hwnd.ToInt64())"
+    if (-not [AmareTitlebar]::IsWindow($hwnd)) {
+        Add-Result "$label-stage-iswindow" "FAIL" "IsWindow=false"
+        return $false
+    }
+    Add-Result "$label-stage-iswindow" "PASS" "IsWindow=true live_windows=$(@([AmareTitlebar]::Windows([int]$script:app.Id)).Count)"
+    $attached = $false
+    $idle = $false
     while ((Get-Date) -lt $deadline) {
         $state = Get-State $hwnd
         if ($null -ne $state) {
             $tab = @($state.tabs | Where-Object { $_.id -eq $state.active_tab })[0]
-            if ($null -ne $tab -and $tab.webview -eq $true -and $tab.loading -eq $false) { return $true }
+            if ($null -ne $tab -and $tab.webview -eq $true) { $attached = $true }
+            if ($null -ne $tab -and $tab.webview -eq $true -and $tab.loading -eq $false) { $idle = $true; break }
         }
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 200
     }
+    if ($attached) { Add-Result "$label-stage-webview" "PASS" "webview=true" } else { Add-Result "$label-stage-webview" "FAIL" "webview controller not attached" }
+    if ($idle) { Add-Result "$label-stage-navigation" "PASS" "loading=false" } else { Add-Result "$label-stage-navigation" "FAIL" "navigation not idle" }
+    $proc = Get-Process -Id $script:app.Id -ErrorAction SilentlyContinue
+    if ($null -ne $proc -and $proc.Responding) { Add-Result "$label-stage-responsive" "PASS" "process responding" } else { Add-Result "$label-stage-responsive" "FAIL" "process not responding" }
+    if (-not $attached -or -not $idle -or $null -eq $proc -or -not $proc.Responding) { return $false }
+    [void](Force-AmareForeground $hwnd)
+    Start-Sleep -Milliseconds 200
+    if ([AmareTitlebar]::GetForegroundWindow() -eq $hwnd) {
+        Add-Result "$label-stage-activated" "PASS" "foreground HWND matches"
+        return $true
+    }
+    Add-Result "$label-stage-activated" "UNVERIFIED" "foreground HWND does not match after activation"
     return $false
 }
 function Check-OtherWindow([IntPtr]$hwnd, [string]$step) {
@@ -224,21 +255,13 @@ try {
                 continue
             }
         }
-        Write-Host "TITLEBAR $label ready-check start"
-        $ready = Wait-WindowReady $hwnd 12
-        Write-Host "TITLEBAR $label ready-check end ready=$ready"
+        Write-Host "TITLEBAR $label readiness stages start"
+        $ready = Test-WindowStages $hwnd $label 15
+        Write-Host "TITLEBAR $label readiness stages end ready=$ready"
         if (-not $ready) {
-            Add-Result "$label-ready" "UNVERIFIED" "window did not reach webview=true/loading=false before input"
             continue
         }
-        $proc = Get-Process -Id $script:app.Id -ErrorAction SilentlyContinue
-        if ($null -eq $proc -or -not $proc.Responding) {
-            Add-Result "$label-responsive" "UNVERIFIED" "process missing or not responding before input"
-            continue
-        }
-        Add-Result "$label-responsive" "PASS" "process responding"
-        [void](Force-AmareForeground $hwnd)
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 200
         $maximize = Try-Click-State $hwnd "window_max" { [AmareTitlebar]::IsZoomed($hwnd) } 4
         if ($maximize) {
             Add-Result "$label-titlebar-maximize" "PASS" "IsZoomed=true via real mouse"
