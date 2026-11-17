@@ -1253,6 +1253,10 @@ impl AmareApp {
                             this.tabs.get(this.active).map(|tab| tab.id) == Some(id)
                         }) {
                             this.focus_address_input(window, cx);
+                            // Restored WebView2 controllers can take the Win32
+                            // keyboard focus when they attach. GPUI's address
+                            // focus flag alone does not move the OS focus back.
+                            this.focus_native_window();
                             this.address_restore_focus_count =
                                 this.address_restore_focus_count.saturating_add(1);
                         }
@@ -2693,6 +2697,7 @@ impl AmareApp {
         self.tabs[index].loading = !has_error;
         if focus_address && self.active_tab().map(|tab| tab.id) == Some(id) {
             self.focus_address_input(window, cx);
+            self.focus_native_window();
         }
         cx.notify();
     }
