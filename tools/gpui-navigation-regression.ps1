@@ -209,7 +209,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $foregroundBeforeEnter = [AmareTestFocus]::GetForegroundWindow()
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) focus_class=$((Read-State $hwnd).os_focus.focus_class) address_focused=$((Read-State $hwnd).address_focused) ime_open=$((Read-State $hwnd).ime_open) ime_conversion=$((Read-State $hwnd).ime_conversion) layout=$((Read-State $hwnd).keyboard_layout)"
-    Send-Keys "{ENTER}"
+    Send-GpuiShortcut $hwnd 0x0D -NoCtrl
     $enterObserved = $false
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.address_enter_count -gt [int64]$enterBefore } 2 "address enter event")
