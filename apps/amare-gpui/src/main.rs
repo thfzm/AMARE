@@ -238,7 +238,13 @@ fn record_window_message(
         || message == WM_IME_SETCONTEXT
         || message == WM_SETFOCUS
         || message == WM_KILLFOCUS
-        || message == WM_ACTIVATE;
+        || message == WM_ACTIVATE
+        || message == 0x231 // WM_ENTERSIZEMOVE
+        || message == 0x232 // WM_EXITSIZEMOVE
+        || message == 0xA1 // WM_NCLBUTTONDOWN
+        || message == 0xA2 // WM_NCLBUTTONUP
+        || message == 0x201 // WM_LBUTTONDOWN
+        || message == 0x202; // WM_LBUTTONUP
     if !interesting {
         return;
     }

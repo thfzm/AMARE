@@ -84,6 +84,7 @@ function Send-TextKeys {
     Start-Sleep -Milliseconds 120
 }
 function Force-AmareForeground([IntPtr]$hwnd) {
+    $script:AmareForegroundClicked = $false
     if ($hwnd -eq [IntPtr]::Zero) { return $false }
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
         if ([AmareTestFocus]::GetForegroundWindow() -eq $hwnd) { return $true }
@@ -120,6 +121,7 @@ function Force-AmareForeground([IntPtr]$hwnd) {
     if ([AmareTestFocus]::GetWindowRect($hwnd, [ref]$rect)) {
         $x = [int](($rect.Left + $rect.Right) / 2)
         $y = $rect.Top + 12
+        $script:AmareForegroundClicked = $true
         [void][AmareTestFocus]::SetCursorPos($x, $y)
         Start-Sleep -Milliseconds 80
         [AmareTestFocus]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)

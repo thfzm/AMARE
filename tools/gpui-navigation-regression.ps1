@@ -210,7 +210,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $preState = Read-State $hwnd
     $preFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$preState.gui_thread_id)
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd -and $preFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) external_focus=0x$('{0:X}' -f $preFocus.focus_hwnd) external_class=$($preFocus.focus_class) external_is_window=$($preFocus.focus_is_window) window_active=$($preState.window_active) address_focused=$($preState.address_focused) ime_context=$($preState.ime_context_state) ime_open=$($preState.ime_open) ime_conversion=$($preState.ime_conversion) layout=$($preState.keyboard_layout)"
+    Add-Result "enter-precondition-$($script:case)" ($(if ($forced -and $foregroundBeforeEnter -eq $hwnd -and $preFocus.focus_is_window) { "PASS" } else { "UNVERIFIED" })) "force_foreground=$forced click_used=$script:AmareForegroundClicked foreground=0x$('{0:X}' -f $foregroundBeforeEnter.ToInt64()) hwnd=0x$('{0:X}' -f $hwnd.ToInt64()) external_focus=0x$('{0:X}' -f $preFocus.focus_hwnd) external_class=$($preFocus.focus_class) external_is_window=$($preFocus.focus_is_window) window_active=$($preState.window_active) address_focused=$($preState.address_focused) ime_context=$($preState.ime_context_state) ime_open=$($preState.ime_open) ime_conversion=$($preState.ime_conversion) layout=$($preState.keyboard_layout)"
     Send-GpuiShortcut $hwnd 0x0D -NoCtrl
     $enterObserved = $false
     try {
