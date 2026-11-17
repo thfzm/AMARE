@@ -82,15 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.81.0)
+## 5. 현재 실행 상태 (0.82.0)
 
-- Windows CI [44099436225](https://github.com/thfzm/AMARE/actions/runs/44099436225): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [44110507502](https://github.com/thfzm/AMARE/actions/runs/44110507502): **SUCCESS**.
-- Exit code classifier: **7/7 PASS** (`0`, non-zero, `0xC0000409`, timeout, cancel, invalid handle).
-- `0xC0000409` 원인: status poll의 paint 중 GPUI 재진입 → `RefCell already borrowed` panic → `ucrtbase` fail-fast. poll 제거로 수정.
-- Titlebar 5회: crash **0/5**, full PASS **3/5**, 2회 runner cancel.
-- Restore-first: text input 개선, Enter/submit 최종 3회 미관측 (**UNRESOLVED**).
-- 동일 코드 3회: **13/14**, **13/18**, **13/28** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회.
-- 실제 Windows 11/DPI/Snap/Alt+Tab **UNVERIFIED**.
+- Windows CI [44140410424](https://github.com/thfzm/AMARE/actions/runs/44140410424): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [44140410517](https://github.com/thfzm/AMARE/actions/runs/44140410517): **SUCCESS**.
+- Exit code classifier **7/7 PASS**, `0xC0000409` 수정 유지, titlebar crash **0/5**.
+- Restore-first Enter: foreground/focus/window_active/AddressInput focus 정상이나 **WM_KEYDOWN VK_RETURN 미도달** → **UNRESOLVED**.
+- new-window/corrupt Enter: `WM_KEYDOWN vk=13` + `SubmitAddress` **PASS**.
+- SendKeys 55/67/70자, paste 74자 3/3 — 문자 손실은 **TEST_AUTOMATION_BUG**.
+- 동일 코드 3회: **13/20**, **13/23**, **13/25** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **2/5**.
+- 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

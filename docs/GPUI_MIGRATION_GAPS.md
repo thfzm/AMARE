@@ -1,17 +1,15 @@
-# GPUI migration gaps and P0/P1 plan (0.81.0)
+# GPUI migration gaps and P0/P1 plan (0.82.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.81.0 status
+## 0.82.0 status
 
-- `0xC0000409` root cause confirmed: status poll re-entered GPUI during paint
-  (`RefCell already borrowed`), causing a ucrtbase fail-fast. Poll removed;
-  status writes happen from render.
-- Titlebar 5 repeats: no crash, 3 full PASS, 2 runner cancellations.
-- Restore-first: single-window fixture and native focus reassert added. Text
-  input reaches 64–72 chars; Enter/submit is still intermittent/unresolved.
-- Exit code harness now distinguishes non-zero/NTSTATUS/timeout/cancel.
+- 0.81 `0xC0000409` fix and exit classifier remain green; titlebar crash 0/5.
+- Win32/IME message tracing added. Restore-first Enter produces no
+  `WM_KEYDOWN VK_RETURN` at the app HWND despite verified foreground/focus;
+  new-window/corrupt Enter dispatches `SubmitAddress`. Cause unresolved.
+- SendKeys loses characters before GPUI; paste is a separate fallback only.
 - Corrupt session: **14/14 PASS** in all three repeats.
 - Three repeats: **13/13/13 FAIL**.
 - AI/updater/site permissions remain not implemented.
@@ -24,7 +22,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.81.0.
+WinUI remains the default package. GPUI is not switched to default in 0.82.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -69,7 +67,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.81.0.
+- no public release is created by CI in 0.82.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
