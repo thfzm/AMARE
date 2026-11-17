@@ -8,9 +8,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use amare_core::{Bookmark, HistoryEntry, SettingValue};
 use gpui::{
-    App, Application, Bounds, Context, DispatchPhase, FocusHandle, Focusable, KeyBinding, Render,
-    SharedString, StatefulInteractiveElement, Timer, Window, WindowAppearance, WindowBounds,
-    WindowControlArea, WindowOptions, actions, div, point, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Render, SharedString,
+    StatefulInteractiveElement, Timer, Window, WindowAppearance, WindowBounds, WindowControlArea,
+    WindowOptions, actions, div, point, prelude::*, px, rgb, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
@@ -5231,22 +5231,6 @@ impl Render for AmareApp {
             self.address_focus_lost_count = self.address_focus_lost_count.saturating_add(1);
         }
         self.address_was_focused = self.address_focused;
-        {
-            let weak = cx.weak_entity();
-            window.on_key_event::<gpui::KeyDownEvent>(move |event, phase, window, cx| {
-                if phase != DispatchPhase::Bubble
-                    || !event.keystroke.key.eq_ignore_ascii_case("enter")
-                    || event.keystroke.modifiers.number_of_modifiers() != 0
-                {
-                    return;
-                }
-                let _ = weak.update(cx, |this, cx| {
-                    if this.address_focused {
-                        this.submit_address_now(window, cx);
-                    }
-                });
-            });
-        }
         self.poll_drop_request(window, cx);
         self.poll_downloads(cx);
         self.poll_login_captures(cx);
