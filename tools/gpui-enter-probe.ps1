@@ -96,6 +96,12 @@ function Ensure-AddressEmpty([IntPtr]$hwnd) {
 }
 function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     [void](Wait-NavigationIdle 15)
+    $procHealthy = $null
+    try { $script:app.Refresh(); $procHealthy = $script:app.Responding } catch { }
+    $statusFile = Get-ChildItem $StatusDir -Filter "status-*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $statusAge = if ($null -ne $statusFile) { [int64]((Get-Date) - $statusFile.LastWriteTime).TotalMilliseconds } else { -1 }
+    $healthState = Read-State
+    Add-Result "$label-$index-health" ($(if ($procHealthy -eq $true -and $statusAge -ge 0 -and $statusAge -lt 3000) { "PASS" } else { "UNVERIFIED" })) "responding=$procHealthy status_age_ms=$statusAge address_len=$(([string]$healthState.address).Length) window_active=$($healthState.window_active)"
     [void](Force-AmareForeground $hwnd)
     $clickUsed = $script:AmareForegroundClicked
     $before = Ensure-AddressEmpty $hwnd
@@ -104,11 +110,11 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     $keyBefore = [int64]$before.keystroke_total
     $enterKeyBefore = [int64]$before.address_enter_count
     $submitBefore = [int64]$before.address_submit_count
-    Send-TextKeys "example"
+    Send-TextKeys "about:blank"
     Start-Sleep -Milliseconds 300
     $typed = Read-State
-    $typedOk = [string]$typed.address -eq "example"
-    Add-Result "$label-$index-text" ($(if ($typedOk) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$typed.address).Length) expected=7 key_delta=$([int64]$typed.keystroke_total - $keyBefore) focus=$($typed.address_focused)"
+    $typedOk = [string]$typed.address -eq "about:blank"
+    Add-Result "$label-$index-text" ($(if ($typedOk) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$typed.address).Length) expected=11 key_delta=$([int64]$typed.keystroke_total - $keyBefore) focus=$($typed.address_focused)"
     if (-not $typedOk) {
         Add-Result "$label-$index-enter-skipped" "UNVERIFIED" "class=TEST_AUTOMATION_BUG address text precondition failed; Enter not judged"
         return
