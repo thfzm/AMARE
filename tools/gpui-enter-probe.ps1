@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
 New-Item -ItemType Directory -Force -Path $StatusDir, $DataDir, $OutDir | Out-Null
 $script:results = [System.Collections.Generic.List[object]]::new()
+function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 120 }
 function Add-Result([string]$name, [string]$state, [string]$detail) {
     $script:results.Add([pscustomobject]@{ name = $name; result = $state; detail = $detail })
     Write-Host ("{0} {1}: {2}" -f $state, $name, $detail)
