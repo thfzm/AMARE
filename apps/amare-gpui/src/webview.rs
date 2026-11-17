@@ -41,7 +41,8 @@ use windows::{
                 Ime::{
                     HIMC, IACE_DEFAULT, IME_CONVERSION_MODE, IME_SENTENCE_MODE,
                     ImmAssociateContext, ImmAssociateContextEx, ImmCreateContext, ImmGetContext,
-                    ImmReleaseContext, ImmSetConversionStatus, ImmSetOpenStatus,
+                    ImmGetConversionStatus, ImmGetOpenStatus, ImmReleaseContext,
+                    ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
                     GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
@@ -1177,6 +1178,24 @@ impl WebViewHost {
     pub fn ime_context(&self) -> bool {
         let parent = *self.parent.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { !ImmGetContext(parent).0.is_null() }
+    }
+
+    pub fn ime_state(&self) -> (bool, bool, u32) {
+        let parent = *self.parent.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe {
+            let context = ImmGetContext(parent);
+            if context.0.is_null() {
+                return (false, false, 0);
+            }
+            let open = ImmGetOpenStatus(context).as_bool();
+            let mut conversion = IME_CONVERSION_MODE(0);
+            let mut sentence = IME_SENTENCE_MODE(0);
+            let conversion_ok =
+                ImmGetConversionStatus(context, Some(&mut conversion), Some(&mut sentence))
+                    .as_bool();
+            let _ = ImmReleaseContext(parent, context);
+            (true, open, if conversion_ok { conversion.0 } else { 0 })
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use amare_core::{Bookmark, HistoryEntry, SettingValue};
@@ -21,10 +21,14 @@ use zeroize::Zeroize;
 use windows::Win32::{
     Foundation::POINT,
     UI::{
-        Input::KeyboardAndMouse::{GetAsyncKeyState, SetFocus, VK_LBUTTON},
+        Input::KeyboardAndMouse::{GetAsyncKeyState, GetKeyboardLayout, SetFocus, VK_LBUTTON},
         WindowsAndMessaging::{
-            GA_ROOT, GUITHREADINFO, GetAncestor, GetClassNameW, GetCursorPos, GetForegroundWindow,
-            GetGUIThreadInfo, GetWindowThreadProcessId, SW_RESTORE, ShowWindow,
+            CWPSTRUCT, CallNextHookEx, GA_ROOT, GUITHREADINFO, GetAncestor, GetClassNameW,
+            GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, MSG,
+            SW_RESTORE, SetWindowsHookExW, ShowWindow, WH_CALLWNDPROC, WH_GETMESSAGE, WM_ACTIVATE,
+            WM_CHAR, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT,
+            WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_SETFOCUS,
+            WM_SYSKEYDOWN, WM_SYSKEYUP,
         },
     },
 };
@@ -184,6 +188,131 @@ static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
 
 static KEYSTROKE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
 static KEYSTROKE_TOTAL: AtomicU64 = AtomicU64::new(0);
+static MESSAGE_TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
+static MESSAGE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+static MESSAGE_TRACE_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "windows")]
+unsafe fn message_focus_snapshot() -> (usize, String, u32) {
+    use windows::Win32::System::Threading::GetCurrentThreadId;
+    let tid = GetCurrentThreadId();
+    let mut info = GUITHREADINFO {
+        cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    let focus = if GetGUIThreadInfo(tid, &mut info).is_ok() {
+        info.hwndFocus
+    } else {
+        HWND::default()
+    };
+    let mut class_buf = [0u16; 256];
+    let class_len = if focus.is_invalid() {
+        0
+    } else {
+        GetClassNameW(focus, &mut class_buf).max(0) as usize
+    };
+    let class = String::from_utf16_lossy(&class_buf[..class_len]);
+    let layout = (GetKeyboardLayout(tid).0 as usize & 0xFFFF) as u32;
+    (focus.0 as usize, class, layout)
+}
+
+#[cfg(target_os = "windows")]
+fn record_window_message(
+    hook: &str,
+    message: u32,
+    hwnd: HWND,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) {
+    if !MESSAGE_TRACE_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+    let interesting = message == WM_KEYDOWN
+        || message == WM_KEYUP
+        || message == WM_CHAR
+        || message == WM_SYSKEYDOWN
+        || message == WM_SYSKEYUP
+        || message == WM_IME_STARTCOMPOSITION
+        || message == WM_IME_ENDCOMPOSITION
+        || message == WM_IME_COMPOSITION
+        || message == WM_IME_SETCONTEXT
+        || message == WM_SETFOCUS
+        || message == WM_KILLFOCUS
+        || message == WM_ACTIVATE;
+    if !interesting {
+        return;
+    }
+    let (focus_hwnd, focus_class, layout) = unsafe { message_focus_snapshot() };
+    let entry = serde_json::json!({
+        "at_ms": now_ms(),
+        "hook": hook,
+        "message": message,
+        "hwnd": hwnd.0 as usize,
+        "wparam": wparam.0 as usize,
+        "lparam": lparam.0,
+        "vk": if message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP {
+            Some(wparam.0 as usize & 0xFFFF)
+        } else {
+            None
+        },
+        "focus_hwnd": focus_hwnd,
+        "focus_class": focus_class,
+        "keyboard_layout": layout,
+    });
+    if let Ok(mut trace) = MESSAGE_TRACE.try_lock() {
+        trace.push(entry);
+        if trace.len() > 160 {
+            let excess = trace.len() - 160;
+            trace.drain(0..excess);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn call_wnd_proc(
+    code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    if code >= 0 {
+        let cwp = &*(lparam.0 as *const CWPSTRUCT);
+        record_window_message("call", cwp.message, cwp.hwnd, cwp.wParam, cwp.lParam);
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn get_message_proc(
+    code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    if code >= 0 {
+        let msg = &*(lparam.0 as *const MSG);
+        record_window_message("get", msg.message, msg.hwnd, msg.wParam, msg.lParam);
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+#[cfg(target_os = "windows")]
+fn install_message_trace() {
+    if std::env::var("AMARE_GPUI_MESSAGE_TRACE").ok().as_deref() != Some("1") {
+        return;
+    }
+    if MESSAGE_TRACE_INSTALLED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    use windows::Win32::System::Threading::GetCurrentThreadId;
+    let tid = unsafe { GetCurrentThreadId() };
+    unsafe {
+        let _ = SetWindowsHookExW(WH_CALLWNDPROC, Some(call_wnd_proc), None, tid);
+        let _ = SetWindowsHookExW(WH_GETMESSAGE, Some(get_message_proc), None, tid);
+    }
+    MESSAGE_TRACE_ENABLED.store(true, Ordering::Relaxed);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_message_trace() {}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -1567,6 +1696,21 @@ impl AmareApp {
                 self.last_focus_class = focus_class;
             }
         }
+        #[cfg(target_os = "windows")]
+        let (ime_context_state, ime_open, ime_conversion, keyboard_layout) = {
+            let state = self
+                .active_webview()
+                .map(|webview| webview.ime_state())
+                .unwrap_or((false, false, 0));
+            let layout = unsafe { (GetKeyboardLayout(0).0 as usize & 0xFFFF) as u32 };
+            (state.0, state.1, state.2, layout)
+        };
+        #[cfg(not(target_os = "windows"))]
+        let (ime_context_state, ime_open, ime_conversion, keyboard_layout) = (false, false, 0, 0);
+        let message_trace = MESSAGE_TRACE
+            .lock()
+            .map(|trace| trace.clone())
+            .unwrap_or_default();
         let keystroke_total = KEYSTROKE_TOTAL.load(Ordering::Relaxed);
         let keystroke_trace = KEYSTROKE_TRACE
             .lock()
@@ -1673,6 +1817,11 @@ impl AmareApp {
                 "failed": progress.failed
             })),
             "ime_context": ime_context,
+            "ime_context_state": ime_context_state,
+            "ime_open": ime_open,
+            "ime_conversion": ime_conversion,
+            "keyboard_layout": keyboard_layout,
+            "message_trace": message_trace,
             "pid": std::process::id()
         });
         if let Some(parent) = std::path::Path::new(&path).parent() {
@@ -6357,6 +6506,7 @@ fn main() {
     }));
     lifecycle_log("process_start");
     Application::new().run(|cx: &mut App| {
+        install_message_trace();
         cx.bind_keys([
             KeyBinding::new("ctrl-l", FocusAddress, None),
             KeyBinding::new("ctrl-r", ReloadPage, None),

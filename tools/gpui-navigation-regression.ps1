@@ -213,10 +213,17 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         $enterObserved = $true
     } catch { }
     $enterTrace = $null
+    $enterWindowKey = $null
     try {
         $afterEnter = Read-State $hwnd
         $enterTrace = @($afterEnter.keystroke_trace | Where-Object { $_.keystroke -match "enter" -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
+        $enterWindowKey = @($afterEnter.message_trace | Where-Object { $_.message -eq 256 -and [int64]$_.vk -eq 13 -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
     } catch { }
+    if ($null -ne $enterWindowKey) {
+        Add-Result "enter-window-keydown-$($script:case)" "PASS" "msg=$($enterWindowKey.message) vk=$($enterWindowKey.vk) hwnd=0x$('{0:X}' -f [int64]$enterWindowKey.hwnd) focus=0x$('{0:X}' -f [int64]$enterWindowKey.focus_hwnd) focus_class=$($enterWindowKey.focus_class) layout=$($enterWindowKey.keyboard_layout)"
+    } else {
+        Add-Result "enter-window-keydown-$($script:case)" "UNVERIFIED" "no WM_KEYDOWN VK_RETURN observed after Enter; message_trace_len=$(@($afterEnter.message_trace).Count) ime_open=$($afterEnter.ime_open) ime_conversion=$($afterEnter.ime_conversion) layout=$($afterEnter.keyboard_layout) marked=$($afterEnter.marked_range -join ',')"
+    }
     if ($null -ne $enterTrace) {
         if ([string]$enterTrace.action -match "SubmitAddress") {
             Add-Result "enter-keybinding-$($script:case)" "PASS" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
@@ -317,6 +324,7 @@ function Start-App([string]$data, [switch]$SecondWindow) {
     $env:AMARE_GPUI_SELF_TEST = "0"
     $env:AMARE_GPUI_RESTORE = "1"
     $env:AMARE_GPUI_DIAGNOSTICS = "1"
+    $env:AMARE_GPUI_MESSAGE_TRACE = "1"
     $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
     if ($SecondWindow) { $env:AMARE_GPUI_OPEN_SECOND_WINDOW = "1" } else { Remove-Item Env:AMARE_GPUI_OPEN_SECOND_WINDOW -ErrorAction SilentlyContinue }
     $outLog = Join-Path $env:TEMP ("amare-nav-" + [guid]::NewGuid().ToString("N") + ".out.log")
