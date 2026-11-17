@@ -23,6 +23,12 @@ public static class AmareTitlebar {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr GetActiveWindow();
+    [DllImport("user32.dll")] public static extern IntPtr GetFocus();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
@@ -179,12 +185,33 @@ function Test-WindowStages([IntPtr]$hwnd, [string]$label, [int]$seconds, $initia
     $proc = Get-Process -Id $script:app.Id -ErrorAction SilentlyContinue
     if ($null -ne $proc -and $proc.Responding) { Add-Result "$label-stage-responsive" "PASS" "process responding" } else { Add-Result "$label-stage-responsive" "FAIL" "process not responding" }
     if (-not $attached -or -not $idle -or $null -eq $proc -or -not $proc.Responding) { return $false }
-    [void](Force-AmareForeground $hwnd)
+    $beforeFg = [AmareTitlebar]::GetForegroundWindow()
+    $beforeActive = [AmareTitlebar]::GetActiveWindow()
+    $beforeFocus = [AmareTitlebar]::GetFocus()
+    $show = [AmareTitlebar]::ShowWindow($hwnd, 9)
+    $setFg = [AmareTitlebar]::SetForegroundWindow($hwnd)
+    $setActive = [AmareTitlebar]::SetActiveWindow($hwnd)
+    $setFocus = [AmareTitlebar]::SetFocus($hwnd)
     Start-Sleep -Milliseconds 200
-    if ([AmareTitlebar]::GetForegroundWindow() -eq $hwnd) {
-        Add-Result "$label-stage-activated" "PASS" "foreground HWND matches"
+    $afterFg = [AmareTitlebar]::GetForegroundWindow()
+    $afterActive = [AmareTitlebar]::GetActiveWindow()
+    $afterFocus = [AmareTitlebar]::GetFocus()
+    $win32Detail = "show=$show setForeground=$setFg setActive=$($setActive.ToInt64()) setFocus=$($setFocus.ToInt64()) beforeFg=$($beforeFg.ToInt64()) afterFg=$($afterFg.ToInt64()) afterActive=$($afterActive.ToInt64()) afterFocus=$($afterFocus.ToInt64())"
+    if ($afterFg -eq $hwnd) {
+        Add-Result "$label-stage-win32-activate" "PASS" $win32Detail
     } else {
-        Add-Result "$label-stage-activated" "UNVERIFIED" "foreground HWND does not match after activation; real click will retry activation"
+        Add-Result "$label-stage-win32-activate" "UNVERIFIED" $win32Detail
+    }
+    $state = Get-State $hwnd
+    if ($null -eq $state -and $null -ne $initialState) { $state = $initialState }
+    if ($null -ne $state) {
+        if ($state.window_active -eq $true) {
+            Add-Result "$label-stage-gpui-active" "PASS" "window_active=true address_focused=$($state.address_focused)"
+        } else {
+            Add-Result "$label-stage-gpui-active" "UNVERIFIED" "window_active=$($state.window_active) address_focused=$($state.address_focused)"
+        }
+    } else {
+        Add-Result "$label-stage-gpui-active" "UNVERIFIED" "state unavailable"
     }
     return $true
 }
@@ -230,7 +257,14 @@ $beforeWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Cou
 try {
     $script:app = Start-Process $Exe -PassThru
     $states = Wait-States 2 40 "two AMARE windows"
-    $handles = @($states | Sort-Object window_id | ForEach-Object { [IntPtr][int64]$_.window_handle })
+    $liveHandles = @([AmareTitlebar]::Windows([int]$script:app.Id))
+    if ($liveHandles.Count -ge 2) {
+        $handles = @($liveHandles | Sort-Object { $_.ToInt64() })
+        Add-Result "window-handles" "PASS" "live_windows=$($liveHandles.Count) status_states=$($states.Count)"
+    } else {
+        $handles = @($states | Sort-Object window_id | ForEach-Object { [IntPtr][int64]$_.window_handle })
+        Add-Result "window-handles" "UNVERIFIED" "live_windows=$($liveHandles.Count) status_states=$($states.Count)"
+    }
     if ($handles.Count -ge 2) {
         [void][AmareTitlebar]::SetWindowPos($handles[0], [IntPtr]::Zero, 8, 32, 500, 640, 0x0004)
         [void][AmareTitlebar]::SetWindowPos($handles[1], [IntPtr]::Zero, 516, 32, 500, 640, 0x0004)
@@ -258,7 +292,8 @@ try {
             }
         }
         Write-Host "TITLEBAR $label readiness stages start"
-        $ready = Test-WindowStages $hwnd $label 15 $states[$i]
+        $initialState = @($states | Where-Object { [int64]$_.window_handle -eq $hwnd.ToInt64() })[0]
+        $ready = Test-WindowStages $hwnd $label 15 $initialState
         Write-Host "TITLEBAR $label readiness stages end ready=$ready"
         if (-not $ready) {
             continue

@@ -2850,21 +2850,11 @@ impl AmareApp {
     }
 
     fn submit_address(&mut self, _: &SubmitAddress, window: &mut Window, cx: &mut Context<Self>) {
-        self.submit_address_now(window, cx);
-    }
-
-    fn submit_address_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let now = SystemTime::now()
+        self.last_submit_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        // A single Enter may reach both the explicit address key handler and
-        // the SubmitAddress keybinding. Dedupe that one physical key press.
-        if now.saturating_sub(self.last_submit_at_ms) < 40 {
-            return;
-        }
         self.address_submit_count = self.address_submit_count.saturating_add(1);
-        self.last_submit_at_ms = now;
         self.last_submitted_len = self.address_value(cx).len();
         self.address_focused = self.address_input.read(cx).is_focused(window);
         self.trace_action("SubmitAddress");
@@ -5224,6 +5214,7 @@ impl Render for AmareApp {
             );
             self.start_status_poll(cx);
         }
+        self.window_active = window.is_window_active();
         self.address_focused = self.address_input.read(cx).is_focused(window);
         if self.address_focused && !self.address_was_focused {
             self.address_focus_gained_count = self.address_focus_gained_count.saturating_add(1);
