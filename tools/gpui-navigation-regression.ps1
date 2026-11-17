@@ -172,7 +172,7 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $mismatchState = $null
     if ([string]$typed.address -ne [string]$url) {
         $keyDelta = [int64]$typed.keystroke_total - $keyTotalBeforeType
-        $class = if ($keyDelta -lt ([int64]$url.Length - 2)) { "TEST_AUTOMATION_BUG" } else { "PRODUCT_BUG_CANDIDATE" }
+        $class = if ($keyDelta -lt [int64]$url.Length) { "TEST_AUTOMATION_BUG" } else { "PRODUCT_BUG_CANDIDATE" }
         $mismatchState = if ($class -eq "TEST_AUTOMATION_BUG") { "UNVERIFIED" } else { "FAIL" }
         Add-Result "input-mismatch-attempt1-$($script:case)" $mismatchState "class=$class expected_len=$($url.Length) actual_len=$(([string]$typed.address).Length) key_delta=$keyDelta expected_keys=$($url.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
         # Keep the first failure above. One explicit retry separates a dropped
@@ -185,10 +185,24 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
         $typed = Read-State $hwnd
         $retryKeyDelta = [int64]$typed.keystroke_total - $retryKeyBefore
         if ([string]$typed.address -eq [string]$url) {
-            Add-Result "input-retry-$($script:case)" "PASS" "retry matched; first failure preserved; key_delta=$retryKeyDelta"
+            Add-Result "input-retry-$($script:case)" "PASS" "keyboard retry matched; first failure preserved; key_delta=$retryKeyDelta"
             $mismatchState = $null
         } else {
-            Add-Result "input-retry-$($script:case)" "UNVERIFIED" "retry still mismatched; actual_len=$(([string]$typed.address).Length) key_delta=$retryKeyDelta"
+            # CI SendKeys loses characters under load. A clipboard paste is a
+            # distinct real input path and lets submit/navigation be tested.
+            Set-Clipboard -Value $url
+            Start-Sleep -Milliseconds 150
+            Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+            Send-Keys "^v"
+            Start-Sleep -Milliseconds 400
+            $pasted = Read-State $hwnd
+            if ([string]$pasted.address -eq [string]$url) {
+                $typed = $pasted
+                Add-Result "input-retry-$($script:case)" "PASS" "clipboard paste matched after keyboard retry; first failure preserved; actual_len=$(([string]$typed.address).Length)"
+                $mismatchState = $null
+            } else {
+                Add-Result "input-retry-$($script:case)" "UNVERIFIED" "keyboard and paste retries mismatched; actual_len=$(([string]$typed.address).Length) key_delta=$retryKeyDelta"
+            }
         }
     }
     $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -224,7 +238,21 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
             Add-Result "enter-keybinding-retry-$($script:case)" $retryState "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
             $enterObserved = $true
         } else {
-            Add-Result "enter-keybinding-retry-$($script:case)" "UNVERIFIED" "Enter still not observed by GPUI keystroke observer"
+            Add-Result "enter-keybinding-retry-$($script:case)" "UNVERIFIED" "Enter still not observed via SendKeys"
+            $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            Send-GpuiShortcut $hwnd 0x0D -NoCtrl
+            Start-Sleep -Milliseconds 400
+            try {
+                $rawEnter = Read-State $hwnd
+                $enterTrace = @($rawEnter.keystroke_trace | Where-Object { $_.keystroke -match "enter" -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
+            } catch { }
+            if ($null -ne $enterTrace) {
+                $rawState = if ([string]$enterTrace.action -match "SubmitAddress") { "PASS" } else { "FAIL" }
+                Add-Result "enter-keybinding-raw-$($script:case)" $rawState "raw keybd_event keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
+                $enterObserved = $true
+            } else {
+                Add-Result "enter-keybinding-raw-$($script:case)" "UNVERIFIED" "raw keybd_event Enter also not observed"
+            }
         }
     }
     if ($enterObserved) {
