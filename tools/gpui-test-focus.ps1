@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\gpui-exit-code.ps1"
 if (-not ("AmareTestFocus" -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
@@ -21,8 +22,66 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+    [StructLayout(LayoutKind.Sequential)] public struct GUITHREADINFO {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+    [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
 }
 '@
+}
+
+function Get-AmareGuiFocus {
+    param([IntPtr]$WindowHandle, [uint32]$GuiThreadId)
+    $info = New-Object AmareTestFocus+GUITHREADINFO
+    $info.cbSize = [uint32][System.Runtime.InteropServices.Marshal]::SizeOf([type][AmareTestFocus+GUITHREADINFO])
+    $ok = $false
+    if ($GuiThreadId -ne 0) {
+        $ok = [AmareTestFocus]::GetGUIThreadInfo($GuiThreadId, [ref]$info)
+    }
+    $focus = if ($ok) { $info.hwndFocus } else { [IntPtr]::Zero }
+    $root = if ($focus -ne [IntPtr]::Zero) { [AmareTestFocus]::GetAncestor($focus, 2) } else { [IntPtr]::Zero }
+    $class = ""
+    if ($focus -ne [IntPtr]::Zero) {
+        $buf = New-Object System.Text.StringBuilder 256
+        [void][AmareTestFocus]::GetClassName($focus, $buf, $buf.Capacity)
+        $class = $buf.ToString()
+    }
+    [pscustomobject]@{
+        ok = $ok
+        gui_thread_id = $GuiThreadId
+        focus_hwnd = $focus.ToInt64()
+        focus_root_hwnd = $root.ToInt64()
+        focus_class = $class
+        focus_is_window = ($focus -eq $WindowHandle)
+        focus_is_descendant = ($focus -ne [IntPtr]::Zero -and $root -eq $WindowHandle)
+    }
+}
+
+function Send-TextKeys {
+    param([string]$Text, [int]$DelayMs = 15)
+    $special = @{
+        '+' = '{+}'; '^' = '{^}'; '%' = '{%}'; '~' = '{~}';
+        '(' = '{(}'; ')' = '{)}'; '{' = '{{}'; '}' = '{}}';
+        '[' = '{[}'; ']' = '{]}'
+    }
+    foreach ($ch in $Text.ToCharArray()) {
+        $token = [string]$ch
+        if ($special.ContainsKey($token)) { $token = $special[$token] }
+        [System.Windows.Forms.SendKeys]::SendWait($token)
+        if ($DelayMs -gt 0) { Start-Sleep -Milliseconds $DelayMs }
+    }
+    Start-Sleep -Milliseconds 120
 }
 function Force-AmareForeground([IntPtr]$hwnd) {
     if ($hwnd -eq [IntPtr]::Zero) { return $false }

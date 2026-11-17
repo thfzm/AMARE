@@ -70,7 +70,8 @@ try {
  Start-Sleep -Seconds 2
  $after=@(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
  if($after-gt$before){throw "WebView2 remained after download app exit"}
- Add-Result "download-exit-cleanup" "PASS" "exit=$($app.ExitCode) webview2=$before->$after"
+ $exitAssessment = Get-AmareExitAssessment -ExitCode $app.ExitCode
+ Add-Result "download-exit-cleanup" $exitAssessment.State "class=$($exitAssessment.Classification) exit=$($app.ExitCode) webview2=$before->$after"
  $app2=Start-Process $Exe -PassThru
  $restored=Wait-State {param($s) @($s.downloads).Count -ge 1} 60 "restored download list"
  for($i=0;$i-lt40;$i++){Start-Sleep -Milliseconds 500;$app2.Refresh();if($app2.MainWindowHandle-ne[IntPtr]::Zero){break}}

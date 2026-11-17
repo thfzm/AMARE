@@ -121,7 +121,7 @@ function Navigate([string]$url, [int]$timeout = 20) {
         }
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         $beforeRequest = (Read-State).navigation_requests
-        Send-Keys $url
+        Send-TextKeys $url
         Send-Keys "{ENTER}"
         try {
             [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
@@ -298,7 +298,8 @@ try {
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt $before) { throw "WebView2 processes remained after library app exit" }
-    Add-Result "graceful-exit-webview2" "PASS" "exit=$($app.ExitCode) webview2=$before->$after"
+    $exitAssessment = Get-AmareExitAssessment -ExitCode $app.ExitCode
+    Add-Result "graceful-exit-webview2" $exitAssessment.State "class=$($exitAssessment.Classification) exit=$($app.ExitCode) webview2=$before->$after"
 
     # Restart with the same data directory and verify persistence.
     $beforeRestart = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count

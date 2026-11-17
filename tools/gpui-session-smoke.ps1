@@ -180,7 +180,7 @@ function Navigate([string]$url, [int]$timeout = 20, [switch]$AllowNavigationErro
         }
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         $beforeRequest = (Read-State).navigation_requests
-        Send-Keys $url; Send-Keys "{ENTER}"
+        Send-TextKeys $url; Send-Keys "{ENTER}"
         try {
             try {
                 [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")

@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write as _;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -21,7 +22,10 @@ use windows::Win32::{
     Foundation::POINT,
     UI::{
         Input::KeyboardAndMouse::{GetAsyncKeyState, SetFocus, VK_LBUTTON},
-        WindowsAndMessaging::{GetClientRect, GetCursorPos, GetWindowRect, SW_RESTORE, ShowWindow},
+        WindowsAndMessaging::{
+            GA_ROOT, GUITHREADINFO, GetAncestor, GetClassNameW, GetCursorPos, GetForegroundWindow,
+            GetGUIThreadInfo, GetWindowThreadProcessId, SW_RESTORE, ShowWindow,
+        },
     },
 };
 
@@ -177,6 +181,49 @@ fn apply_platform_settings(settings: &library::BrowserSettings) {
 }
 
 static NEXT_WINDOW_ID: AtomicU64 = AtomicU64::new(1);
+
+static KEYSTROKE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn lifecycle_log(event: &str) {
+    eprintln!("[lifecycle] {event}");
+    let Ok(directory) = std::env::var("AMARE_GPUI_STATUS_DIR") else {
+        return;
+    };
+    let path =
+        std::path::Path::new(&directory).join(format!("lifecycle-{}.log", std::process::id()));
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{} {}", now_ms(), event);
+        let _ = file.flush();
+    }
+}
+
+fn record_keystroke(event: &gpui::KeystrokeEvent, window: &Window) {
+    let entry = serde_json::json!({
+        "at_ms": now_ms(),
+        "keystroke": event.keystroke.to_string(),
+        "action": event.action.as_ref().map(|action| action.name()),
+        "contexts": format!("{:?}", event.context_stack),
+        "window_active": window.is_window_active(),
+    });
+    if let Ok(mut trace) = KEYSTROKE_TRACE.lock() {
+        trace.push(entry);
+        if trace.len() > 60 {
+            let excess = trace.len() - 60;
+            trace.drain(0..excess);
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct SessionTabSnapshot {
@@ -1433,6 +1480,69 @@ impl AmareApp {
         let window_handle = self.parent.map(|handle| handle.0 as usize).unwrap_or(0);
         #[cfg(not(target_os = "windows"))]
         let window_handle = 0usize;
+        #[cfg(target_os = "windows")]
+        let gui_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+        #[cfg(target_os = "windows")]
+        let os_focus = unsafe {
+            let mut info = GUITHREADINFO {
+                cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+                ..Default::default()
+            };
+            let gui_ok = GetGUIThreadInfo(gui_thread_id, &mut info).is_ok();
+            let focus = if gui_ok {
+                info.hwndFocus
+            } else {
+                HWND::default()
+            };
+            let active = if gui_ok {
+                info.hwndActive
+            } else {
+                HWND::default()
+            };
+            let foreground = GetForegroundWindow();
+            let mut foreground_pid = 0u32;
+            let mut focus_pid = 0u32;
+            let foreground_thread = GetWindowThreadProcessId(foreground, Some(&mut foreground_pid));
+            if !focus.is_invalid() {
+                let _ = GetWindowThreadProcessId(focus, Some(&mut focus_pid));
+            }
+            let focus_root = if focus.is_invalid() {
+                HWND::default()
+            } else {
+                GetAncestor(focus, GA_ROOT)
+            };
+            let mut class_buf = [0u16; 256];
+            let class_len = if focus.is_invalid() {
+                0
+            } else {
+                GetClassNameW(focus, &mut class_buf).max(0) as usize
+            };
+            let focus_class = String::from_utf16_lossy(&class_buf[..class_len]);
+            let focus_is_window = !focus.is_invalid() && focus.0 == window_handle as *mut _;
+            let focus_is_descendant =
+                !focus.is_invalid() && !focus_is_window && focus_root.0 == window_handle as *mut _;
+            serde_json::json!({
+                "gui_thread_id": gui_thread_id,
+                "gui_thread_info_ok": gui_ok,
+                "foreground_hwnd": foreground.0 as usize,
+                "foreground_thread_id": foreground_thread,
+                "foreground_pid": foreground_pid,
+                "foreground_is_window": foreground.0 as usize == window_handle,
+                "active_hwnd": active.0 as usize,
+                "focus_hwnd": focus.0 as usize,
+                "focus_root_hwnd": focus_root.0 as usize,
+                "focus_pid": focus_pid,
+                "focus_class": focus_class,
+                "focus_is_window": focus_is_window,
+                "focus_is_descendant": focus_is_descendant,
+            })
+        };
+        #[cfg(not(target_os = "windows"))]
+        let (gui_thread_id, os_focus) = (0u32, serde_json::json!({}));
+        let keystroke_trace = KEYSTROKE_TRACE
+            .lock()
+            .map(|trace| trace.clone())
+            .unwrap_or_default();
         let (lock_epoch, globally_locked) = password_vault::lock_state();
         let payload = serde_json::json!({
             "platform": "gpui",
@@ -1489,6 +1599,9 @@ impl AmareApp {
             "last_click_y": self.last_click_y,
             "last_key": self.last_key,
             "window_active": self.window_active,
+            "gui_thread_id": gui_thread_id,
+            "os_focus": os_focus,
+            "keystroke_trace": keystroke_trace,
             "navigation_requests": self.navigation_requests,
             "last_navigation_url": self.last_navigation_url,
             "last_navigation_at_ms": self.last_navigation_at_ms,
@@ -5507,7 +5620,9 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .child("—")
                             .on_click(cx.listener(|_, _, window, _| {
+                                lifecycle_log("minimize_request");
                                 window.minimize_window();
+                                lifecycle_log("minimize_returned");
                             })),
                     )
                     .child(
@@ -5539,7 +5654,9 @@ impl Render for AmareApp {
                             .cursor_pointer()
                             .child("×")
                             .on_click(cx.listener(|_, _, window, _| {
+                                lifecycle_log("close_request");
                                 window.remove_window();
+                                lifecycle_log("close_returned");
                             })),
                     )
                     .on_children_prepainted({
@@ -6189,6 +6306,12 @@ fn title_for(url: &str) -> String {
 }
 
 fn main() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        lifecycle_log(&format!("panic {info}"));
+        default_hook(info);
+    }));
+    lifecycle_log("process_start");
     Application::new().run(|cx: &mut App| {
         cx.bind_keys([
             KeyBinding::new("ctrl-l", FocusAddress, None),
@@ -6229,6 +6352,10 @@ fn main() {
             if cx.windows().is_empty() {
                 cx.quit();
             }
+        })
+        .detach();
+        cx.observe_keystrokes(|event, window, _cx| {
+            record_keystroke(event, window);
         })
         .detach();
         let (_, startup_settings) = library::browser_settings_cached()

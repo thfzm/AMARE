@@ -514,7 +514,8 @@ try {
     Start-Sleep -Seconds 2
     $after = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
     if ($after -gt $before) { throw "WebView2 child processes remained after exit" }
-    Add-Result "graceful-exit-webview2" "PASS" "exit=$($app.ExitCode) webview2=$before->$after"
+    $exitAssessment = Get-AmareExitAssessment -ExitCode $app.ExitCode
+    Add-Result "graceful-exit-webview2" $exitAssessment.State "class=$($exitAssessment.Classification) exit=$($app.ExitCode) webview2=$before->$after"
 }
 catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message

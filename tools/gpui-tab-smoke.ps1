@@ -199,7 +199,7 @@ function Navigate([string]$url, [int]$timeout = 20) {
         Send-Keys "^a"
         Send-Keys "{BACKSPACE}"
         $beforeRequest = (Read-State).navigation_requests
-        Send-Keys $url
+        Send-TextKeys $url
         Send-Keys "{ENTER}"
         try {
             [void](Wait-State { param($s) [int64]$s.navigation_requests -gt [int64]$beforeRequest } 8 "navigation request $url")
@@ -468,7 +468,8 @@ try {
     }
     if ($script:app.HasExited) {
         if ([string]::IsNullOrEmpty($closeMethod)) { $closeMethod = "normal close" }
-        Add-Result "browser-exit-after-last-tab" "PASS" "$closeMethod exit=$($script:app.ExitCode)"
+        $exitAssessment = Get-AmareExitAssessment -ExitCode $script:app.ExitCode
+        Add-Result "browser-exit-after-last-tab" $exitAssessment.State "$closeMethod class=$($exitAssessment.Classification) exit=$($script:app.ExitCode)"
     } else {
         Stop-Process -Id $script:app.Id -Force -ErrorAction SilentlyContinue
         Add-Result "browser-exit-after-last-tab" "UNVERIFIED" "no normal exit path succeeded; process killed"

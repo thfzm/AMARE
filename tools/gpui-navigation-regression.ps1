@@ -135,22 +135,52 @@ function Submit-Url([IntPtr]$hwnd, [string]$url, [int]$seconds = 25, [switch]$Sk
     $selected = Focus-Address $hwnd -SkipClick:$SkipClick
     $state = Read-State $hwnd
     Add-Result "input-delivery-$($script:case)" "PASS" "mouse_delta=$([int64]$state.mouse_down_count - $mouseBefore) selected=$selected focused=$($state.address_focused) foreground=$([AmareTestFocus]::GetForegroundWindow() -eq $hwnd)"
+    $guiThread = 0
+    if ($null -ne $state.gui_thread_id) { $guiThread = [uint32]$state.gui_thread_id }
+    $focus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId $guiThread
+    $focusDetail = "gui_tid=$($focus.gui_thread_id) focus=0x$('{0:X}' -f $focus.focus_hwnd) root=0x$('{0:X}' -f $focus.focus_root_hwnd) class=$($focus.focus_class) focus_is_window=$($focus.focus_is_window) focus_is_descendant=$($focus.focus_is_descendant) app_focus_is_window=$($state.os_focus.focus_is_window) app_focus_is_descendant=$($state.os_focus.focus_is_descendant) foreground_is_window=$($state.os_focus.foreground_is_window) window_active=$($state.window_active) address_focused=$($state.address_focused) selected=$($state.selected_range -join ',')"
+    if ($focus.focus_is_window) {
+        Add-Result "focus-owner-$($script:case)" "PASS" $focusDetail
+    } else {
+        Add-Result "focus-owner-$($script:case)" "UNVERIFIED" $focusDetail
+    }
     Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    Send-Keys $url
+    Send-TextKeys $url
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.address_text_input_count -gt [int64]$textBefore } 6 "address text input")
     } catch {
         $now = Read-State $hwnd
-        Add-Result "text-input-$($script:case)" "FAIL" "address_text_input_count=$($now.address_text_input_count) focused=$($now.address_focused) selected=$($now.selected_range -join ',')"
+        Add-Result "text-input-$($script:case)" "FAIL" "address_text_input_count=$($now.address_text_input_count) focused=$($now.address_focused) selected=$($now.selected_range -join ',') focus_class=$($now.os_focus.focus_class) os_focus=0x$('{0:X}' -f [int64]$now.os_focus.focus_hwnd)"
         return $null
     }
-    Add-Result "text-input-$($script:case)" "PASS" "text_count=$((Read-State $hwnd).address_text_input_count) focus_gained_delta=$([int64](Read-State $hwnd).address_focus_gained_count - $focusGainedBefore)"
+    $typed = Read-State $hwnd
+    Add-Result "text-input-$($script:case)" "PASS" "text_count=$($typed.address_text_input_count) focus_gained_delta=$([int64]$typed.address_focus_gained_count - $focusGainedBefore) typed_len=$($typed.address.Length)"
+    if ([string]$typed.address -ne [string]$url) {
+        Add-Result "input-mismatch-$($script:case)" "UNVERIFIED" "class=TEST_AUTOMATION_BUG expected_len=$($url.Length) actual_len=$($typed.address.Length) expected_tail=$($url.Substring([Math]::Max(0,$url.Length-24))) actual_tail=$(([string]$typed.address).Substring([Math]::Max(0,([string]$typed.address).Length-24)))"
+    }
+    $enterBeforeMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     Send-Keys "{ENTER}"
     $enterObserved = $false
     try {
         [void](Wait-State $hwnd { param($s) [int64]$s.address_enter_count -gt [int64]$enterBefore } 2 "address enter event")
         $enterObserved = $true
     } catch { }
+    $enterTrace = $null
+    try {
+        $afterEnter = Read-State $hwnd
+        $enterTrace = @($afterEnter.keystroke_trace | Where-Object { $_.keystroke -match "enter" -and [int64]$_.at_ms -ge [int64]$enterBeforeMs } | Select-Object -Last 1)[0]
+    } catch { }
+    if ($null -ne $enterTrace) {
+        if ($enterTrace.action -eq "SubmitAddress") {
+            Add-Result "enter-keybinding-$($script:case)" "PASS" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
+        } else {
+            Add-Result "enter-keybinding-$($script:case)" "FAIL" "keystroke=$($enterTrace.keystroke) action=$($enterTrace.action) window_active=$($enterTrace.window_active)"
+        }
+    } elseif ($enterObserved) {
+        Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "root keydown observed but keystroke trace missing"
+    } else {
+        Add-Result "enter-keybinding-$($script:case)" "UNVERIFIED" "Enter was not observed by GPUI keystroke observer; root keydown also missing"
+    }
     if ($enterObserved) {
         Add-Result "enter-event-$($script:case)" "PASS" "enter_count=$((Read-State $hwnd).address_enter_count)"
     } else {

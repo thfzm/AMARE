@@ -210,6 +210,17 @@ function Test-WindowStages([IntPtr]$hwnd, [string]$label, [int]$seconds, $initia
         } else {
             Add-Result "$label-stage-gpui-active" "UNVERIFIED" "window_active=$($state.window_active) address_focused=$($state.address_focused)"
         }
+        $guiThread = 0
+        if ($null -ne $state.gui_thread_id) { $guiThread = [uint32]$state.gui_thread_id }
+        $focus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId $guiThread
+        $focusDetail = "gui_tid=$($focus.gui_thread_id) focus=0x$('{0:X}' -f $focus.focus_hwnd) root=0x$('{0:X}' -f $focus.focus_root_hwnd) class=$($focus.focus_class) focus_is_window=$($focus.focus_is_window) focus_is_descendant=$($focus.focus_is_descendant)"
+        if ($focus.focus_is_window) {
+            Add-Result "$label-stage-os-focus" "PASS" $focusDetail
+        } elseif ($focus.focus_is_descendant) {
+            Add-Result "$label-stage-os-focus" "UNVERIFIED" "child window owns keyboard focus; $focusDetail"
+        } else {
+            Add-Result "$label-stage-os-focus" "UNVERIFIED" "focus is outside this window tree; $focusDetail"
+        }
     } else {
         Add-Result "$label-stage-gpui-active" "UNVERIFIED" "state unavailable"
     }
@@ -236,6 +247,92 @@ function Shot([IntPtr]$hwnd, [string]$name) {
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $bmp.Dispose()
     Add-Result $name "PASS" "$path ($w x $h, $((Get-Item $path).Length) bytes)"
+}
+
+function Collect-TitlebarCrashDiagnostics([string]$Reason) {
+    $diagDir = Join-Path $ScreenshotDir "titlebar-diagnostics"
+    New-Item -ItemType Directory -Force -Path $diagDir | Out-Null
+    $lastStates = @(Read-AllStates | ForEach-Object {
+        [pscustomobject]@{
+            window_id = $_.window_id
+            window_handle = $_.window_handle
+            window_active = $_.window_active
+            address_focused = $_.address_focused
+            pid = $_.pid
+            gui_thread_id = $_.gui_thread_id
+            os_focus = $_.os_focus
+            last_action = $_.last_action
+            last_key = $_.last_key
+            last_navigation_url = $_.last_navigation_url
+            session_error = $_.session_error
+            diagnostics = @($_.diagnostics | Select-Object -Last 40)
+        }
+    })
+    $procInfo = $null
+    if ($null -ne $script:app) {
+        $hasExited = $script:app.HasExited
+        $exitCode = $null
+        $startTime = $null
+        $exitTime = $null
+        if ($hasExited) { $exitCode = $script:app.ExitCode }
+        try { $startTime = $script:app.StartTime.ToUniversalTime().ToString("o") } catch { }
+        if ($hasExited) { try { $exitTime = $script:app.ExitTime.ToUniversalTime().ToString("o") } catch { } }
+        $procInfo = [pscustomobject]@{
+            id = $script:app.Id
+            has_exited = $hasExited
+            exit_code = $exitCode
+            start_time = $startTime
+            exit_time = $exitTime
+        }
+    }
+    $events = @()
+    try {
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = (Get-Date).AddMinutes(-20) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match "amare-gpui" -or $_.ProviderName -match "Application Error|Windows Error Reporting" } |
+            Select-Object -First 20 |
+            ForEach-Object {
+                [pscustomobject]@{
+                    time = $_.TimeCreated.ToUniversalTime().ToString("o")
+                    id = $_.Id
+                    provider = $_.ProviderName
+                    level = $_.LevelDisplayName
+                    message = $_.Message
+                }
+            })
+    } catch { }
+    $werFiles = @()
+    foreach ($root in @(
+        (Join-Path $env:LOCALAPPDATA "Microsoft\Windows\WER\ReportArchive"),
+        (Join-Path $env:LOCALAPPDATA "Microsoft\Windows\WER\ReportQueue"),
+        (Join-Path $env:ProgramData "Microsoft\Windows\WER\ReportArchive"),
+        (Join-Path $env:ProgramData "Microsoft\Windows\WER\ReportQueue")
+    )) {
+        if (-not (Test-Path $root)) { continue }
+        foreach ($file in @(Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-20) -and $_.Name -match "amare|Report.wer" } | Select-Object -First 20)) {
+            $werFiles += $file.FullName
+        }
+    }
+    $dumpFiles = @()
+    if ($env:AMARE_WER_DUMP_DIR -and (Test-Path $env:AMARE_WER_DUMP_DIR)) {
+        $dumpFiles = @(Get-ChildItem $env:AMARE_WER_DUMP_DIR -File -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    }
+    $assessment = if ($null -ne $procInfo -and $procInfo.has_exited) { Get-AmareExitAssessment -ExitCode $procInfo.exit_code } else { Get-AmareExitAssessment -ExitCode $null -ProcessHandleValid $false }
+    $diag = [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        reason = $Reason
+        exit = $assessment
+        process = $procInfo
+        last_success = @($script:results | Where-Object result -eq "PASS" | Select-Object -Last 1)
+        results = $script:results
+        states = $lastStates
+        event_log = $events
+        wer_files = $werFiles
+        dump_files = $dumpFiles
+    }
+    $path = Join-Path $diagDir "titlebar-crash.json"
+    $diag | ConvertTo-Json -Depth 12 | Set-Content $path -Encoding UTF8
+    Write-Host "TITLEBAR crash diagnostics: $path"
+    return $path
 }
 
 $script:app = $null
@@ -344,9 +441,15 @@ try {
     }
     if (-not $script:app.WaitForExit(25000)) {
         Stop-Process -Id $script:app.Id -Force -ErrorAction SilentlyContinue
-        Add-Result "titlebar-multiwindow-exit" "UNVERIFIED" "process did not exit after closing windows"
+        $assessment = Get-AmareExitAssessment -ExitCode $null -TimedOut $true
+        Add-Result "titlebar-multiwindow-exit" $assessment.State "class=$($assessment.Classification) $($assessment.Detail)"
+        [void](Collect-TitlebarCrashDiagnostics "exit-timeout")
     } else {
-        Add-Result "titlebar-multiwindow-exit" "PASS" "both windows closed; exit=$($script:app.ExitCode)"
+        $assessment = Get-AmareExitAssessment -ExitCode $script:app.ExitCode
+        Add-Result "titlebar-multiwindow-exit" $assessment.State "class=$($assessment.Classification) $($assessment.Detail)"
+        if ($assessment.State -ne "PASS") {
+            [void](Collect-TitlebarCrashDiagnostics "exit-$($assessment.Classification)")
+        }
     }
     Start-Sleep -Seconds 2
     $afterWebView = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue).Count
@@ -357,6 +460,7 @@ try {
     }
 } catch {
     Add-Result "fatal" "FAIL" $_.Exception.Message
+    try { [void](Collect-TitlebarCrashDiagnostics "harness-exception") } catch { Write-Host "TITLEBAR crash diagnostics failed: $($_.Exception.Message)" }
     try {
         $state = @(Read-AllStates)[0]
         if ($null -ne $state) { $state.diagnostics | Select-Object -Last 30 | ForEach-Object { Write-Host "TRACE $_" } }
@@ -369,6 +473,8 @@ try {
         pass = @($script:results | Where-Object result -eq "PASS").Count
         fail = @($script:results | Where-Object result -eq "FAIL").Count
         unverified = @($script:results | Where-Object result -eq "UNVERIFIED").Count
+        blocked = @($script:results | Where-Object result -eq "BLOCKED").Count
+        skipped = @($script:results | Where-Object result -eq "SKIPPED").Count
     }
     $summary | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $ScreenshotDir "gpui-titlebar-results.json") -Encoding UTF8
     Write-Host "GPUI titlebar summary PASS=$($summary.pass) FAIL=$($summary.fail) UNVERIFIED=$($summary.unverified)"

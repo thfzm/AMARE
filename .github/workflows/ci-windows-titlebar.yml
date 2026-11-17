@@ -22,14 +22,32 @@ jobs:
           $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
           cargo build --release --manifest-path apps/amare-gpui/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw "GPUI build failed" }
+      - name: Test exit code classifier
+        shell: pwsh
+        run: |
+          & "tools/test-gpui-exit-code.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "exit code classifier test failed" }
+      - name: Configure WER local dumps
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.81.0\wer"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $key = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\amare-gpui.exe"
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $dir -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount -Value 5 -PropertyType DWord -Force | Out-Null
+          "AMARE_WER_DUMP_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: GPUI titlebar multi-window test
         shell: pwsh
-        timeout-minutes: 12
+        timeout-minutes: 15
+        env:
+          RUST_BACKTRACE: "1"
         run: |
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.80.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.81.0"
           New-Item -ItemType Directory -Force -Path $shots | Out-Null
           & "tools/gpui-titlebar-smoke.ps1" -Exe $exe -StatusDir $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI titlebar smoke failed with exit code $LASTEXITCODE" }
@@ -39,5 +57,7 @@ jobs:
         with:
           name: gpui-titlebar-${{ github.run_id }}
           path: |
-            artifacts/windows/screenshots/0.80.0/gpui-titlebar-results.json
-            artifacts/windows/screenshots/0.80.0/*.png
+            artifacts/windows/screenshots/0.81.0/gpui-titlebar-results.json
+            artifacts/windows/screenshots/0.81.0/titlebar-diagnostics/**
+            artifacts/windows/diagnostics/0.81.0/wer/**
+            artifacts/windows/screenshots/0.81.0/*.png
