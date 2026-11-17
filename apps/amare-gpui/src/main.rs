@@ -1914,6 +1914,10 @@ impl AmareApp {
     fn focus_address_input(&self, window: &mut Window, cx: &mut App) {
         let handle = self.address_input.read(cx).focus_handle(cx);
         window.focus(&handle);
+        // GPUI focus does not move the Win32 keyboard focus. After a page
+        // navigation WebView2 keeps the OS focus, so Ctrl+L/typing stays in
+        // the page even though address_focused is true.
+        self.focus_native_window();
     }
 
     fn refresh_bookmarks(&mut self) {
