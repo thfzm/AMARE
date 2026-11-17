@@ -65,15 +65,36 @@ function Stop-ProbeApp($process, [IntPtr]$hwnd) {
     }
     Start-Sleep -Milliseconds 600
 }
+function Wait-NavigationIdle([int]$seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $state = Read-State
+        if ($null -ne $state) {
+            $tab = @($state.tabs | Where-Object { $_.id -eq $state.active_tab })[0]
+            if ($null -ne $tab -and $tab.loading -eq $false) { return $state }
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    return (Read-State)
+}
+function Ensure-AddressEmpty([IntPtr]$hwnd) {
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        Send-GpuiShortcut $hwnd 0x4C
+        Start-Sleep -Milliseconds 250
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+        Start-Sleep -Milliseconds 250
+        $state = Read-State
+        if ($null -ne $state -and [string]::IsNullOrEmpty([string]$state.address)) { return $state }
+    }
+    return (Read-State)
+}
 function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
+    [void](Wait-NavigationIdle 15)
     [void](Force-AmareForeground $hwnd)
     $clickUsed = $script:AmareForegroundClicked
-    Send-GpuiShortcut $hwnd 0x4C
-    Start-Sleep -Milliseconds 250
-    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
-    Start-Sleep -Milliseconds 150
-    $before = Read-State
+    $before = Ensure-AddressEmpty $hwnd
     if ($null -eq $before) { throw "state missing before typing" }
+    Add-Result "$label-$index-clear" ($(if ([string]::IsNullOrEmpty([string]$before.address)) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$before.address).Length) address_focused=$($before.address_focused) selected=$($before.selected_range -join ',')"
     $keyBefore = [int64]$before.keystroke_total
     $enterKeyBefore = [int64]$before.address_enter_count
     $submitBefore = [int64]$before.address_submit_count
@@ -82,6 +103,10 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     $typed = Read-State
     $typedOk = [string]$typed.address -eq "example"
     Add-Result "$label-$index-text" ($(if ($typedOk) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$typed.address).Length) expected=7 key_delta=$([int64]$typed.keystroke_total - $keyBefore) focus=$($typed.address_focused)"
+    if (-not $typedOk) {
+        Add-Result "$label-$index-enter-skipped" "UNVERIFIED" "class=TEST_AUTOMATION_BUG address text precondition failed; Enter not judged"
+        return
+    }
     $preFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$typed.gui_thread_id)
     $pre = Read-State
     $enterAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -101,6 +126,7 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     Add-Result "$label-$index-gpui-key" ($(if ($null -ne $key) { "PASS" } else { "UNVERIFIED" })) "keystroke=$($key.keystroke) action=$($key.action) window_active=$($key.window_active)"
     $submitted = [int64]$after.address_submit_count -gt $submitBefore
     Add-Result "$label-$index-submit" ($(if ($submitted) { "PASS" } else { "UNVERIFIED" })) "submit_delta=$([int64]$after.address_submit_count - $submitBefore) enter_delta=$([int64]$after.address_enter_count - $enterKeyBefore) source=$($after.source)"
+    [void](Wait-NavigationIdle 15)
 }
 
 $app = $null
