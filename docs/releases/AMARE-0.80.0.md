@@ -73,8 +73,8 @@ afterActive=0 afterFocus=0
 
 | 파일 | 크기 | SHA-256 |
 |---|---:|---|
-| `AMARE-0.80.0-win-x64.zip` | 126,906,469 bytes | `09bf02cdd4fa98b7fe770c90b501d5e488ae90d51bb404b2812ea4f2182652bb` |
-| `AMARE-0.80.0-win-x64-unsigned.msix` | 126,841,780 bytes | `2cd0ad72371fe7e657cf87696af2bab8bee648be0b6db38e434845a79932cf32` |
+| `AMARE-0.80.0-win-x64.zip` | 126,906,478 bytes | `09bf02cdd4fa98b7fe770c90b501d5e488ae90d51bb404b2812ea4f2182652bb` |
+| `AMARE-0.80.0-win-x64-unsigned.msix` | 126,841,809 bytes | `2cd0ad72371fe7e657cf87696af2bab8bee648be0b6db38e434845a79932cf32` |
 | `AMARE-0.80.0-gpui-win-x64.zip` | 5,960,627 bytes | `930e1badaa133f5ea438604e4e914464dbe0ac74f0a1a1c4a693f70955b1d600` |
 
 - **UNSIGNED**, MSIX install `0x80073D2C` **UNVERIFIED/BLOCKED**
