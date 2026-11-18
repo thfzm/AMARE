@@ -91,14 +91,14 @@ try {
         $stateChanged = & $changed $before $after
         Add-Result "click-$label" ($(if ($stateChanged) { "PASS" } else { "UNVERIFIED" })) "correlation=$correlation control=$control bounds=$($bounds.x),$($bounds.y),$($bounds.width),$($bounds.height) mouse_delta=$([int64]$after.mouse_down_count - $mouseBefore) wm_hit=$hit wm_down=$down wm_up=$up focus_before=$($before.os_focus.keyboard_focus_class) focus_after=$($after.os_focus.keyboard_focus_class) panel=$($before.panel)->$($after.panel)"
     }
-    Click-Control "new-tab" "new-tab" { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
+    Click-Control "new-tab" "new_tab" { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
     Click-Control "settings" "settings-panel" { param($b, $a) $a.panel -eq "settings" }
     Click-Control "password" "passwords-panel" { param($b, $a) $a.panel -eq "passwords" }
 
     $afterL = Focus-Address $hwnd
     Add-Result "shortcut-ctrl-l" ($(if ($afterL.address_focused -and @($afterL.selected_range).Count -eq 2) { "PASS" } else { "UNVERIFIED" })) "address_focused=$($afterL.address_focused) selected=$($afterL.selected_range -join ',') focus=$($afterL.os_focus.keyboard_focus_class)"
 
-    [void](Force-AmareForeground $hwnd)
+    [void](Focus-Address $hwnd)
     Send-GpuiShortcut $hwnd 0x54
     Start-Sleep -Milliseconds 500
     $afterT = Read-State $hwnd
@@ -107,7 +107,7 @@ try {
 
     $navTabBefore = @($afterT.tabs | Where-Object { $_.id -eq $afterT.active_tab })[0]
     $navBefore = [int64]$navTabBefore.navigation_started
-    [void](Force-AmareForeground $hwnd)
+    [void](Focus-Address $hwnd)
     Send-GpuiShortcut $hwnd 0x52
     Start-Sleep -Milliseconds 800
     $afterR = Read-State $hwnd
@@ -115,14 +115,14 @@ try {
     Add-Result "shortcut-ctrl-r" ($(if ([int64]$navTabAfter.navigation_started -gt $navBefore) { "PASS" } else { "UNVERIFIED" })) "navigation_started=$navBefore->$($navTabAfter.navigation_started) loading=$($navTabAfter.loading)"
 
     $tabsBeforeW = @($afterR.tabs).Count
-    [void](Force-AmareForeground $hwnd)
+    [void](Focus-Address $hwnd)
     Send-GpuiShortcut $hwnd 0x57
     Start-Sleep -Milliseconds 700
     $afterW = Read-State $hwnd
     $tabsAfterW = @($afterW.tabs).Count
     Add-Result "shortcut-ctrl-w" ($(if ($tabsAfterW -lt $tabsBeforeW -or $afterW.last_action -match "CloseTab") { "PASS" } else { "UNVERIFIED" })) "tabs=$tabsBeforeW->$tabsAfterW last_action=$($afterW.last_action)"
 
-    [void](Force-AmareForeground $hwnd)
+    [void](Focus-Address $hwnd)
     Send-GpuiShortcut $hwnd 0x4E
     $states2 = Wait-States 2 10
     Add-Result "shortcut-ctrl-n" ($(if ($states2.Count -ge 2) { "PASS" } else { "FAIL" })) "windows=$($states2.Count) hwnds=$((@($states2 | ForEach-Object { $_.window_handle }) -join ','))"
