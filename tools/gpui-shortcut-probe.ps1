@@ -167,7 +167,16 @@ try {
         $aAfterB = Read-State $a
         Add-Result "multi-input-independence" ($(if ([string]$aTyped.address -eq "alpha" -and [string]$bTyped.address -eq "beta" -and [string]$aAfterB.address -eq "alpha") { "PASS" } else { "UNVERIFIED" })) "a=$($aTyped.address) b=$($bTyped.address) a_after_b=$($aAfterB.address)"
         [void](Force-AmareForeground $b)
-        [void][AmareTestFocus]::PostMessage($b, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        $bState = Read-State $b
+        $closeBounds = $null
+        if ($null -ne $bState.layout_bounds -and $null -ne $bState.layout_bounds.toolbar_children) {
+            $closeBounds = $bState.layout_bounds.toolbar_children.'toolbar.window_close'
+        }
+        if ($null -ne $closeBounds) {
+            [void](Send-RealClientClickSendInput $b ([int]($closeBounds.x + $closeBounds.width / 2)) ([int]($closeBounds.y + $closeBounds.height / 2)))
+        } else {
+            [void][AmareTestFocus]::PostMessage($b, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        }
         Start-Sleep -Seconds 2
         $remaining = @(Read-States)
         Add-Result "multi-close-b" ($(if ($remaining.Count -eq 1 -and [int64]$remaining[0].window_handle -eq $a.ToInt64()) { "PASS" } else { "UNVERIFIED" })) "remaining=$($remaining.Count) hwnd=$(@($remaining | ForEach-Object { $_.window_handle }) -join ',')"
