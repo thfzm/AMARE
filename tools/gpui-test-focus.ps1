@@ -174,3 +174,27 @@ function Send-RealClientClick([IntPtr]$hwnd, [int]$x, [int]$y) {
     [AmareTestFocus]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 400
 }
+
+
+function Send-ScanCodeText([string]$text) {
+    foreach ($ch in $text.ToCharArray()) {
+        $vk = [byte]([char]::ToUpperInvariant($ch))
+        $scan = [AmareTestFocus]::MapVirtualKey([uint32]$vk, 0)
+        [AmareTestFocus]::keybd_event($vk, [byte]$scan, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 25
+        [AmareTestFocus]::keybd_event($vk, [byte]$scan, 2, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 25
+    }
+    Start-Sleep -Milliseconds 150
+}
+
+function Send-UnicodeText([string]$text) {
+    foreach ($ch in $text.ToCharArray()) {
+        $code = [uint16][char]$ch
+        [AmareTestFocus]::keybd_event(0, [byte]($code -band 0xFF), 4, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 25
+        [AmareTestFocus]::keybd_event(0, [byte]($code -band 0xFF), 6, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 25
+    }
+    Start-Sleep -Milliseconds 150
+}

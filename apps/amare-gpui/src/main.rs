@@ -232,6 +232,7 @@ fn record_window_message(
     let interesting = message == WM_KEYDOWN
         || message == WM_KEYUP
         || message == WM_CHAR
+        || message == 0x109 // WM_UNICHAR
         || message == WM_SYSKEYDOWN
         || message == WM_SYSKEYUP
         || message == WM_IME_STARTCOMPOSITION
