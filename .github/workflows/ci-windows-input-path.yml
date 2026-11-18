@@ -31,7 +31,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-input-path-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-input-path-data"
-          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.88.0\input-path"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.89.0\input-path"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           & "tools/gpui-input-path-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -Trials 3
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "input path probe failed with exit code $LASTEXITCODE" }
@@ -40,4 +40,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gpui-input-path-${{ github.run_id }}
-          path: artifacts/windows/diagnostics/0.88.0/input-path/**
+          path: artifacts/windows/diagnostics/0.89.0/input-path/**

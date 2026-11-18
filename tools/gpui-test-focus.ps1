@@ -37,6 +37,36 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+    [StructLayout(LayoutKind.Explicit)]
+    public struct INPUTUNION {
+        [FieldOffset(0)] public MOUSEINPUT mi;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT {
+        public uint type;
+        public INPUTUNION u;
+    }
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    public static uint ClickLeft() {
+        var inputs = new INPUT[2];
+        inputs[0].type = 0;
+        inputs[0].u.mi.dwFlags = 0x0002;
+        inputs[1].type = 0;
+        inputs[1].u.mi.dwFlags = 0x0004;
+        return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+    }
 }
 '@
 }
@@ -197,4 +227,16 @@ function Send-UnicodeText([string]$text) {
         Start-Sleep -Milliseconds 25
     }
     Start-Sleep -Milliseconds 150
+}
+
+
+function Send-RealClientClickSendInput([IntPtr]$hwnd, [int]$x, [int]$y) {
+    [void](Force-AmareForeground $hwnd)
+    $point = New-Object AmareTestFocus+POINT
+    [void][AmareTestFocus]::ClientToScreen($hwnd, [ref]$point)
+    [void][AmareTestFocus]::SetCursorPos(($point.X + $x), ($point.Y + $y))
+    Start-Sleep -Milliseconds 120
+    $script:LastSendInputCount = [AmareTestFocus]::ClickLeft()
+    Start-Sleep -Milliseconds 400
+    return $script:LastSendInputCount
 }

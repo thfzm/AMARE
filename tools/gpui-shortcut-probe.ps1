@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [Parameter(Mandatory = $true)][string]$StatusDir,
     [Parameter(Mandatory = $true)][string]$DataDir,
-    [Parameter(Mandatory = $true)][string]$OutDir
+    [Parameter(Mandatory = $true)][string]$OutDir,
+    [string]$StartUrl = "about:blank"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,7 +53,7 @@ try {
     $env:AMARE_GPUI_DATA_DIR = $DataDir
     $env:AMARE_GPUI_STATUS_DIR = $StatusDir
     Remove-Item Env:AMARE_GPUI_STATUS -ErrorAction SilentlyContinue
-    $env:AMARE_GPUI_START_URL = "about:blank"
+    $env:AMARE_GPUI_START_URL = $StartUrl
     $env:AMARE_GPUI_SELF_TEST = "0"
     $env:AMARE_GPUI_RESTORE = "0"
     $env:AMARE_GPUI_DIAGNOSTICS = "1"
@@ -90,7 +91,8 @@ try {
         [void](Force-AmareForeground $hwnd)
         $at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         $mouseBefore = [int64]$before.mouse_down_count
-        Send-RealClientClick $hwnd ([int]($bounds.x + $bounds.width / 2)) ([int]($bounds.y + $bounds.height / 2))
+        $clickX = if ($control -eq "toolbar.address") { [int]($bounds.x + $bounds.width * 0.25) } else { [int]($bounds.x + $bounds.width / 2) }
+        $sent = Send-RealClientClickSendInput $hwnd $clickX ([int]($bounds.y + $bounds.height / 2))
         Start-Sleep -Milliseconds 500
         $after = Read-State $hwnd
         $msgs = @($after.mouse_trace | Where-Object { [int64]$_.at_ms -ge [int64]$at })
@@ -98,7 +100,11 @@ try {
         $up = @($msgs | Where-Object { [int]$_.message -eq 0x202 }).Count
         $hit = @($msgs | Where-Object { [int]$_.message -eq 0x84 }).Count
         $stateChanged = & $changed $before $after
-        Add-Result "click-$label" ($(if ($stateChanged) { "PASS" } else { "UNVERIFIED" })) "correlation=$correlation control=$control bounds=$($bounds.x),$($bounds.y),$($bounds.width),$($bounds.height) mouse_delta=$([int64]$after.mouse_down_count - $mouseBefore) wm_hit=$hit wm_down=$down wm_up=$up focus_before=$($before.os_focus.keyboard_focus_class) focus_after=$($after.os_focus.keyboard_focus_class) panel=$($before.panel)->$($after.panel)"
+        if ($control -eq "toolbar.address") {
+            $selectionChanged = ($before.selected_range -join ',') -ne ($after.selected_range -join ',')
+            $stateChanged = $stateChanged -and $selectionChanged -and $down -ge 1 -and $up -ge 1
+        }
+        Add-Result "click-$label" ($(if ($stateChanged) { "PASS" } else { "UNVERIFIED" })) "correlation=$correlation control=$control method=sendinput sent=$sent bounds=$($bounds.x),$($bounds.y),$($bounds.width),$($bounds.height) mouse_delta=$([int64]$after.mouse_down_count - $mouseBefore) wm_hit=$hit wm_down=$down wm_up=$up selected=$($before.selected_range -join ',')->$($after.selected_range -join ',') focus_before=$($before.os_focus.keyboard_focus_class) focus_after=$($after.os_focus.keyboard_focus_class) panel=$($before.panel)->$($after.panel)"
     }
     Click-Control "new-tab" "toolbar.new_tab" { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
     Click-Control "settings" "toolbar.settings" { param($b, $a) $a.panel -eq "settings" }
@@ -124,7 +130,8 @@ try {
     Start-Sleep -Milliseconds 800
     $afterR = Read-State $hwnd
     $navTabAfter = @($afterR.tabs | Where-Object { $_.id -eq $afterR.active_tab })[0]
-    Add-Result "shortcut-ctrl-r" ($(if ([int64]$navTabAfter.navigation_started -gt $navBefore) { "PASS" } else { "UNVERIFIED" })) "navigation_started=$navBefore->$($navTabAfter.navigation_started) loading=$($navTabAfter.loading)"
+    $rAction = @($afterR.keystroke_trace | Where-Object { $_.action -match "ReloadPage" } | Select-Object -Last 1)[0]
+    Add-Result "shortcut-ctrl-r" ($(if ([int64]$navTabAfter.navigation_started -gt $navBefore) { "PASS" } else { "UNVERIFIED" })) "navigation_started=$navBefore->$($navTabAfter.navigation_started) completed=$($navTabAfter.navigation_completed) loading=$($navTabAfter.loading) last_action=$($afterR.last_action) key_action=$($rAction.action) source=$($afterR.source)"
 
     $tabsBeforeW = @($afterR.tabs).Count
     [void](Focus-Address $hwnd)
