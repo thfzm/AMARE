@@ -134,6 +134,9 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     Add-Result "$label-$index-text" ($(if ($typedOk) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$typed.address).Length) expected=11 key_delta=$([int64]$typed.keystroke_total - $keyBefore) focus=$($typed.address_focused)"
     $focusTail = @($typed.webview_focus_trace | Select-Object -Last 10 | ForEach-Object { "$($_.event):focus=$($_.focus.focus_class)@0x$('{0:X}' -f [int64]$_.focus.focus_hwnd) detail=$($_.extra)" })
     if ($focusTail.Count -gt 0) { Add-Result "$label-$index-focus-trace" "UNVERIFIED" ($focusTail -join " || ") }
+    $recovery = @($typed.webview_focus_trace | Where-Object { $_.event -eq "webview_got_focus" } | Select-Object -Last 3)
+    $recoveryDetail = ($recovery | ForEach-Object { "planned=$($_.extra.planned_after_navigation) should=$($_.extra.should_recover) set_ok=$($_.extra.set_focus_ok) before=0x$('{0:X}' -f [int64]$_.extra.before_focus) after=0x$('{0:X}' -f [int64]$_.extra.after_focus) fg_focus=$($_.focus.foreground_focus_class)@0x$('{0:X}' -f [int64]$_.focus.foreground_focus_hwnd)" }) -join " || "
+    if ($recovery.Count -gt 0) { Add-Result "$label-$index-recovery" ($(if (@($recovery | Where-Object { $_.extra.should_recover -eq $true }).Count -gt 0) { "PASS" } else { "UNVERIFIED" })) $recoveryDetail }
     if (-not $typedOk) {
         Add-Result "$label-$index-enter-skipped" "UNVERIFIED" "class=TEST_AUTOMATION_BUG address text precondition failed; Enter not judged"
         return

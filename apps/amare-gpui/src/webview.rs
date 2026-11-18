@@ -146,6 +146,7 @@ static WEBVIEW_FOCUS_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new(
 static ADDRESS_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
 static ADDRESS_FOCUS_REQUEST_AT_MS: AtomicU64 = AtomicU64::new(0);
 static FOCUS_RECOVERY_GUARD: AtomicBool = AtomicBool::new(false);
+static RECOVER_ON_NEXT_GOT_FOCUS: AtomicBool = AtomicBool::new(false);
 
 pub fn set_address_input_focused(focused: bool) {
     ADDRESS_INPUT_FOCUSED.store(focused, Ordering::Relaxed);
@@ -529,7 +530,16 @@ impl WebViewHost {
             let navigation_id_for_event = starting_navigation_id.clone();
             let navigation_starting =
                 NavigationStartingEventHandler::create(Box::new(move |_webview, _args| {
-                    record_focus_event("navigation_starting", serde_json::json!({}));
+                    let address_intent = ADDRESS_INPUT_FOCUSED.load(Ordering::Relaxed);
+                    if address_intent {
+                        RECOVER_ON_NEXT_GOT_FOCUS.store(true, Ordering::Relaxed);
+                    }
+                    record_focus_event(
+                        "navigation_starting",
+                        serde_json::json!({
+                            "address_intent": address_intent,
+                        }),
+                    );
                     navigation_id_for_event.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut signals) = starting_signals.lock() {
                         signals.loading = true;
@@ -869,9 +879,9 @@ impl WebViewHost {
                         let focused = ADDRESS_INPUT_FOCUSED.load(Ordering::Relaxed);
                         let requested_at = ADDRESS_FOCUS_REQUEST_AT_MS.load(Ordering::Relaxed);
                         let now = focus_trace_now_ms() as u64;
-                        let recent = requested_at > 0 && now.saturating_sub(requested_at) <= 2000;
+                        let planned = RECOVER_ON_NEXT_GOT_FOCUS.swap(false, Ordering::Relaxed);
                         let guard = !FOCUS_RECOVERY_GUARD.swap(true, Ordering::Relaxed);
-                        let should_recover = focused && recent && guard;
+                        let should_recover = focused && planned && guard;
                         let before = unsafe { GetFocus() };
                         let mut set_focus_ok = false;
                         let mut after = before;
