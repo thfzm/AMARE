@@ -93,9 +93,12 @@ try {
         $stateChanged = & $changed $before $after
         Add-Result "click-$label" ($(if ($stateChanged) { "PASS" } else { "UNVERIFIED" })) "correlation=$correlation control=$control bounds=$($bounds.x),$($bounds.y),$($bounds.width),$($bounds.height) mouse_delta=$([int64]$after.mouse_down_count - $mouseBefore) wm_hit=$hit wm_down=$down wm_up=$up focus_before=$($before.os_focus.keyboard_focus_class) focus_after=$($after.os_focus.keyboard_focus_class) panel=$($before.panel)->$($after.panel)"
     }
-    Click-Control "new-tab" "new_tab" { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
-    Click-Control "settings" "settings-panel" { param($b, $a) $a.panel -eq "settings" }
-    Click-Control "password" "passwords-panel" { param($b, $a) $a.panel -eq "passwords" }
+    Click-Control "new-tab" "toolbar.new_tab" { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
+    Click-Control "settings" "toolbar.settings" { param($b, $a) $a.panel -eq "settings" }
+    Click-Control "password" "toolbar.password" { param($b, $a) $a.panel -eq "passwords" }
+    Click-Control "downloads" "toolbar.downloads" { param($b, $a) $a.panel -eq "downloads" }
+    Click-Control "bookmarks" "toolbar.bookmarks" { param($b, $a) $a.panel -eq "bookmarks" }
+    Click-Control "address" "toolbar.address" { param($b, $a) $a.address_focused -eq $true }
 
     $afterL = Focus-Address $hwnd
     Add-Result "shortcut-ctrl-l" ($(if ($afterL.address_focused -and @($afterL.selected_range).Count -eq 2) { "PASS" } else { "UNVERIFIED" })) "address_focused=$($afterL.address_focused) selected=$($afterL.selected_range -join ',') focus=$($afterL.os_focus.keyboard_focus_class)"

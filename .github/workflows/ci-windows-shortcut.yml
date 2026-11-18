@@ -31,7 +31,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-shortcut-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-shortcut-data"
-          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.87.0\shortcut"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.88.0\shortcut"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           & "tools/gpui-shortcut-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "shortcut probe failed with exit code $LASTEXITCODE" }
@@ -40,4 +40,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gpui-shortcut-${{ github.run_id }}
-          path: artifacts/windows/diagnostics/0.87.0/shortcut/**
+          path: artifacts/windows/diagnostics/0.88.0/shortcut/**

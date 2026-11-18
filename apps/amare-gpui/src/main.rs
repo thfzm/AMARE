@@ -845,15 +845,14 @@ impl AmareApp {
         let mut children = serde_json::Map::new();
         for (index, name) in names.iter().enumerate() {
             if let Some(bounds) = bounds.get(index) {
-                children.insert(
-                    (*name).to_string(),
-                    serde_json::json!({
-                        "x": f32::from(bounds.origin.x),
-                        "y": f32::from(bounds.origin.y),
-                        "width": f32::from(bounds.size.width),
-                        "height": f32::from(bounds.size.height),
-                    }),
-                );
+                let payload = serde_json::json!({
+                    "x": f32::from(bounds.origin.x),
+                    "y": f32::from(bounds.origin.y),
+                    "width": f32::from(bounds.size.width),
+                    "height": f32::from(bounds.size.height),
+                });
+                children.insert((*name).to_string(), payload.clone());
+                children.insert(format!("toolbar.{name}"), payload);
             }
         }
         let window_bounds = window.bounds();
@@ -867,6 +866,37 @@ impl AmareApp {
             "scale_factor": window.scale_factor(),
             "toolbar_children": children,
         }));
+    }
+
+    fn record_extra_bounds(&mut self, bounds: Vec<gpui::Bounds<gpui::Pixels>>, names: &[&str]) {
+        if !Self::diagnostics_enabled() {
+            return;
+        }
+        let Some(value) = self.layout_bounds.as_mut() else {
+            return;
+        };
+        let Some(object) = value.as_object_mut() else {
+            return;
+        };
+        let Some(children) = object
+            .get_mut("toolbar_children")
+            .and_then(|children| children.as_object_mut())
+        else {
+            return;
+        };
+        for (index, name) in names.iter().enumerate() {
+            if let Some(bounds) = bounds.get(index) {
+                children.insert(
+                    (*name).to_string(),
+                    serde_json::json!({
+                        "x": f32::from(bounds.origin.x),
+                        "y": f32::from(bounds.origin.y),
+                        "width": f32::from(bounds.size.width),
+                        "height": f32::from(bounds.size.height),
+                    }),
+                );
+            }
+        }
     }
 
     fn record_password_action(&mut self, id: u64, bounds: Vec<gpui::Bounds<gpui::Pixels>>) {
@@ -6173,7 +6203,29 @@ impl Render for AmareApp {
                                     cx,
                                 );
                             })),
-                    ),
+                    )
+                    .on_children_prepainted({
+                        let weak = cx.weak_entity();
+                        move |bounds, _window, cx| {
+                            let _ = weak.update(cx, |this, _cx| {
+                                this.record_extra_bounds(
+                                    bounds,
+                                    &[
+                                        "toolbar.back",
+                                        "toolbar.forward",
+                                        "toolbar.password",
+                                        "toolbar.address",
+                                        "toolbar.downloads",
+                                        "toolbar.bookmark_page",
+                                        "toolbar.bookmarks",
+                                        "toolbar.history",
+                                        "toolbar.settings",
+                                        "toolbar.theme",
+                                    ],
+                                );
+                            });
+                        }
+                    }),
             )
             .when(self.session_banner_active(), |el| {
                 el.child(self.render_session_banner(dark))
