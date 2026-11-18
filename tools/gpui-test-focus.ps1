@@ -37,6 +37,7 @@ public static class AmareTestFocus {
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT {
