@@ -82,14 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.88.0)
+## 5. 현재 실행 상태 (0.89.0)
 
-- Windows CI [44318872178](https://github.com/thfzm/AMARE/actions/runs/44318872178): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Stable toolbar bounds: new_tab 786,7,30,30 / settings 948,48,30,30 / password 88,48,30,30 / address 126,48,662,30.
-- First-click: New Tab/Password/Address **PASS**; Settings/Downloads/Bookmarks **UNVERIFIED** (WM_LBUTTONDOWN 1, WM_LBUTTONUP 0, panel 변화 없음).
-- Shortcut: Ctrl+L/T/W/N **PASS**, Ctrl+R **UNVERIFIED**.
-- Multi-window focus **PASS**; 독립 입력/종료 **UNVERIFIED**.
-- 동일 코드 3회: **11/11**, **12/14**, **12/13** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **2/5**, crash **0/5**.
+- Windows CI [44335618176](https://github.com/thfzm/AMARE/actions/runs/44335618176): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI: **SUCCESS**.
+- SendInput first-click **6/6 PASS**: New Tab/Settings/Password/Downloads/Bookmarks/Address.
+- Address selection `0,11 → 11,11` **PASS**.
+- Ctrl+L/T/W/N **PASS**, Ctrl+R **PASS/UNVERIFIED 변동**.
+- Multi-window 독립 입력/종료 **PASS (성공 run)**, 일부 run B 입력 손실 UNVERIFIED.
+- 동일 코드 3회: **13/11**, **11/10**, **11/12** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **3/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

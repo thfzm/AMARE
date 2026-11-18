@@ -1,18 +1,16 @@
-# GPUI migration gaps and P0/P1 plan (0.88.0)
+# GPUI migration gaps and P0/P1 plan (0.89.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.88.0 status
+## 0.89.0 status
 
-- Stable toolbar bounds are exposed and first-click is attributed from native
-  mouse to product state.
-- New Tab/Password/Address pass; Settings/Downloads/Bookmarks receive
-  WM_LBUTTONDOWN without WM_LBUTTONUP and remain unverified.
-- Ctrl+L/T/W/N pass; Ctrl+R is inconsistent.
-- Multi-window focus passes; independent typing/close remains unverified.
+- SendInput first-click is 6/6 PASS with down/up and real state changes.
+- Address selection changes on click; focus alone is not used as success.
+- Ctrl+L/T/W/N pass; Ctrl+R varies between PASS and UNVERIFIED.
+- Multi-window typing/close pass in the successful run; some input loss remains.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **11/12/12 FAIL**.
+- Three repeats: **13/11/11 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -23,7 +21,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.88.0.
+WinUI remains the default package. GPUI is not switched to default in 0.89.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -68,7 +66,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.88.0.
+- no public release is created by CI in 0.89.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
