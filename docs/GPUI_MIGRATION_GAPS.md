@@ -1,17 +1,15 @@
-# GPUI migration gaps and P0/P1 plan (0.86.0)
+# GPUI migration gaps and P0/P1 plan (0.87.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.86.0 status
+## 0.87.0 status
 
-- Four input paths compared with the same string: scan-code 3/3, paste 3/3,
-  SendKeys 2/3, Unicode 1/3.
-- SendKeys/Unicode losses occur before GPUI key delivery; matching strings
-  reach SubmitAddress and submit.
-- 0.85 one-shot focus recovery remains; probe focus is Zed::Window.
+- Mouse trace and shortcut probe added. Ctrl+L/T/R/W/N actual effects pass.
+- Multi-window A/B/A focus passes; per-window typing and close are UNVERIFIED.
+- First-click attribution is UNVERIFIED because toolbar bounds are not exposed.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **13/12/12 FAIL**.
+- Three repeats: **12/12/14 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -22,7 +20,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.86.0.
+WinUI remains the default package. GPUI is not switched to default in 0.87.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -67,7 +65,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.86.0.
+- no public release is created by CI in 0.87.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

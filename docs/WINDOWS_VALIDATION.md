@@ -82,16 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.86.0)
+## 5. 현재 실행 상태 (0.87.0)
 
-- Windows CI 재실행 [44292349214](https://github.com/thfzm/AMARE/actions/runs/44292349214): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- 1차 `44287345461`: UI 48/17, 142/0/10/1 — 17건 모두 외부 `Example Domain` navigation timeout. UIA selector 실패 아님.
-- Linux CI [44234440711](https://github.com/thfzm/AMARE/actions/runs/44234440711): **SUCCESS**.
-- 입력 경로: scan-code **3/3**, paste **3/3**, SendKeys **2/3**, Unicode **1/3**.
-- SendKeys/Unicode 손실은 GPUI 이전 key event 생성 단계 (**TEST_AUTOMATION_BUG**).
-- 문자열 일치 trial은 Enter → SubmitAddress → submit **PASS**.
-- 0.85 focus recovery 유지, probe focus `Zed::Window`.
-- 동일 코드 3회: **13/18**, **12/21**, **12/11** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **4/5**, crash **0/5**.
+- Windows CI [44302023665](https://github.com/thfzm/AMARE/actions/runs/44302023665): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [44300104177](https://github.com/thfzm/AMARE/actions/runs/44300104177): **SUCCESS**.
+- Shortcut matrix: Ctrl+L/T/R/W/N 실제 효과 **PASS**.
+- Multi-window A/B/A focus **PASS**; 다중 창 입력/종료 **UNVERIFIED**.
+- First-click attribution: toolbar bounds 미노출로 **UNVERIFIED**.
+- 동일 코드 3회: **12/16**, **12/11**, **14/16** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **1/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
