@@ -69,7 +69,14 @@ try {
 
     function Click-Control([string]$label, [string]$control, [scriptblock]$changed) {
         $correlation = [guid]::NewGuid().ToString("N")
+        [void](Force-AmareForeground $hwnd)
+        Send-GpuiShortcut $hwnd 0x4C
+        $deadline = (Get-Date).AddSeconds(8)
         $before = Read-State $hwnd
+        while ((Get-Date) -lt $deadline -and ($null -eq $before -or $null -eq $before.layout_bounds)) {
+            Start-Sleep -Milliseconds 250
+            $before = Read-State $hwnd
+        }
         $bounds = $null
         if ($null -ne $before.layout_bounds -and $null -ne $before.layout_bounds.toolbar_children) {
             $bounds = $before.layout_bounds.toolbar_children.$control
