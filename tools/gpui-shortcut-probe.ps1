@@ -147,6 +147,7 @@ try {
         Add-Result "multi-focus-a1" ($(if ($aFocus1.address_focused) { "PASS" } else { "UNVERIFIED" })) "a=0x$('{0:X}' -f $a.ToInt64()) selected=$($aFocus1.selected_range -join ',') focus=$($aFocus1.os_focus.keyboard_focus_class)"
         Add-Result "multi-focus-b" ($(if ($bFocus.address_focused) { "PASS" } else { "UNVERIFIED" })) "b=0x$('{0:X}' -f $b.ToInt64()) selected=$($bFocus.selected_range -join ',') focus=$($bFocus.os_focus.keyboard_focus_class)"
         Add-Result "multi-focus-a2" ($(if ($aFocus2.address_focused) { "PASS" } else { "UNVERIFIED" })) "a=0x$('{0:X}' -f $a.ToInt64()) selected=$($aFocus2.selected_range -join ',') focus=$($aFocus2.os_focus.keyboard_focus_class)"
+        Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         Send-ScanCodeText "alpha"
         Start-Sleep -Milliseconds 300
         $aTyped = Read-State $a
@@ -158,8 +159,9 @@ try {
         $bTyped = Read-State $b
         $aAfterB = Read-State $a
         Add-Result "multi-input-independence" ($(if ([string]$aTyped.address -eq "alpha" -and [string]$bTyped.address -eq "beta" -and [string]$aAfterB.address -eq "alpha") { "PASS" } else { "UNVERIFIED" })) "a=$($aTyped.address) b=$($bTyped.address) a_after_b=$($aAfterB.address)"
+        [void](Force-AmareForeground $b)
         [void][AmareTestFocus]::PostMessage($b, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
-        Start-Sleep -Milliseconds 800
+        Start-Sleep -Seconds 2
         $remaining = @(Read-States)
         Add-Result "multi-close-b" ($(if ($remaining.Count -eq 1 -and [int64]$remaining[0].window_handle -eq $a.ToInt64()) { "PASS" } else { "UNVERIFIED" })) "remaining=$($remaining.Count) hwnd=$(@($remaining | ForEach-Object { $_.window_handle }) -join ',')"
     }
