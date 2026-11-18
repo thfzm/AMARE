@@ -1,18 +1,17 @@
-# GPUI migration gaps and P0/P1 plan (0.84.0)
+# GPUI migration gaps and P0/P1 plan (0.85.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.84.0 status
+## 0.85.0 status
 
-- WebView2 focus callbacks are traced. `webview_got_focus` on
-  `Chrome_WidgetWin_1` occurs immediately after `navigation_completed`.
-- Enter/submit is green when address text is entered; the remaining loss is
-  address-focus ownership after navigation.
-- Ctrl+L/address click recovery is unresolved; probe shows mouse_delta=0 and
-  actual focus still WebView2.
+- Native focus is recorded for the foreground thread and GPUI thread separately.
+- A one-shot GotFocus recovery runs only when navigation started while
+  AddressInput was focused. Probe recovers to `Zed::Window`.
+- Ctrl+L/mouse/clear pass 10/10 in the probe; remaining failures are SendKeys
+  character loss, not Enter/focus.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **12/12/12 FAIL**.
+- Three repeats: **13/12/12 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -23,7 +22,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.84.0.
+WinUI remains the default package. GPUI is not switched to default in 0.85.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -68,7 +67,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.84.0.
+- no public release is created by CI in 0.85.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 

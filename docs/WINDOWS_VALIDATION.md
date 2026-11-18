@@ -82,14 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.84.0)
+## 5. 현재 실행 상태 (0.85.0)
 
-- Windows CI [44236171959](https://github.com/thfzm/AMARE/actions/runs/44236171959): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Windows CI [44247634130](https://github.com/thfzm/AMARE/actions/runs/44247634130): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
 - Linux CI [44234440711](https://github.com/thfzm/AMARE/actions/runs/44234440711): **SUCCESS**.
-- Focus trace: `navigation_completed` 후 `webview_got_focus` → `Chrome_WidgetWin_1`.
-- Enter/submit 자체는 텍스트 입력 시 **PASS**, Ctrl+L/주소 click focus 복구는 **UNRESOLVED**.
-- 0.81 crash 수정/exit classifier **회귀 없음**, titlebar crash **0/5**.
-- 동일 코드 3회: **12/16**, **12/21**, **12/15** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **2/5**.
+- Native focus 복구: navigation 시작 시 AddressInput focused → WebView2 GotFocus에서 **1회** `SetFocus(parent)`.
+- Probe 10회: 복구 후 `Zed::Window`, Ctrl+L/mouse/clear **10/10 PASS**.
+- 남은 probe 실패: SendKeys 문자 손실, Enter 판정 skip (**TEST_AUTOMATION_BUG**).
+- 동일 코드 3회: **13/9**, **12/11**, **12/12** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **3/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
