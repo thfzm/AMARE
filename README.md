@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.83.0 GPUI Input Delivery Forensics & Regression Isolation** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다. GPUI는 격리 Enter probe로 Enter 자체가 정상임을 확인했습니다. 주소 텍스트가 실제 입력되면 normal/restore 모두 `WM_KEYDOWN` + GPUI keystroke + `SubmitAddress` + submit이 동작합니다. 최초 손실 지점은 **navigation 이후 WebView2 focus ownership**으로, external focus가 `Chrome_WidgetWin_1`인데 GPUI `address_focused=true`가 stale로 남는 상태입니다. Enter 우회 코드는 추가하지 않았습니다. Titlebar는 crash **0/5**, full PASS **2/5**입니다. 동일 코드 3회는 **12/20, 13/20, 13/19 FAIL/UNVERIFIED**로 **3회 연속 0 FAIL 미달**입니다. **GPUI 기본 전환은 보류**합니다.
+현재 저장소는 **AMARE 0.84.0 WebView2 Focus Ownership & Address Bar Recovery** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다. GPUI는 WebView2 `GotFocus`/`LostFocus`/`MoveFocusRequested`/`AcceleratorKeyPressed`를 계측했습니다. focus trace에서 `navigation_completed` 후 **`webview_got_focus`가 `Chrome_WidgetWin_1`로 전환**되는 경로를 확인했습니다. 텍스트가 실제 입력되면 Enter/`SubmitAddress`/submit은 정상이나, WebView2가 focus를 가진 뒤 Ctrl+L과 주소 click이 AddressInput focus를 회복하지 못하는 문제가 남아 있습니다. Titlebar는 crash **0/5**, full PASS **2/5**입니다. 동일 코드 3회는 **12/16, 12/21, 12/15 FAIL/UNVERIFIED**로 **3회 연속 0 FAIL 미달**입니다. **GPUI 기본 전환은 보류**합니다.
 
 ## 핵심 원칙
 
@@ -155,6 +155,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.56.0: **DPAPI vault security hardening** — actual delete confirm/cancel/complete + restart persistence, corrupted vault preserved with retry/backup guidance, multi-window merge/generation sync path, exact-origin autofill no auto-submit, plaintext scan, actual 0.56 screenshots; password **25/0/0**, vault unit 4/4, corrupt-DPAPI UX PASS, iframe attack automation/multi-window UI/DPAPI other-user failure/cookie control/DPI UNVERIFIED
 - Windows 0.57.0: **password security boundary** — iframe/nested/action-change no-capture **PASS**, exact-origin autofill/no-submit, actual delete cancel/confirm + last-account empty + restart, corrupted vault preservation, multiwindow merge/generation code, privacy autofill/save toggles, WebView2 ALL_SITE data clear; password **42/0/0**, unit 4/4, actual 0.57 screenshots; per-site cookie/permission control, DPAPI other-user failure, multiwindow simultaneous UI mutation, DPI/signing UNVERIFIED
 - Windows 0.58.0: **stability revalidation** — iframe/nested/action no-capture, navigation ID recheck, delete cancel/confirm/empty/restart, corrupted and key-missing vault preservation, privacy settings, actual 0.58 screenshots; password **43/0/0**, unit 4/4, WinUI **143/0/9/1** GUI **42/42**, Windows/Linux CI SUCCESS, GPUI CI step SUCCESS(내부 tab/library/settings/session FAIL); same-process multiwindow Vault mutation/충돌 UX/삭제 부활 방지/창 간 잠금 **FAIL/UNVERIFIED**, ALL_SITE **read-only/BLOCKED**, page DOM capture and GPUI tab/library/settings/session automation **UNVERIFIED/FAIL**, unsigned MSIX install **UNVERIFIED**
+- Windows 0.84.0: **GPUI WebView2 focus ownership/address bar recovery** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, `webview_got_focus`가 navigation 완료 후 focus 획득, Enter/submit 자체 정상, Ctrl+L/주소 click focus 복구 미해결, crash 0/5, corrupt 14/14, 3회 12/12/12 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.83.0: **GPUI input delivery forensics/regression isolation** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, crash 0/5, exit 7/7, Enter 자체 정상(SubmitAddress), 최초 손실은 navigation 후 WebView2 focus ownership, SendKeys/paste 분리, corrupt 14/14, 3회 12/13/13 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.82.0: **GPUI restore Enter/IME event delivery & focus ownership** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, crash 0/5, exit classifier 7/7, restore Enter WM_KEYDOWN 미도달 확인(UNRESOLVED), SendKeys 손실/paste 분리, corrupt 14/14, 3회 13/13/13 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.81.0: **GPUI window crash forensics/restore focus ownership** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, exit classifier 7/7, `0xC0000409` RefCell panic 원인 확정/status poll 제거, titlebar crash 0/5·full 3/5, restore text 개선·Enter/submit 미해결, corrupt 14/14, 3회 13/13/13 FAIL, 실제 Win11/DPI UNVERIFIED, GPUI 전환 보류
@@ -184,7 +185,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
-Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.83.0 report](artifacts/windows/release/AMARE-0.83.0-development-report.md)에 기록되어 있습니다.
+Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.84.0 report](artifacts/windows/release/AMARE-0.84.0-development-report.md)에 기록되어 있습니다.
 
 ## 라이선스 및 공개 정책
 

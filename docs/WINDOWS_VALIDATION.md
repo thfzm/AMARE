@@ -82,15 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.83.0)
+## 5. 현재 실행 상태 (0.84.0)
 
-- Windows CI 재실행 [44178954839](https://github.com/thfzm/AMARE/actions/runs/44178954839): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**. 1차 run `44172872191`은 UI 48/49, 142/0/10/1.
-- Linux CI [44170498340](https://github.com/thfzm/AMARE/actions/runs/44170498340): **SUCCESS**.
-- 격리 Enter probe: 텍스트가 실제 입력된 normal/restore round는 `WM_KEYDOWN` + `SubmitAddress` + submit **PASS**.
-- 최초 손실 지점: navigation 이후 external focus `Chrome_WidgetWin_1`, GPUI `address_focused=true` stale.
-- Enter 우회 코드 추가 없음. SendKeys 손실/paste fallback 분리.
-- Titlebar 5회: crash **0/5**, full PASS **2/5**, 3회 runner cancel.
-- 동일 코드 3회: **12/20**, **13/20**, **13/19** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회.
+- Windows CI [44236171959](https://github.com/thfzm/AMARE/actions/runs/44236171959): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Linux CI [44234440711](https://github.com/thfzm/AMARE/actions/runs/44234440711): **SUCCESS**.
+- Focus trace: `navigation_completed` 후 `webview_got_focus` → `Chrome_WidgetWin_1`.
+- Enter/submit 자체는 텍스트 입력 시 **PASS**, Ctrl+L/주소 click focus 복구는 **UNRESOLVED**.
+- 0.81 crash 수정/exit classifier **회귀 없음**, titlebar crash **0/5**.
+- 동일 코드 3회: **12/16**, **12/21**, **12/15** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **2/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
