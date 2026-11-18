@@ -77,22 +77,32 @@ function Wait-NavigationIdle([int]$seconds) {
     }
     return (Read-State)
 }
-function Ensure-AddressEmpty([IntPtr]$hwnd) {
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
-        $state = Read-State
-        if ($null -ne $state -and $null -ne $state.address_bounds) {
-            $b = $state.address_bounds
-            Send-RealClientClick $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
-        } else {
-            Send-GpuiShortcut $hwnd 0x4C
-        }
+function Focus-AddressForProbe([string]$label, [int]$index, [IntPtr]$hwnd) {
+    $before = Read-State
+    $mouseBefore = [int64]$before.mouse_down_count
+    $usedBounds = $false
+    if ($null -ne $before -and $null -ne $before.address_bounds) {
+        $b = $before.address_bounds
+        Send-RealClientClick $hwnd ([int]($b.x + $b.width / 2)) ([int]($b.y + $b.height / 2))
+        $usedBounds = $true
+    } else {
+        Send-GpuiShortcut $hwnd 0x4C
+    }
+    Start-Sleep -Milliseconds 300
+    $afterClick = Read-State
+    $focus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$afterClick.gui_thread_id)
+    Add-Result "$label-$index-mouse" ($(if ($usedBounds -and [int64]$afterClick.mouse_down_count -gt $mouseBefore) { "PASS" } else { "UNVERIFIED" })) "used_bounds=$usedBounds mouse_delta=$([int64]$afterClick.mouse_down_count - $mouseBefore) focus=0x$('{0:X}' -f $focus.focus_hwnd) class=$($focus.focus_class) focus_is_window=$($focus.focus_is_window) address_focused=$($afterClick.address_focused) selected=$($afterClick.selected_range -join ',')"
+    Send-Keys "^a"; Send-Keys "{BACKSPACE}"
+    Start-Sleep -Milliseconds 250
+    $state = Read-State
+    if (-not [string]::IsNullOrEmpty([string]$state.address)) {
+        Send-GpuiShortcut $hwnd 0x4C
         Start-Sleep -Milliseconds 250
         Send-Keys "^a"; Send-Keys "{BACKSPACE}"
         Start-Sleep -Milliseconds 250
         $state = Read-State
-        if ($null -ne $state -and [string]::IsNullOrEmpty([string]$state.address)) { return $state }
     }
-    return (Read-State)
+    return $state
 }
 function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     [void](Wait-NavigationIdle 15)
@@ -104,7 +114,14 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     Add-Result "$label-$index-health" ($(if ($procHealthy -eq $true -and $statusAge -ge 0 -and $statusAge -lt 3000) { "PASS" } else { "UNVERIFIED" })) "responding=$procHealthy status_age_ms=$statusAge address_len=$(([string]$healthState.address).Length) window_active=$($healthState.window_active)"
     [void](Force-AmareForeground $hwnd)
     $clickUsed = $script:AmareForegroundClicked
-    $before = Ensure-AddressEmpty $hwnd
+    $preCtrl = Read-State
+    Send-GpuiShortcut $hwnd 0x4C
+    Start-Sleep -Milliseconds 300
+    $postCtrl = Read-State
+    $ctrlFocus = Get-AmareGuiFocus -WindowHandle $hwnd -GuiThreadId ([uint32]$postCtrl.gui_thread_id)
+    $ctrlSelected = @($postCtrl.selected_range)
+    Add-Result "$label-$index-ctrl-l" ($(if ($ctrlFocus.focus_is_window -and $postCtrl.address_focused) { "PASS" } else { "UNVERIFIED" })) "focus=0x$('{0:X}' -f $ctrlFocus.focus_hwnd) class=$($ctrlFocus.focus_class) focus_is_window=$($ctrlFocus.focus_is_window) address_focused=$($postCtrl.address_focused) selected=$($ctrlSelected -join ',') address_len=$(([string]$postCtrl.address).Length)"
+    $before = Focus-AddressForProbe $label $index $hwnd
     if ($null -eq $before) { throw "state missing before typing" }
     Add-Result "$label-$index-clear" ($(if ([string]::IsNullOrEmpty([string]$before.address)) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$before.address).Length) address_focused=$($before.address_focused) selected=$($before.selected_range -join ',')"
     $keyBefore = [int64]$before.keystroke_total
@@ -115,6 +132,8 @@ function Run-ProbeRound([string]$label, [IntPtr]$hwnd, [int]$index) {
     $typed = Read-State
     $typedOk = [string]$typed.address -eq "about:blank"
     Add-Result "$label-$index-text" ($(if ($typedOk) { "PASS" } else { "UNVERIFIED" })) "address_len=$(([string]$typed.address).Length) expected=11 key_delta=$([int64]$typed.keystroke_total - $keyBefore) focus=$($typed.address_focused)"
+    $focusTail = @($typed.webview_focus_trace | Select-Object -Last 10 | ForEach-Object { "$($_.event):focus=$($_.focus.focus_class)@0x$('{0:X}' -f [int64]$_.focus.focus_hwnd) detail=$($_.extra)" })
+    if ($focusTail.Count -gt 0) { Add-Result "$label-$index-focus-trace" "UNVERIFIED" ($focusTail -join " || ") }
     if (-not $typedOk) {
         Add-Result "$label-$index-enter-skipped" "UNVERIFIED" "class=TEST_AUTOMATION_BUG address text precondition failed; Enter not judged"
         return

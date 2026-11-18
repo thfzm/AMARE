@@ -31,7 +31,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-enter-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-enter-data"
-          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.83.0\enter-probe"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.84.0\enter-probe"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           & "tools/gpui-enter-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -Iterations 5
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Enter probe failed with exit code $LASTEXITCODE" }
@@ -40,4 +40,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gpui-enter-probe-${{ github.run_id }}
-          path: artifacts/windows/diagnostics/0.83.0/enter-probe/**
+          path: artifacts/windows/diagnostics/0.84.0/enter-probe/**

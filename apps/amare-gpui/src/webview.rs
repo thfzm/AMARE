@@ -16,17 +16,19 @@ use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
     CapturePreviewCompletedHandler, ClearBrowsingDataCompletedHandler,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    DownloadStartingEventHandler, ExecuteScriptCompletedHandler,
+    DownloadStartingEventHandler, ExecuteScriptCompletedHandler, FocusChangedEventHandler,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE, COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
         COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
         COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
-        COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, CreateCoreWebView2Environment, ICoreWebView2,
-        ICoreWebView2_4, ICoreWebView2_13, ICoreWebView2Controller, ICoreWebView2DownloadOperation,
-        ICoreWebView2Environment, ICoreWebView2Profile2, ICoreWebView2Profile6,
+        COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, COREWEBVIEW2_PHYSICAL_KEY_STATUS,
+        CreateCoreWebView2Environment, ICoreWebView2, ICoreWebView2_4, ICoreWebView2_13,
+        ICoreWebView2Controller, ICoreWebView2DownloadOperation, ICoreWebView2Environment,
+        ICoreWebView2Profile2, ICoreWebView2Profile6,
     },
-    NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    NewWindowRequestedEventHandler, WebMessageReceivedEventHandler, take_pwstr, wait_with_pump,
+    MoveFocusRequestedEventHandler, NavigationCompletedEventHandler,
+    NavigationStartingEventHandler, NewWindowRequestedEventHandler, WebMessageReceivedEventHandler,
+    take_pwstr, wait_with_pump,
 };
 #[cfg(target_os = "windows")]
 use windows::{
@@ -45,12 +47,15 @@ use windows::{
                     ImmSetConversionStatus, ImmSetOpenStatus,
                 },
                 KeyboardAndMouse::{
-                    GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D, VK_H, VK_L,
-                    VK_LEFT, VK_MENU, VK_N, VK_OEM_COMMA, VK_P, VK_R, VK_RIGHT, VK_S, VK_SHIFT,
-                    VK_T, VK_TAB, VK_W,
+                    GetFocus, GetKeyState, GetKeyboardLayout, SetFocus, VK_B, VK_CONTROL, VK_D,
+                    VK_H, VK_L, VK_LEFT, VK_MENU, VK_N, VK_OEM_COMMA, VK_P, VK_R, VK_RIGHT, VK_S,
+                    VK_SHIFT, VK_T, VK_TAB, VK_W,
                 },
             },
-            WindowsAndMessaging::{SendMessageW, WM_KEYDOWN, WM_KEYUP},
+            WindowsAndMessaging::{
+                GA_ROOT, GUITHREADINFO, GetAncestor, GetClassNameW, GetForegroundWindow,
+                GetGUIThreadInfo, GetWindowThreadProcessId, SendMessageW, WM_KEYDOWN, WM_KEYUP,
+            },
         },
     },
     core::{HSTRING, Interface},
@@ -134,6 +139,95 @@ impl WebViewEnvironment {
         .map_err(|error| format!("WebView2 environment: {error:?}"))?;
         Ok(Self { environment })
     }
+}
+
+#[cfg(target_os = "windows")]
+static WEBVIEW_FOCUS_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+#[cfg(target_os = "windows")]
+fn focus_trace_now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn focus_snapshot() -> serde_json::Value {
+    use std::mem::size_of;
+    let tid = GetCurrentThreadId();
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    let ok = GetGUIThreadInfo(tid, &mut info).is_ok();
+    let focus = if ok {
+        info.hwndFocus
+    } else {
+        windows::Win32::Foundation::HWND::default()
+    };
+    let active = if ok {
+        info.hwndActive
+    } else {
+        windows::Win32::Foundation::HWND::default()
+    };
+    let foreground = GetForegroundWindow();
+    let mut class_buf = [0u16; 256];
+    let class_len = if focus.0.is_null() {
+        0
+    } else {
+        GetClassNameW(focus, &mut class_buf).max(0) as usize
+    };
+    let class = String::from_utf16_lossy(&class_buf[..class_len]);
+    let root = if focus.0.is_null() {
+        windows::Win32::Foundation::HWND::default()
+    } else {
+        GetAncestor(focus, GA_ROOT)
+    };
+    let mut focus_pid = 0u32;
+    let mut foreground_pid = 0u32;
+    if !focus.0.is_null() {
+        let _ = GetWindowThreadProcessId(focus, Some(&mut focus_pid));
+    }
+    let foreground_thread = GetWindowThreadProcessId(foreground, Some(&mut foreground_pid));
+    serde_json::json!({
+        "gui_thread_id": tid,
+        "focus_hwnd": focus.0 as usize,
+        "focus_class": class,
+        "focus_root_hwnd": root.0 as usize,
+        "active_hwnd": active.0 as usize,
+        "foreground_hwnd": foreground.0 as usize,
+        "foreground_thread_id": foreground_thread,
+        "focus_pid": focus_pid,
+        "foreground_pid": foreground_pid,
+        "keyboard_layout": (GetKeyboardLayout(tid).0 as usize & 0xFFFF) as u32,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn record_focus_event(event: &str, extra: serde_json::Value) {
+    let snapshot = unsafe { focus_snapshot() };
+    let entry = serde_json::json!({
+        "at_ms": focus_trace_now_ms(),
+        "event": event,
+        "focus": snapshot,
+        "extra": extra,
+    });
+    if let Ok(mut trace) = WEBVIEW_FOCUS_TRACE.try_lock() {
+        trace.push(entry);
+        if trace.len() > 160 {
+            let excess = trace.len() - 160;
+            trace.drain(0..excess);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn focus_trace() -> Vec<serde_json::Value> {
+    WEBVIEW_FOCUS_TRACE
+        .lock()
+        .map(|trace| trace.clone())
+        .unwrap_or_default()
 }
 
 #[cfg(target_os = "windows")]
@@ -322,6 +416,9 @@ pub struct WebViewHost {
     parent: Arc<Mutex<HWND>>,
     signals: Arc<Mutex<TabSignals>>,
     accelerator_token: i64,
+    move_focus_token: i64,
+    got_focus_token: i64,
+    lost_focus_token: i64,
     navigation_starting_token: i64,
     navigation_completed_token: i64,
     new_window_token: i64,
@@ -391,6 +488,7 @@ impl WebViewHost {
             let navigation_id_for_event = starting_navigation_id.clone();
             let navigation_starting =
                 NavigationStartingEventHandler::create(Box::new(move |_webview, _args| {
+                    record_focus_event("navigation_starting", serde_json::json!({}));
                     navigation_id_for_event.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut signals) = starting_signals.lock() {
                         signals.loading = true;
@@ -412,6 +510,7 @@ impl WebViewHost {
             let completed_signals = signals.clone();
             let navigation_completed =
                 NavigationCompletedEventHandler::create(Box::new(move |_webview, args| {
+                    record_focus_event("navigation_completed", serde_json::json!({}));
                     let mut success = true;
                     if let Some(args) = args {
                         let mut value = windows::core::BOOL(0);
@@ -596,6 +695,23 @@ impl WebViewHost {
                             let control = GetKeyState(VK_CONTROL.0 as i32) < 0;
                             let alt = GetKeyState(VK_MENU.0 as i32) < 0;
                             let shift = GetKeyState(VK_SHIFT.0 as i32) < 0;
+                            let mut physical = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
+                            let physical_ok = args.PhysicalKeyStatus(&mut physical).is_ok();
+                            let focus_before_forward = unsafe { GetFocus() };
+                            record_focus_event(
+                                "accelerator_key",
+                                serde_json::json!({
+                                    "vk": vk,
+                                    "kind": kind.0,
+                                    "control": control,
+                                    "alt": alt,
+                                    "shift": shift,
+                                    "scan": if physical_ok { physical.ScanCode } else { 0 },
+                                    "repeat": if physical_ok { physical.RepeatCount } else { 0 },
+                                    "extended": if physical_ok { physical.IsExtendedKey.as_bool() } else { false },
+                                    "focus_hwnd": focus_before_forward.0 as usize,
+                                }),
+                            );
                             let forwarded = if control && !shift && vk == VK_TAB.0 as u32 {
                                 Some(VK_TAB.0)
                             } else if control && shift && vk == VK_TAB.0 as u32 {
@@ -640,7 +756,17 @@ impl WebViewHost {
                                     // posted message could be processed after the
                                     // next typed characters, which made Ctrl+L
                                     // focus the address bar too late.
-                                    let _ = SetFocus(Some(parent));
+                                    let set_focus = SetFocus(Some(parent));
+                                    let focus_after_set = GetFocus();
+                                    record_focus_event(
+                                        "accelerator_forward",
+                                        serde_json::json!({
+                                            "vk": key,
+                                            "parent_hwnd": parent.0 as usize,
+                                            "set_focus_ok": set_focus.is_ok(),
+                                            "focus_after_set": focus_after_set.0 as usize,
+                                        }),
+                                    );
                                     let _ = SendMessageW(
                                         parent,
                                         WM_KEYDOWN,
@@ -655,6 +781,12 @@ impl WebViewHost {
                                     );
                                 }
                                 args.SetHandled(true)?;
+                                record_focus_event(
+                                    "accelerator_handled",
+                                    serde_json::json!({
+                                        "vk": key,
+                                    }),
+                                );
                             }
                         }
                         Ok(())
@@ -666,6 +798,53 @@ impl WebViewHost {
                     .map_err(|error| format!("accelerator handler: {error:?}"))?;
                 token
             };
+            let move_focus_token = {
+                let handler =
+                    MoveFocusRequestedEventHandler::create(Box::new(move |_controller, args| {
+                        let Some(args) = args else { return Ok(()) };
+                        let mut reason = COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;
+                        let _ = args.Reason(&mut reason);
+                        let mut handled = windows::core::BOOL(0);
+                        let _ = args.Handled(&mut handled);
+                        record_focus_event(
+                            "move_focus_requested",
+                            serde_json::json!({
+                                "reason": reason.0,
+                                "handled": handled.as_bool(),
+                            }),
+                        );
+                        Ok(())
+                    }));
+                let mut token = 0;
+                controller
+                    .add_MoveFocusRequested(&handler, &mut token)
+                    .map_err(|error| format!("move focus handler: {error:?}"))?;
+                token
+            };
+            let got_focus_token = {
+                let handler =
+                    FocusChangedEventHandler::create(Box::new(move |_controller, _args| {
+                        record_focus_event("webview_got_focus", serde_json::json!({}));
+                        Ok(())
+                    }));
+                let mut token = 0;
+                controller
+                    .add_GotFocus(&handler, &mut token)
+                    .map_err(|error| format!("got focus handler: {error:?}"))?;
+                token
+            };
+            let lost_focus_token = {
+                let handler =
+                    FocusChangedEventHandler::create(Box::new(move |_controller, _args| {
+                        record_focus_event("webview_lost_focus", serde_json::json!({}));
+                        Ok(())
+                    }));
+                let mut token = 0;
+                controller
+                    .add_LostFocus(&handler, &mut token)
+                    .map_err(|error| format!("lost focus handler: {error:?}"))?;
+                token
+            };
 
             Ok(Self {
                 controller,
@@ -673,6 +852,9 @@ impl WebViewHost {
                 parent: parent_handle,
                 signals,
                 accelerator_token,
+                move_focus_token,
+                got_focus_token,
+                lost_focus_token,
                 navigation_starting_token,
                 navigation_completed_token,
                 new_window_token,
@@ -1221,6 +1403,11 @@ impl Drop for WebViewHost {
             let _ = self
                 .controller
                 .remove_AcceleratorKeyPressed(self.accelerator_token);
+            let _ = self
+                .controller
+                .remove_MoveFocusRequested(self.move_focus_token);
+            let _ = self.controller.remove_GotFocus(self.got_focus_token);
+            let _ = self.controller.remove_LostFocus(self.lost_focus_token);
             let _ = self.controller.Close();
         }
     }

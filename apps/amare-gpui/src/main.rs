@@ -1753,6 +1753,7 @@ impl AmareApp {
         };
         #[cfg(not(target_os = "windows"))]
         let (ime_context_state, ime_open, ime_conversion, keyboard_layout) = (false, false, 0, 0);
+        let webview_focus_trace = webview::focus_trace();
         let message_trace_thread_id = MESSAGE_TRACE_THREAD_ID.load(Ordering::Relaxed);
         let message_trace = MESSAGE_TRACE
             .lock()
@@ -1870,6 +1871,7 @@ impl AmareApp {
             "keyboard_layout": keyboard_layout,
             "message_trace": message_trace,
             "message_trace_thread_id": message_trace_thread_id,
+            "webview_focus_trace": webview_focus_trace,
             "pid": std::process::id()
         });
         if let Some(parent) = std::path::Path::new(&path).parent() {
