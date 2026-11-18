@@ -82,14 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.87.0)
+## 5. 현재 실행 상태 (0.88.0)
 
-- Windows CI [44302023665](https://github.com/thfzm/AMARE/actions/runs/44302023665): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
-- Linux CI [44300104177](https://github.com/thfzm/AMARE/actions/runs/44300104177): **SUCCESS**.
-- Shortcut matrix: Ctrl+L/T/R/W/N 실제 효과 **PASS**.
-- Multi-window A/B/A focus **PASS**; 다중 창 입력/종료 **UNVERIFIED**.
-- First-click attribution: toolbar bounds 미노출로 **UNVERIFIED**.
-- 동일 코드 3회: **12/16**, **12/11**, **14/16** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **1/5**, crash **0/5**.
+- Windows CI [44318872178](https://github.com/thfzm/AMARE/actions/runs/44318872178): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Stable toolbar bounds: new_tab 786,7,30,30 / settings 948,48,30,30 / password 88,48,30,30 / address 126,48,662,30.
+- First-click: New Tab/Password/Address **PASS**; Settings/Downloads/Bookmarks **UNVERIFIED** (WM_LBUTTONDOWN 1, WM_LBUTTONUP 0, panel 변화 없음).
+- Shortcut: Ctrl+L/T/W/N **PASS**, Ctrl+R **UNVERIFIED**.
+- Multi-window focus **PASS**; 독립 입력/종료 **UNVERIFIED**.
+- 동일 코드 3회: **11/11**, **12/14**, **12/13** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **2/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
