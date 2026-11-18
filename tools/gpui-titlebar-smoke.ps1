@@ -268,6 +268,7 @@ function Collect-TitlebarCrashDiagnostics([string]$Reason) {
             focus_history = @($_.focus_history | Select-Object -Last 20)
             keystroke_trace = @($_.keystroke_trace | Select-Object -Last 20)
             message_trace = @($_.message_trace | Select-Object -Last 40)
+            mouse_trace = @($_.mouse_trace | Select-Object -Last 40)
             webview_focus_trace = @($_.webview_focus_trace | Select-Object -Last 40)
             ime_open = $_.ime_open
             ime_conversion = $_.ime_conversion

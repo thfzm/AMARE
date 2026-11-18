@@ -191,6 +191,7 @@ static KEYSTROKE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
 static KEYSTROKE_TOTAL: AtomicU64 = AtomicU64::new(0);
 static MESSAGE_TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
 static MESSAGE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+static MOUSE_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
 static MESSAGE_TRACE_INSTALLED: AtomicBool = AtomicBool::new(false);
 static MESSAGE_TRACE_THREAD_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -246,6 +247,8 @@ fn record_window_message(
         || message == 0x232 // WM_EXITSIZEMOVE
         || message == 0xA1 // WM_NCLBUTTONDOWN
         || message == 0xA2 // WM_NCLBUTTONUP
+        || message == 0x84 // WM_NCHITTEST
+        || message == 0x200 // WM_MOUSEMOVE
         || message == 0x201 // WM_LBUTTONDOWN
         || message == 0x202; // WM_LBUTTONUP
     if !interesting {
@@ -269,10 +272,33 @@ fn record_window_message(
         "keyboard_layout": layout,
     });
     if let Ok(mut trace) = MESSAGE_TRACE.try_lock() {
-        trace.push(entry);
+        trace.push(entry.clone());
         if trace.len() > 240 {
             let excess = trace.len() - 240;
             trace.drain(0..excess);
+        }
+    }
+    if message == 0x84 || message == 0x200 || message == 0x201 || message == 0x202 {
+        let raw = lparam.0 as u32;
+        let x = (raw & 0xFFFF) as i16 as i32;
+        let y = ((raw >> 16) & 0xFFFF) as i16 as i32;
+        let mouse = serde_json::json!({
+            "at_ms": now_ms(),
+            "message": message,
+            "hwnd": hwnd.0 as usize,
+            "wparam": wparam.0 as usize,
+            "lparam": lparam.0,
+            "x": x,
+            "y": y,
+            "focus_hwnd": focus_hwnd,
+            "focus_class": focus_class,
+        });
+        if let Ok(mut trace) = MOUSE_TRACE.try_lock() {
+            trace.push(mouse);
+            if trace.len() > 160 {
+                let excess = trace.len() - 160;
+                trace.drain(0..excess);
+            }
         }
     }
 }
@@ -1793,6 +1819,10 @@ impl AmareApp {
         let (ime_context_state, ime_open, ime_conversion, keyboard_layout) = (false, false, 0, 0);
         let webview_focus_trace = webview::focus_trace();
         let message_trace_thread_id = MESSAGE_TRACE_THREAD_ID.load(Ordering::Relaxed);
+        let mouse_trace = MOUSE_TRACE
+            .lock()
+            .map(|trace| trace.clone())
+            .unwrap_or_default();
         let message_trace = MESSAGE_TRACE
             .lock()
             .map(|trace| trace.clone())
@@ -1908,6 +1938,7 @@ impl AmareApp {
             "ime_conversion": ime_conversion,
             "keyboard_layout": keyboard_layout,
             "message_trace": message_trace,
+            "mouse_trace": mouse_trace,
             "message_trace_thread_id": message_trace_thread_id,
             "webview_focus_trace": webview_focus_trace,
             "pid": std::process::id()

@@ -34,7 +34,7 @@ jobs:
       - name: Configure WER local dumps
         shell: pwsh
         run: |
-          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.86.0\wer"
+          $dir = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.87.0\wer"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $key = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\amare-gpui.exe"
           New-Item -Path $key -Force | Out-Null
@@ -51,7 +51,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-titlebar-data"
-          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.86.0"
+          $shots = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\screenshots\0.87.0"
           New-Item -ItemType Directory -Force -Path $shots | Out-Null
           & "tools/gpui-titlebar-smoke.ps1" -Exe $exe -StatusDir $status -DataDir $data -ScreenshotDir $shots
           if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "GPUI titlebar smoke failed with exit code $LASTEXITCODE" }
@@ -62,7 +62,7 @@ jobs:
           name: gpui-titlebar-${{ github.run_id }}
           path: |
             apps/amare-gpui/target/release/amare-gpui.pdb
-            artifacts/windows/screenshots/0.86.0/gpui-titlebar-results.json
-            artifacts/windows/screenshots/0.86.0/titlebar-diagnostics/**
-            artifacts/windows/diagnostics/0.86.0/wer/**
-            artifacts/windows/screenshots/0.86.0/*.png
+            artifacts/windows/screenshots/0.87.0/gpui-titlebar-results.json
+            artifacts/windows/screenshots/0.87.0/titlebar-diagnostics/**
+            artifacts/windows/diagnostics/0.87.0/wer/**
+            artifacts/windows/screenshots/0.87.0/*.png
