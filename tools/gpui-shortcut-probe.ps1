@@ -76,7 +76,8 @@ try {
         }
         if ($null -eq $bounds) {
             $available = if ($null -ne $before.layout_bounds -and $null -ne $before.layout_bounds.toolbar_children) { @($before.layout_bounds.toolbar_children.PSObject.Properties.Name) -join ',' } else { '<no toolbar_children>' }
-            Add-Result "click-$label" "UNVERIFIED" "correlation=$correlation control=$control bounds missing available=$available"
+            $layoutKeys = if ($null -ne $before.layout_bounds) { @($before.layout_bounds.PSObject.Properties.Name) -join ',' } else { '<null>' }
+            Add-Result "click-$label" "UNVERIFIED" "correlation=$correlation control=$control bounds missing available=$available layout_keys=$layoutKeys layout_bounds=$($before.layout_bounds | ConvertTo-Json -Compress -Depth 4)"
             return
         }
         [void](Force-AmareForeground $hwnd)
