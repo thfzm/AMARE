@@ -75,7 +75,8 @@ try {
             $bounds = $before.layout_bounds.toolbar_children.$control
         }
         if ($null -eq $bounds) {
-            Add-Result "click-$label" "UNVERIFIED" "correlation=$correlation control=$control bounds missing"
+            $available = if ($null -ne $before.layout_bounds -and $null -ne $before.layout_bounds.toolbar_children) { @($before.layout_bounds.toolbar_children.PSObject.Properties.Name) -join ',' } else { '<no toolbar_children>' }
+            Add-Result "click-$label" "UNVERIFIED" "correlation=$correlation control=$control bounds missing available=$available"
             return
         }
         [void](Force-AmareForeground $hwnd)
