@@ -179,7 +179,9 @@ try {
         }
         Start-Sleep -Seconds 2
         $remaining = @(Read-States)
-        Add-Result "multi-close-b" ($(if ($remaining.Count -eq 1 -and [int64]$remaining[0].window_handle -eq $a.ToInt64()) { "PASS" } else { "UNVERIFIED" })) "remaining=$($remaining.Count) hwnd=$(@($remaining | ForEach-Object { $_.window_handle }) -join ',')"
+        $aValid = [AmareTestFocus]::IsWindow($a)
+        $bValid = [AmareTestFocus]::IsWindow($b)
+        Add-Result "multi-close-b" ($(if ($aValid -and -not $bValid) { "PASS" } else { "UNVERIFIED" })) "a_valid=$aValid b_valid=$bValid remaining=$($remaining.Count) hwnd=$(@($remaining | ForEach-Object { $_.window_handle }) -join ',')"
     }
 } catch {
     Add-Result "shortcut-fatal" "FAIL" $_.Exception.Message
