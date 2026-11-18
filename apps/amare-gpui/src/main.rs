@@ -1683,6 +1683,36 @@ impl AmareApp {
             let mut foreground_pid = 0u32;
             let mut focus_pid = 0u32;
             let foreground_thread = GetWindowThreadProcessId(foreground, Some(&mut foreground_pid));
+            let mut foreground_info = GUITHREADINFO {
+                cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+                ..Default::default()
+            };
+            let foreground_info_ok = foreground_thread != 0
+                && GetGUIThreadInfo(foreground_thread, &mut foreground_info).is_ok();
+            let keyboard_focus = if foreground_info_ok {
+                foreground_info.hwndFocus
+            } else {
+                HWND::default()
+            };
+            let keyboard_active = if foreground_info_ok {
+                foreground_info.hwndActive
+            } else {
+                HWND::default()
+            };
+            let mut keyboard_class_buf = [0u16; 256];
+            let keyboard_class_len = if keyboard_focus.is_invalid() {
+                0
+            } else {
+                GetClassNameW(keyboard_focus, &mut keyboard_class_buf).max(0) as usize
+            };
+            let keyboard_class =
+                String::from_utf16_lossy(&keyboard_class_buf[..keyboard_class_len]);
+            let mut keyboard_pid = 0u32;
+            let keyboard_thread = if keyboard_focus.is_invalid() {
+                0
+            } else {
+                GetWindowThreadProcessId(keyboard_focus, Some(&mut keyboard_pid))
+            };
             if !focus.is_invalid() {
                 let _ = GetWindowThreadProcessId(focus, Some(&mut focus_pid));
             }
@@ -1715,6 +1745,13 @@ impl AmareApp {
                 "focus_class": focus_class,
                 "focus_is_window": focus_is_window,
                 "focus_is_descendant": focus_is_descendant,
+                "foreground_gui_thread_info_ok": foreground_info_ok,
+                "keyboard_focus_hwnd": keyboard_focus.0 as usize,
+                "keyboard_focus_class": keyboard_class,
+                "keyboard_focus_thread_id": keyboard_thread,
+                "keyboard_focus_pid": keyboard_pid,
+                "keyboard_active_hwnd": keyboard_active.0 as usize,
+                "status_written_at_ms": now_ms(),
             })
         };
         #[cfg(not(target_os = "windows"))]
@@ -1920,6 +1957,8 @@ impl AmareApp {
         // navigation WebView2 keeps the OS focus, so Ctrl+L/typing stays in
         // the page even though address_focused is true.
         self.focus_native_window();
+        webview::set_address_input_focused(true);
+        webview::note_address_focus_request("focus_address_input");
     }
 
     fn refresh_bookmarks(&mut self) {
@@ -5563,6 +5602,7 @@ impl Render for AmareApp {
         }
         self.window_active = window.is_window_active();
         self.address_focused = self.address_input.read(cx).is_focused(window);
+        webview::set_address_input_focused(self.address_focused);
         if self.address_focused && !self.address_was_focused {
             self.address_focus_gained_count = self.address_focus_gained_count.saturating_add(1);
         } else if !self.address_focused && self.address_was_focused {

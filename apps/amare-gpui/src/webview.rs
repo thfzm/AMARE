@@ -7,7 +7,7 @@ use std::{
 
 #[cfg(target_os = "windows")]
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc,
 };
 
@@ -143,6 +143,21 @@ impl WebViewEnvironment {
 
 #[cfg(target_os = "windows")]
 static WEBVIEW_FOCUS_TRACE: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+static ADDRESS_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
+static ADDRESS_FOCUS_REQUEST_AT_MS: AtomicU64 = AtomicU64::new(0);
+static FOCUS_RECOVERY_GUARD: AtomicBool = AtomicBool::new(false);
+
+pub fn set_address_input_focused(focused: bool) {
+    ADDRESS_INPUT_FOCUSED.store(focused, Ordering::Relaxed);
+}
+
+pub fn note_address_focus_request(origin: &str) {
+    ADDRESS_FOCUS_REQUEST_AT_MS.store(focus_trace_now_ms() as u64, Ordering::Relaxed);
+    record_focus_event(
+        "address_focus_request",
+        serde_json::json!({ "origin": origin }),
+    );
+}
 
 #[cfg(target_os = "windows")]
 fn focus_trace_now_ms() -> i64 {
@@ -190,6 +205,28 @@ unsafe fn focus_snapshot() -> serde_json::Value {
         let _ = GetWindowThreadProcessId(focus, Some(&mut focus_pid));
     }
     let foreground_thread = GetWindowThreadProcessId(foreground, Some(&mut foreground_pid));
+    let mut foreground_info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    let foreground_info_ok =
+        foreground_thread != 0 && GetGUIThreadInfo(foreground_thread, &mut foreground_info).is_ok();
+    let foreground_focus = if foreground_info_ok {
+        foreground_info.hwndFocus
+    } else {
+        windows::Win32::Foundation::HWND::default()
+    };
+    let mut foreground_class_buf = [0u16; 256];
+    let foreground_class_len = if foreground_focus.0.is_null() {
+        0
+    } else {
+        GetClassNameW(foreground_focus, &mut foreground_class_buf).max(0) as usize
+    };
+    let foreground_class = String::from_utf16_lossy(&foreground_class_buf[..foreground_class_len]);
+    let mut foreground_focus_pid = 0u32;
+    if !foreground_focus.0.is_null() {
+        let _ = GetWindowThreadProcessId(foreground_focus, Some(&mut foreground_focus_pid));
+    }
     serde_json::json!({
         "gui_thread_id": tid,
         "focus_hwnd": focus.0 as usize,
@@ -198,6 +235,10 @@ unsafe fn focus_snapshot() -> serde_json::Value {
         "active_hwnd": active.0 as usize,
         "foreground_hwnd": foreground.0 as usize,
         "foreground_thread_id": foreground_thread,
+        "foreground_gui_thread_info_ok": foreground_info_ok,
+        "foreground_focus_hwnd": foreground_focus.0 as usize,
+        "foreground_focus_class": foreground_class,
+        "foreground_focus_pid": foreground_focus_pid,
         "focus_pid": focus_pid,
         "foreground_pid": foreground_pid,
         "keyboard_layout": (GetKeyboardLayout(tid).0 as usize & 0xFFFF) as u32,
@@ -822,11 +863,40 @@ impl WebViewHost {
                 token
             };
             let got_focus_token = {
-                let handler =
-                    FocusChangedEventHandler::create(Box::new(move |_controller, _args| {
-                        record_focus_event("webview_got_focus", serde_json::json!({}));
+                let recovery_parent = parent_handle.clone();
+                let handler = FocusChangedEventHandler::create(Box::new(
+                    move |_controller, _args| {
+                        let focused = ADDRESS_INPUT_FOCUSED.load(Ordering::Relaxed);
+                        let requested_at = ADDRESS_FOCUS_REQUEST_AT_MS.load(Ordering::Relaxed);
+                        let now = focus_trace_now_ms() as u64;
+                        let recent = requested_at > 0 && now.saturating_sub(requested_at) <= 2000;
+                        let guard = !FOCUS_RECOVERY_GUARD.swap(true, Ordering::Relaxed);
+                        let should_recover = focused && recent && guard;
+                        let before = unsafe { GetFocus() };
+                        let mut set_focus_ok = false;
+                        let mut after = before;
+                        if should_recover {
+                            let parent = *recovery_parent.lock().unwrap_or_else(|e| e.into_inner());
+                            let result = unsafe { SetFocus(Some(parent)) };
+                            set_focus_ok = result.is_ok();
+                            after = unsafe { GetFocus() };
+                        }
+                        record_focus_event(
+                            "webview_got_focus",
+                            serde_json::json!({
+                                "address_intent": focused,
+                                "request_age_ms": if requested_at > 0 { now.saturating_sub(requested_at) } else { 0 },
+                                "guard_acquired": guard,
+                                "should_recover": should_recover,
+                                "before_focus": before.0 as usize,
+                                "set_focus_ok": set_focus_ok,
+                                "after_focus": after.0 as usize,
+                            }),
+                        );
+                        FOCUS_RECOVERY_GUARD.store(false, Ordering::Relaxed);
                         Ok(())
-                    }));
+                    },
+                ));
                 let mut token = 0;
                 controller
                     .add_GotFocus(&handler, &mut token)
