@@ -82,14 +82,16 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.85.0)
+## 5. 현재 실행 상태 (0.86.0)
 
-- Windows CI [44247634130](https://github.com/thfzm/AMARE/actions/runs/44247634130): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Windows CI 재실행 [44292349214](https://github.com/thfzm/AMARE/actions/runs/44292349214): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- 1차 `44287345461`: UI 48/17, 142/0/10/1 — 17건 모두 외부 `Example Domain` navigation timeout. UIA selector 실패 아님.
 - Linux CI [44234440711](https://github.com/thfzm/AMARE/actions/runs/44234440711): **SUCCESS**.
-- Native focus 복구: navigation 시작 시 AddressInput focused → WebView2 GotFocus에서 **1회** `SetFocus(parent)`.
-- Probe 10회: 복구 후 `Zed::Window`, Ctrl+L/mouse/clear **10/10 PASS**.
-- 남은 probe 실패: SendKeys 문자 손실, Enter 판정 skip (**TEST_AUTOMATION_BUG**).
-- 동일 코드 3회: **13/9**, **12/11**, **12/12** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **3/5**, crash **0/5**.
+- 입력 경로: scan-code **3/3**, paste **3/3**, SendKeys **2/3**, Unicode **1/3**.
+- SendKeys/Unicode 손실은 GPUI 이전 key event 생성 단계 (**TEST_AUTOMATION_BUG**).
+- 문자열 일치 trial은 Enter → SubmitAddress → submit **PASS**.
+- 0.85 focus recovery 유지, probe focus `Zed::Window`.
+- 동일 코드 3회: **13/18**, **12/21**, **12/11** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **4/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

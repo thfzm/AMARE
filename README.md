@@ -6,7 +6,7 @@
 
 AMARE(아마레)는 Windows와 Android에서 매일 사용할 수 있는 독립형 범용 웹 브라우저를 목표로 합니다. AI 기반 탐색과 자료 관리는 브라우저를 대체하는 별도 제품이 아니라, 브라우저 안에서 자연스럽게 동작하는 보조 계층으로 설계합니다.
 
-현재 저장소는 **AMARE 0.85.0 Native Focus Recovery & Input Delivery Verification** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다. GPUI는 foreground thread 기준 native focus와 WebView2 `GotFocus`/`LostFocus`/`MoveFocusRequested`/`AcceleratorKeyPressed`를 계측했습니다. NavigationCompleted 후 GotFocus가 발생하면 navigation 시작 시 AddressInput이 focused였던 경우에만 **1회** native focus를 복구합니다. Probe 10회에서 복구 후 `after=Zed::Window`를 확인했고 Ctrl+L/mouse/clear가 **10/10 PASS**했습니다. 남은 실패는 SendKeys 문자 손실입니다. 동일 코드 3회는 **13/9, 12/11, 12/12 FAIL/UNVERIFIED**로 **3회 연속 0 FAIL 미달**입니다. **GPUI 기본 전환은 보류**합니다.
+현재 저장소는 **AMARE 0.86.0 Input Delivery Forensics & First-Click Reliability** 단계입니다. WinUI는 UI smoke **48/48**, Windows **143/0/9/1**, interop **70/70**, Linux SUCCESS로 기준선을 유지했습니다(1차 run은 외부 Example Domain timeout으로 48/17, 재실행 성공). GPUI는 동일 문자열을 네 입력 경로로 비교했습니다. Scan-code **3/3**, paste **3/3**, SendKeys **2/3**, Unicode **1/3**이며, SendKeys/Unicode 손실은 GPUI 이전 key event 생성 단계로 분리했습니다. 문자열이 일치한 모든 trial에서 Enter → `SubmitAddress` → submit이 PASS했습니다. 0.85 focus recovery도 유지됐습니다. 동일 코드 3회는 **13/18, 12/21, 12/11 FAIL/UNVERIFIED**로 **3회 연속 0 FAIL 미달**입니다. **GPUI 기본 전환은 보류**합니다.
 
 ## 핵심 원칙
 
@@ -155,6 +155,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Windows 0.56.0: **DPAPI vault security hardening** — actual delete confirm/cancel/complete + restart persistence, corrupted vault preserved with retry/backup guidance, multi-window merge/generation sync path, exact-origin autofill no auto-submit, plaintext scan, actual 0.56 screenshots; password **25/0/0**, vault unit 4/4, corrupt-DPAPI UX PASS, iframe attack automation/multi-window UI/DPAPI other-user failure/cookie control/DPI UNVERIFIED
 - Windows 0.57.0: **password security boundary** — iframe/nested/action-change no-capture **PASS**, exact-origin autofill/no-submit, actual delete cancel/confirm + last-account empty + restart, corrupted vault preservation, multiwindow merge/generation code, privacy autofill/save toggles, WebView2 ALL_SITE data clear; password **42/0/0**, unit 4/4, actual 0.57 screenshots; per-site cookie/permission control, DPAPI other-user failure, multiwindow simultaneous UI mutation, DPI/signing UNVERIFIED
 - Windows 0.58.0: **stability revalidation** — iframe/nested/action no-capture, navigation ID recheck, delete cancel/confirm/empty/restart, corrupted and key-missing vault preservation, privacy settings, actual 0.58 screenshots; password **43/0/0**, unit 4/4, WinUI **143/0/9/1** GUI **42/42**, Windows/Linux CI SUCCESS, GPUI CI step SUCCESS(내부 tab/library/settings/session FAIL); same-process multiwindow Vault mutation/충돌 UX/삭제 부활 방지/창 간 잠금 **FAIL/UNVERIFIED**, ALL_SITE **read-only/BLOCKED**, page DOM capture and GPUI tab/library/settings/session automation **UNVERIFIED/FAIL**, unsigned MSIX install **UNVERIFIED**
+- Windows 0.86.0: **GPUI input delivery forensics/first-click reliability** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, scan-code 3/3·paste 3/3·SendKeys 2/3·Unicode 1/3, Enter/submit 정상, 0.85 focus recovery 유지, crash 0/5, corrupt 14/14, 3회 13/12/12 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.85.0: **GPUI native focus recovery/input delivery verification** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, 조건부 1회 GotFocus 복구, Ctrl+L/mouse/clear 10/10 probe PASS, Enter/submit 정상, 남은 실패 SendKeys 손실, crash 0/5, corrupt 14/14, 3회 13/12/12 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.84.0: **GPUI WebView2 focus ownership/address bar recovery** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, `webview_got_focus`가 navigation 완료 후 focus 획득, Enter/submit 자체 정상, Ctrl+L/주소 click focus 복구 미해결, crash 0/5, corrupt 14/14, 3회 12/12/12 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
 - Windows 0.83.0: **GPUI input delivery forensics/regression isolation** — WinUI 48/48·143/0/9/1·interop 70/70·Linux SUCCESS, crash 0/5, exit 7/7, Enter 자체 정상(SubmitAddress), 최초 손실은 navigation 후 WebView2 focus ownership, SendKeys/paste 분리, corrupt 14/14, 3회 12/13/13 FAIL, 실제 Win11/IME UNVERIFIED, GPUI 전환 보류
@@ -186,7 +187,7 @@ Windows 11에서 웹 렌더링, 탭, 주소창/검색, 뒤로/앞으로/새로�
 - Rust AndroidKeystore JNI 연결: Rust Android 런타임 미탑재로 보류 — [JNI 분석](docs/ANDROID_KEYSTORE.md)
 - 기존 로드맵 Phase 2–6: 미착수
 
-Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.85.0 report](artifacts/windows/release/AMARE-0.85.0-development-report.md)에 기록되어 있습니다.
+Windows 검증은 [가이드](docs/WINDOWS_VERIFICATION.md)에 따라 `tools/verify-windows.ps1`로 실행합니다. [GitHub Actions](docs/GITHUB_ACTIONS.md) workflow의 Windows/Linux/GPUI 결과는 ACTIONS 문서와 [0.86.0 report](artifacts/windows/release/AMARE-0.86.0-development-report.md)에 기록되어 있습니다.
 
 ## 라이선스 및 공개 정책
 
