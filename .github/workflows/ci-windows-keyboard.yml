@@ -1,0 +1,52 @@
+name: ci-windows-keyboard
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keyboard:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      AMARE_GPUI_MESSAGE_TRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build GPUI application
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          cargo build --release --manifest-path apps/amare-gpui/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "GPUI build failed" }
+      - name: Run keyboard delivery probe
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-keyboard-status"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-keyboard-data"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.91.0\keyboard"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $fixture = "http://127.0.0.1:8773/fixture-a.html"
+          $server = Start-Process python -ArgumentList @("-m","http.server","8773","--directory","apps/amare-gpui/test-page") -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 20; $i++) { try { $r = Invoke-WebRequest -Uri $fixture -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { $ready = $true; break } } catch { Start-Sleep -Milliseconds 500 } }
+            if (-not $ready) { throw "fixture server did not become ready" }
+            & "tools/gpui-keyboard-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -Fixture $fixture -Trials 3
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "keyboard probe failed with exit code $LASTEXITCODE" }
+          } finally {
+            if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload keyboard probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpui-keyboard-${{ github.run_id }}
+          path: artifacts/windows/diagnostics/0.91.0/keyboard/**

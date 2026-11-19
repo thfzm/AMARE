@@ -779,6 +779,8 @@ struct AmareApp {
     navigation_requests: u64,
     reload_count: u64,
     last_reload_at_ms: i64,
+    last_reload_tab_id: Option<u64>,
+    last_reload_url: String,
     last_navigation_url: String,
     last_navigation_at_ms: i64,
     layout_bounds: Option<serde_json::Value>,
@@ -1135,6 +1137,8 @@ impl AmareApp {
             navigation_requests: 0,
             reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_tab_id: None,
+            last_reload_url: String::new(),
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1262,6 +1266,8 @@ impl AmareApp {
             navigation_requests: 0,
             reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_tab_id: None,
+            last_reload_url: String::new(),
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1439,6 +1445,8 @@ impl AmareApp {
             navigation_requests: 0,
             reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_tab_id: None,
+            last_reload_url: String::new(),
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1934,6 +1942,8 @@ impl AmareApp {
             "navigation_requests": self.navigation_requests,
             "reload_count": self.reload_count,
             "last_reload_at_ms": self.last_reload_at_ms,
+            "last_reload_tab_id": self.last_reload_tab_id,
+            "last_reload_url": self.last_reload_url,
             "last_navigation_url": self.last_navigation_url,
             "last_navigation_at_ms": self.last_navigation_at_ms,
             "capture_count": self.capture_count,
@@ -3342,6 +3352,11 @@ impl AmareApp {
 
     fn reload_page(&mut self, _: &ReloadPage, _window: &mut Window, cx: &mut Context<Self>) {
         self.reload_count = self.reload_count.saturating_add(1);
+        self.last_reload_tab_id = self.active_tab().map(|tab| tab.id);
+        self.last_reload_url = self
+            .active_tab()
+            .map(|tab| tab.url.to_string())
+            .unwrap_or_default();
         self.last_reload_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
