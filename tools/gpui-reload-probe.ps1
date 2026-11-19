@@ -100,6 +100,12 @@ try {
     $env:AMARE_GPUI_WINDOW_SIZE = "1044x788"
     Remove-Item Env:AMARE_GPUI_OPEN_SECOND_WINDOW -ErrorAction SilentlyContinue
     $app = Start-Process $Exe -PassThru -RedirectStandardOutput (Join-Path $OutDir "reload-out.log") -RedirectStandardError (Join-Path $OutDir "reload-err.log")
+    try {
+        $http = Invoke-WebRequest -Uri $FixtureA -UseBasicParsing -TimeoutSec 5
+        Add-Result "fixture-http" ($(if ($http.StatusCode -eq 200) { "PASS" } else { "UNVERIFIED" })) "status=$($http.StatusCode) length=$($http.Content.Length) url=$FixtureA"
+    } catch {
+        Add-Result "fixture-http" "UNVERIFIED" "error=$($_.Exception.Message) url=$FixtureA"
+    }
     $states = Wait-States 1 25
     $hwnd = [IntPtr][int64]$states[0].window_handle
     [void](Wait-Source $hwnd "fixture-a" 25)
