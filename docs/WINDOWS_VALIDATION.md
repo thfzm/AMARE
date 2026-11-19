@@ -82,14 +82,15 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.91.0)
+## 5. 현재 실행 상태 (0.92.0)
 
-- Windows CI [44543695442](https://github.com/thfzm/AMARE/actions/runs/44543695442): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Windows CI [44564381997](https://github.com/thfzm/AMARE/actions/runs/44564381997): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
 - Linux CI: **SUCCESS**.
-- Keyboard probe A/B/C: fixture 로드 후 Ctrl+L/T/R/W/text **PASS**.
-- 0.90 첫 reload 이후 key loss **재현되지 않음** (fixture 미로드 timing/race).
-- Direct WebView2 Reload API 5회, A/B 독립 navigation **UNVERIFIED**.
-- 동일 코드 3회: **11/11**, **13/10**, **13/13** — 3회 연속 0 FAIL **미달**.
+- Direct WebView2 Reload (hidden F8): 호출/성공 **10/10**, nav 증가 5/10.
+- Ctrl+R: `ReloadPage` **10/10**, nav 증가 4/10.
+- B 종료/A 종료/프로세스 exit **PASS**; A/B 독립 navigation, 새 창 C **UNVERIFIED**.
+- First-click 6/6 (0.89) 유지, 0.92 재실행 **UNVERIFIED**.
+- 동일 코드 3회: **11/17**, **11/15**, **13/14** — 3회 연속 0 FAIL **미달**.
 - Corrupt **14/14** 3회, titlebar full **2/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.

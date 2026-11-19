@@ -1,17 +1,17 @@
-# GPUI migration gaps and P0/P1 plan (0.91.0)
+# GPUI migration gaps and P0/P1 plan (0.92.0)
 
 This document records the WinUI/GPUI gap plan. It is not a claim that the
 items are implemented.
 
-## 0.91.0 status
+## 0.92.0 status
 
-- With the local fixture actually loaded, keyboard delivery passes in A/B/C
-  scenarios, including after one Ctrl+R. The 0.90 post-reload loss is not
-  reproduced and matches a fixture-load timing/race.
-- Direct WebView2 Reload API and A/B independent navigation remain unverified.
-- First-click 6/6 from 0.89 is retained but not rerun.
+- Hidden F8 DirectReload diagnostic: WebView2 Reload succeeds 10/10.
+- Ctrl+R invokes ReloadPage 10/10 but navigation counters lag in 6/10.
+- B/A close and process exit pass; A/B independent navigation and new-window
+  recreation remain unverified.
+- First-click 6/6 from 0.89 is retained.
 - Corrupt session: **14/14 PASS** in all three repeats.
-- Three repeats: **11/13/13 FAIL**.
+- Three repeats: **11/11/13 FAIL**.
 - AI/updater/site permissions remain not implemented.
 
 ## Status rules
@@ -22,7 +22,7 @@ items are implemented.
 - **Not implemented**: no GPUI code.
 - **Platform-specific**: needs a separate design.
 
-WinUI remains the default package. GPUI is not switched to default in 0.91.0.
+WinUI remains the default package. GPUI is not switched to default in 0.92.0.
 
 ## P0 — browser stability (must be green before migration)
 
@@ -67,7 +67,7 @@ Design constraints:
 - user approval before download/apply;
 - SHA-256 verification and signed/unsigned state shown to the user;
 - backup/rollback and crash recovery on failure;
-- no public release is created by CI in 0.91.0.
+- no public release is created by CI in 0.92.0.
 
 Status: **not implemented in GPUI**; WinUI updater remains the reference.
 
