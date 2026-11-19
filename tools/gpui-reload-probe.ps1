@@ -118,7 +118,7 @@ try {
 
     $directPass = 0
     for ($i = 1; $i -le $Reloads; $i++) {
-        Click-Page $hwnd
+        [void](Focus-Address $hwnd)
         $beforeD = Read-State $hwnd
         $tabBeforeD = @($beforeD.tabs | Where-Object { $_.id -eq $beforeD.active_tab })[0]
         $atD = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -136,7 +136,7 @@ try {
 
     $reloadPass = 0
     for ($i = 1; $i -le $Reloads; $i++) {
-        Click-Page $hwnd
+        [void](Focus-Address $hwnd)
         $before = Read-State $hwnd
         $tabBefore = @($before.tabs | Where-Object { $_.id -eq $before.active_tab })[0]
         $at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
