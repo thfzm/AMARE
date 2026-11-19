@@ -1,4 +1,4 @@
-# AMARE GPUI Windows Shell (0.89.0)
+# AMARE GPUI Windows Shell (0.90.0)
 
 This is the GPUI + Rust Windows entry point for AMARE. It remains a transition shell; the WinUI 3 app is still the default packaged UI.
 
@@ -33,7 +33,7 @@ This is the GPUI + Rust Windows entry point for AMARE. It remains a transition s
 
 The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environment/controller is created with `webview2-com` 0.39.1 using the GPUI HWND as parent. The controller bounds are updated from GPUI's viewport. Chromium/WebView2 remains the web engine; GPUI is the native browser UI shell.
 
-## Verified in Windows CI (0.89.0)
+## Verified in Windows CI (0.90.0)
 
 - `cargo build --release` for Windows x64.
 - Real GPUI window, resized window, address-input, Ctrl+L, and Korean-address screenshots.
@@ -48,6 +48,7 @@ The GPUI window HWND is obtained with `raw-window-handle`. A WebView2 environmen
 - Password vault: **51 password GUI checks PASS**, **11 vault unit tests PASS**; actual delete cancel/confirm/last-account/restart persistence PASS; corrupt vault and missing-key vault unchanged after failed unlock; no plaintext password in data dir or status; DPAPI restart restore PASS; iframe/nested/action-origin tests PASS.
 - 0.59: same-process two-window GUI **20 PASS / 0 FAIL / 1 UNVERIFIED** — independent add/edit, same-entry conflict rejection, modify/delete conflict, stale-delete no-resurrection, lock propagation, unlock, close, and restart integrity PASS. Pending autofill cancellation is UNVERIFIED because the automation could not create the pending proposal.
 - WebView2 `CapturePreview` produces actual DOM PNGs at 1024×544 for normal, active-tab, maximize, and minimize/restore. Per-tab individual captures and the keyboard shortcut itself remain UNVERIFIED.
+- 0.90 adds reload counters and a 10x Ctrl+R probe. Reload #1 invokes ReloadPage but WebView2 nav counters do not change; #2-#10 lose the key event. A/B independent navigation was not reached. Three repeats are 12/13/11 FAIL.
 - 0.89 uses SendInput for first-click. All six toolbar controls pass with down/up 1/1 and real state changes; Address selection changes 0,11→11,11. Ctrl+L/T/W/N pass, Ctrl+R varies. Multi-window typing and close pass in the successful run. Three repeats are 13/11/11 FAIL.
 - 0.88 exposes stable toolbar bounds and verifies first-click from native mouse to product state. New Tab/Password/Address pass; Settings/Downloads/Bookmarks receive WM_LBUTTONDOWN without WM_LBUTTONUP and remain unverified. Ctrl+L/T/W/N pass, Ctrl+R is inconsistent. Three repeats are 11/12/12 FAIL.
 - 0.87 adds mouse-event tracing and a shortcut probe. Ctrl+L/T/R/W/N actual effects pass; multi-window A/B/A focus passes. First-click toolbar bounds and multi-window input/close are unverified. Three repeats are 12/12/14 FAIL.
