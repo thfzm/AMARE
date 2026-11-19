@@ -33,11 +33,16 @@ jobs:
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-reload-data"
           $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.90.0\reload"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $root = ($env:GITHUB_WORKSPACE -replace '\\','/')
-          $fixtureA = "file:///$root/apps/amare-gpui/test-page/fixture-a.html"
-          $fixtureB = "file:///$root/apps/amare-gpui/test-page/fixture-b.html"
-          & "tools/gpui-reload-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -FixtureA $fixtureA -FixtureB $fixtureB -Reloads 10
-          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "reload probe failed with exit code $LASTEXITCODE" }
+          $fixtureA = "http://127.0.0.1:8772/fixture-a.html"
+          $fixtureB = "http://127.0.0.1:8772/fixture-b.html"
+          $server = Start-Process python -ArgumentList @("-m","http.server","8772","--directory","apps/amare-gpui/test-page") -PassThru
+          try {
+            Start-Sleep -Seconds 2
+            & "tools/gpui-reload-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -FixtureA $fixtureA -FixtureB $fixtureB -Reloads 10
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "reload probe failed with exit code $LASTEXITCODE" }
+          } finally {
+            if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
       - name: Upload reload probe
         if: always()
         uses: actions/upload-artifact@v4
