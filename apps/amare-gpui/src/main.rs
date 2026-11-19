@@ -777,6 +777,8 @@ struct AmareApp {
     last_focus_class: String,
     focus_history: Vec<String>,
     navigation_requests: u64,
+    reload_count: u64,
+    last_reload_at_ms: i64,
     last_navigation_url: String,
     last_navigation_at_ms: i64,
     layout_bounds: Option<serde_json::Value>,
@@ -1131,6 +1133,8 @@ impl AmareApp {
             last_focus_class: String::new(),
             focus_history: Vec::new(),
             navigation_requests: 0,
+            reload_count: 0,
+            last_reload_at_ms: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1256,6 +1260,8 @@ impl AmareApp {
             last_focus_class: String::new(),
             focus_history: Vec::new(),
             navigation_requests: 0,
+            reload_count: 0,
+            last_reload_at_ms: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1431,6 +1437,8 @@ impl AmareApp {
             last_focus_class: String::new(),
             focus_history: Vec::new(),
             navigation_requests: 0,
+            reload_count: 0,
+            last_reload_at_ms: 0,
             last_navigation_url: String::new(),
             last_navigation_at_ms: 0,
             layout_bounds: None,
@@ -1924,6 +1932,8 @@ impl AmareApp {
             "keystroke_total": keystroke_total,
             "keystroke_trace": keystroke_trace,
             "navigation_requests": self.navigation_requests,
+            "reload_count": self.reload_count,
+            "last_reload_at_ms": self.last_reload_at_ms,
             "last_navigation_url": self.last_navigation_url,
             "last_navigation_at_ms": self.last_navigation_at_ms,
             "capture_count": self.capture_count,
@@ -3331,6 +3341,12 @@ impl AmareApp {
     }
 
     fn reload_page(&mut self, _: &ReloadPage, _window: &mut Window, cx: &mut Context<Self>) {
+        self.reload_count = self.reload_count.saturating_add(1);
+        self.last_reload_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.trace_action("ReloadPage");
         #[cfg(target_os = "windows")]
         if let Some(webview) = self.active_webview() {
             webview.reload();

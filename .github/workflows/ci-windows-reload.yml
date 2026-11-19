@@ -1,0 +1,46 @@
+name: ci-windows-reload
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reload:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      AMARE_GPUI_MESSAGE_TRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build GPUI application
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          cargo build --release --manifest-path apps/amare-gpui/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "GPUI build failed" }
+      - name: Run reload and multi-window probe
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
+          $status = Join-Path $env:RUNNER_TEMP "amare-gpui-reload-status"
+          $data = Join-Path $env:RUNNER_TEMP "amare-gpui-reload-data"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.90.0\reload"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $root = ($env:GITHUB_WORKSPACE -replace '\\','/')
+          $fixtureA = "file:///$root/apps/amare-gpui/test-page/fixture-a.html"
+          $fixtureB = "file:///$root/apps/amare-gpui/test-page/fixture-b.html"
+          & "tools/gpui-reload-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -FixtureA $fixtureA -FixtureB $fixtureB -Reloads 10
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "reload probe failed with exit code $LASTEXITCODE" }
+      - name: Upload reload probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpui-reload-${{ github.run_id }}
+          path: artifacts/windows/diagnostics/0.90.0/reload/**
