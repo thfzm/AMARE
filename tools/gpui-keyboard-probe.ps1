@@ -122,6 +122,10 @@ try {
     Send-GpuiShortcut $hwnd 0x52
     Start-Sleep -Milliseconds 900
     $afterFirstReload = Read-State $hwnd
+    try { $script:app.Refresh(); $responding = $script:app.Responding } catch { $responding = $null }
+    $statusFile = Get-ChildItem $StatusDir -Filter "status-*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $statusAge = if ($null -ne $statusFile) { [int64]((Get-Date) - $statusFile.LastWriteTime).TotalMilliseconds } else { -1 }
+    Add-Result "B-health-after-reload" ($(if ($responding -eq $true -and $statusAge -lt 3000) { "PASS" } else { "UNVERIFIED" })) "responding=$responding status_age_ms=$statusAge source=$($afterFirstReload.source)"
     Add-Result "B-first-reload" ($(if ([int64]$afterFirstReload.reload_count -gt [int64]$loaded.reload_count) { "PASS" } else { "UNVERIFIED" })) "reload=$($loaded.reload_count)->$($afterFirstReload.reload_count) nav=$(@($afterFirstReload.tabs | Where-Object { $_.id -eq $afterFirstReload.active_tab })[0].navigation_started) source=$($afterFirstReload.source)"
     Key-Result "B-after-reload" "ctrl-l" $hwnd { Send-GpuiShortcut $hwnd 0x4C } { param($b, $a) $a.address_focused }
     Key-Result "B-after-reload" "ctrl-t" $hwnd { Send-GpuiShortcut $hwnd 0x54 } { param($b, $a) @($a.tabs).Count -gt @($b.tabs).Count }
@@ -134,7 +138,8 @@ try {
         Send-GpuiShortcut $hwnd 0x54
         Start-Sleep -Milliseconds 600
         $after = Read-State $hwnd
-        Add-Result "C-interaction-$i" ($(if (@($after.tabs).Count -ne $tabs) { "PASS" } else { "UNVERIFIED" })) "tabs=$tabs->$(@($after.tabs).Count) active=$active->$($after.active_tab) source=$($after.source)"
+        try { $script:app.Refresh(); $responding = $script:app.Responding } catch { $responding = $null }
+        Add-Result "C-interaction-$i" ($(if (@($after.tabs).Count -ne $tabs) { "PASS" } else { "UNVERIFIED" })) "tabs=$tabs->$(@($after.tabs).Count) active=$active->$($after.active_tab) responding=$responding source=$($after.source)"
     }
 } catch {
     Add-Result "keyboard-fatal" "FAIL" $_.Exception.Message
