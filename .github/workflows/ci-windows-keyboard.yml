@@ -31,7 +31,7 @@ jobs:
           $exe = "apps/amare-gpui/target/release/amare-gpui.exe"
           $status = Join-Path $env:RUNNER_TEMP "amare-gpui-keyboard-status"
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-keyboard-data"
-          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.91.0\keyboard"
+          $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.92.0\keyboard"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           $fixture = "http://127.0.0.1:8773/fixture-a.html"
           $server = Start-Process python -ArgumentList @("-m","http.server","8773","--directory","apps/amare-gpui/test-page") -PassThru
@@ -49,4 +49,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gpui-keyboard-${{ github.run_id }}
-          path: artifacts/windows/diagnostics/0.91.0/keyboard/**
+          path: artifacts/windows/diagnostics/0.92.0/keyboard/**

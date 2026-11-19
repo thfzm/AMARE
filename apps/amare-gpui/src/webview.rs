@@ -1357,10 +1357,8 @@ impl WebViewHost {
         }
     }
 
-    pub fn reload(&self) {
-        unsafe {
-            let _ = self.webview.Reload();
-        }
+    pub fn reload(&self) -> bool {
+        unsafe { self.webview.Reload().is_ok() }
     }
 
     pub fn scroll_position(&self) -> Option<(i64, i64)> {

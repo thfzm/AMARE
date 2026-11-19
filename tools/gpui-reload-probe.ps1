@@ -116,6 +116,24 @@ try {
         Add-Result "fixture-load" "PASS" "source=$($initial.source) title=$($initial.title)"
     }
 
+    $directPass = 0
+    for ($i = 1; $i -le $Reloads; $i++) {
+        Click-Page $hwnd
+        $beforeD = Read-State $hwnd
+        $tabBeforeD = @($beforeD.tabs | Where-Object { $_.id -eq $beforeD.active_tab })[0]
+        $atD = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        Send-GpuiShortcut $hwnd 0x77 -NoCtrl
+        Start-Sleep -Milliseconds 800
+        $afterD = Read-State $hwnd
+        $tabAfterD = @($afterD.tabs | Where-Object { $_.id -eq $afterD.active_tab })[0]
+        $okD = [int64]$afterD.direct_reload_count -gt [int64]$beforeD.direct_reload_count
+        $navD = [int64]$tabAfterD.navigation_started -gt [int64]$tabBeforeD.navigation_started
+        if ($okD) { $directPass++ }
+        Add-Result "direct-reload-$i" ($(if ($okD) { "PASS" } else { "UNVERIFIED" })) "direct_delta=$([int64]$afterD.direct_reload_count - [int64]$beforeD.direct_reload_count) ok=$($afterD.last_direct_reload_ok) nav_started=$($tabBeforeD.navigation_started)->$($tabAfterD.navigation_started) nav_completed=$($tabBeforeD.navigation_completed)->$($tabAfterD.navigation_completed) source=$($afterD.source)"
+        Start-Sleep -Milliseconds 300
+    }
+    Add-Result "direct-reload-summary" "PASS" "pass=$directPass/$Reloads"
+
     $reloadPass = 0
     for ($i = 1; $i -le $Reloads; $i++) {
         Click-Page $hwnd

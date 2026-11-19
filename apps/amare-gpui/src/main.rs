@@ -49,6 +49,7 @@ actions!(
     [
         FocusAddress,
         ReloadPage,
+        DirectReload,
         BackPage,
         ForwardPage,
         SubmitAddress,
@@ -778,7 +779,10 @@ struct AmareApp {
     focus_history: Vec<String>,
     navigation_requests: u64,
     reload_count: u64,
+    direct_reload_count: u64,
     last_reload_at_ms: i64,
+    last_reload_ok: bool,
+    last_direct_reload_ok: bool,
     last_reload_tab_id: Option<u64>,
     last_reload_url: String,
     last_navigation_url: String,
@@ -1136,7 +1140,10 @@ impl AmareApp {
             focus_history: Vec::new(),
             navigation_requests: 0,
             reload_count: 0,
+            direct_reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_ok: false,
+            last_direct_reload_ok: false,
             last_reload_tab_id: None,
             last_reload_url: String::new(),
             last_navigation_url: String::new(),
@@ -1265,7 +1272,10 @@ impl AmareApp {
             focus_history: Vec::new(),
             navigation_requests: 0,
             reload_count: 0,
+            direct_reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_ok: false,
+            last_direct_reload_ok: false,
             last_reload_tab_id: None,
             last_reload_url: String::new(),
             last_navigation_url: String::new(),
@@ -1444,7 +1454,10 @@ impl AmareApp {
             focus_history: Vec::new(),
             navigation_requests: 0,
             reload_count: 0,
+            direct_reload_count: 0,
             last_reload_at_ms: 0,
+            last_reload_ok: false,
+            last_direct_reload_ok: false,
             last_reload_tab_id: None,
             last_reload_url: String::new(),
             last_navigation_url: String::new(),
@@ -1941,7 +1954,10 @@ impl AmareApp {
             "keystroke_trace": keystroke_trace,
             "navigation_requests": self.navigation_requests,
             "reload_count": self.reload_count,
+            "direct_reload_count": self.direct_reload_count,
             "last_reload_at_ms": self.last_reload_at_ms,
+            "last_reload_ok": self.last_reload_ok,
+            "last_direct_reload_ok": self.last_direct_reload_ok,
             "last_reload_tab_id": self.last_reload_tab_id,
             "last_reload_url": self.last_reload_url,
             "last_navigation_url": self.last_navigation_url,
@@ -3363,9 +3379,42 @@ impl AmareApp {
             .as_millis() as i64;
         self.trace_action("ReloadPage");
         #[cfg(target_os = "windows")]
-        if let Some(webview) = self.active_webview() {
-            webview.reload();
-            webview.focus();
+        {
+            let result = self.active_webview().map(|webview| {
+                let ok = webview.reload();
+                webview.focus();
+                ok
+            });
+            if let Some(ok) = result {
+                self.last_reload_ok = ok;
+            }
+        }
+        cx.notify();
+    }
+
+    fn direct_reload_action(
+        &mut self,
+        _: &DirectReload,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.direct_reload_count = self.direct_reload_count.saturating_add(1);
+        self.last_reload_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.last_reload_tab_id = self.active_tab().map(|tab| tab.id);
+        self.last_reload_url = self
+            .active_tab()
+            .map(|tab| tab.url.to_string())
+            .unwrap_or_default();
+        self.trace_action("DirectReload");
+        #[cfg(target_os = "windows")]
+        {
+            let result = self.active_webview().map(|webview| webview.reload());
+            if let Some(ok) = result {
+                self.last_direct_reload_ok = ok;
+            }
         }
         cx.notify();
     }
@@ -5891,6 +5940,7 @@ impl Render for AmareApp {
             .on_action(cx.listener(Self::submit_address))
             .on_action(cx.listener(Self::cancel_address))
             .on_action(cx.listener(Self::reload_page))
+            .on_action(cx.listener(Self::direct_reload_action))
             .on_action(cx.listener(Self::go_back))
             .on_action(cx.listener(Self::go_forward))
             .on_action(cx.listener(Self::new_tab_action))
@@ -6730,6 +6780,7 @@ fn main() {
             KeyBinding::new("ctrl-,", ToggleSettings, None),
             KeyBinding::new("ctrl-shift-p", TogglePasswords, None),
             KeyBinding::new("ctrl-shift-s", CapturePage, None),
+            KeyBinding::new("f8", DirectReload, None),
             KeyBinding::new("f9", CapturePage, None),
             KeyBinding::new("ctrl-alt-p", CapturePage, None),
             KeyBinding::new("ctrl-tab", NextTab, None),
