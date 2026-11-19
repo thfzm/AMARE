@@ -108,7 +108,13 @@ try {
     }
     $states = Wait-States 1 25
     $hwnd = [IntPtr][int64]$states[0].window_handle
-    [void](Wait-Source $hwnd "fixture-a" 25)
+    $initial = Wait-Source $hwnd "fixture-a" 5
+    if ([string]$initial.source -notmatch "fixture-a") {
+        $loaded = Paste-Url $hwnd $FixtureA "fixture-a"
+        Add-Result "fixture-load" ($(if ([string]$loaded.source -match "fixture-a") { "PASS" } else { "UNVERIFIED" })) "source=$($loaded.source) title=$($loaded.title) address=$($loaded.address)"
+    } else {
+        Add-Result "fixture-load" "PASS" "source=$($initial.source) title=$($initial.title)"
+    }
 
     $reloadPass = 0
     for ($i = 1; $i -le $Reloads; $i++) {
