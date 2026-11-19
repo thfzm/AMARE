@@ -82,16 +82,14 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.90.0)
+## 5. 현재 실행 상태 (0.91.0)
 
-- Windows CI [44526534753](https://github.com/thfzm/AMARE/actions/runs/44526534753): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Windows CI [44543695442](https://github.com/thfzm/AMARE/actions/runs/44543695442): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
 - Linux CI: **SUCCESS**.
-- local HTTP fixture 로드 **PASS**, reload counter 추가.
-- Ctrl+R #1: `ReloadPage` callback + reload_count +1, 그러나 WebView2 nav counter 변화 없음.
-- Ctrl+R #2–#10: key event 미전달.
-- A/B 독립 navigation/종료/재생성: **UNVERIFIED**.
-- First-click 6/6 (0.89) 유지, 0.90 재실행 **UNVERIFIED**.
-- 동일 코드 3회: **12/12**, **13/11**, **11/10** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **3/5**, startup hang 2회, crash **0/5**.
+- Keyboard probe A/B/C: fixture 로드 후 Ctrl+L/T/R/W/text **PASS**.
+- 0.90 첫 reload 이후 key loss **재현되지 않음** (fixture 미로드 timing/race).
+- Direct WebView2 Reload API 5회, A/B 독립 navigation **UNVERIFIED**.
+- 동일 코드 3회: **11/11**, **13/10**, **13/13** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **2/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
