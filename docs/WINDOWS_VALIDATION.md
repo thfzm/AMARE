@@ -82,15 +82,17 @@ Unified item shape:
 
 ---
 
-## 5. 현재 실행 상태 (0.92.0)
+## 5. 현재 실행 상태 (0.93.0)
 
-- Windows CI [44564381997](https://github.com/thfzm/AMARE/actions/runs/44564381997): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
+- Windows CI [45042473578](https://github.com/thfzm/AMARE/actions/runs/45042473578): **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED**, WinUI UI smoke **48/48**, interop **70/70**.
 - Linux CI: **SUCCESS**.
-- Direct WebView2 Reload (hidden F8): 호출/성공 **10/10**, nav 증가 5/10.
-- Ctrl+R: `ReloadPage` **10/10**, nav 증가 4/10.
-- B 종료/A 종료/프로세스 exit **PASS**; A/B 독립 navigation, 새 창 C **UNVERIFIED**.
-- First-click 6/6 (0.89) 유지, 0.92 재실행 **UNVERIFIED**.
-- 동일 코드 3회: **11/17**, **11/15**, **13/14** — 3회 연속 0 FAIL **미달**.
-- Corrupt **14/14** 3회, titlebar full **2/5**, crash **0/5**.
+- HTTP fixture: request counter, unique id, `/stats`, `/ready`, no-store.
+- DirectReload **10/10 PASS** (API + HTTP + source).
+- Ctrl+R **10/10 PASS** (keybinding + HTTP + source).
+- A reload HTTP +1/B unchanged **PASS**; B load/reload/close/exit **UNVERIFIED**.
+- 새 창 C **PASS**.
+- 0.93은 test/fixture 변경만 → **새 패키지 없음**, 0.92.0 패키지 유지.
+- 동일 코드 3회: **11/13**, **12/10**, **13/10** — 3회 연속 0 FAIL **미달**.
+- Corrupt **14/14** 3회, titlebar full **3/5**, crash **0/5**.
 - 실제 Windows 11/DPI/Snap/Alt+Tab/IME **UNVERIFIED**.
 - unsigned MSIX `0x80073D2C` **UNVERIFIED/BLOCKED**.
