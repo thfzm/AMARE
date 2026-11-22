@@ -33,16 +33,18 @@ jobs:
           $data = Join-Path $env:RUNNER_TEMP "amare-gpui-reload-data"
           $out = Join-Path $env:GITHUB_WORKSPACE "artifacts\windows\diagnostics\0.92.0\reload"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $fixtureA = "http://127.0.0.1:8772/fixture-a.html"
-          $fixtureB = "http://127.0.0.1:8772/fixture-b.html"
-          $server = Start-Process python -ArgumentList @("-m","http.server","8772","--directory","apps/amare-gpui/test-page") -PassThru
+          $fixtureA = "http://127.0.0.1:8774/fixture-a.html"
+          $fixtureB = "http://127.0.0.1:8774/fixture-b.html"
+          $statsUrl = "http://127.0.0.1:8774/stats"
+          $readyUrl = "http://127.0.0.1:8774/ready"
+          $server = Start-Process python -ArgumentList @("tools/fixture_server.py","8774") -PassThru
           try {
             $ready = $false
             for ($i = 0; $i -lt 20; $i++) {
-              try { $r = Invoke-WebRequest -Uri $fixtureA -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { $ready = $true; break } } catch { Start-Sleep -Milliseconds 500 }
+              try { $r = Invoke-WebRequest -Uri $readyUrl -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { $ready = $true; break } } catch { Start-Sleep -Milliseconds 500 }
             }
             if (-not $ready) { throw "local fixture server did not become ready" }
-            & "tools/gpui-reload-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -FixtureA $fixtureA -FixtureB $fixtureB -Reloads 10
+            & "tools/gpui-reload-probe.ps1" -Exe $exe -StatusDir $status -DataDir $data -OutDir $out -FixtureA $fixtureA -FixtureB $fixtureB -StatsUrl $statsUrl -ReadyUrl $readyUrl -Reloads 10
             if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "reload probe failed with exit code $LASTEXITCODE" }
           } finally {
             if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }

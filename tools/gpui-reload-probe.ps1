@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory = $true)][string]$OutDir,
     [Parameter(Mandatory = $true)][string]$FixtureA,
     [Parameter(Mandatory = $true)][string]$FixtureB,
+    [Parameter(Mandatory = $true)][string]$StatsUrl,
+    [Parameter(Mandatory = $true)][string]$ReadyUrl,
     [int]$Reloads = 10
 )
 
@@ -14,6 +16,15 @@ Add-Type -AssemblyName System.Windows.Forms
 New-Item -ItemType Directory -Force -Path $StatusDir, $DataDir, $OutDir | Out-Null
 $script:results = [System.Collections.Generic.List[object]]::new()
 function Send-Keys([string]$keys) { [System.Windows.Forms.SendKeys]::SendWait($keys); Start-Sleep -Milliseconds 100 }
+function Get-FixtureStats { return Invoke-RestMethod -Uri $StatsUrl -TimeoutSec 5 }
+function Wait-FixtureReady([int]$seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        try { $r = Invoke-WebRequest -Uri $ReadyUrl -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { return $true } } catch { }
+        Start-Sleep -Milliseconds 200
+    }
+    return $false
+}
 function Add-Result([string]$name, [string]$state, [string]$detail) {
     $script:results.Add([pscustomobject]@{ name = $name; result = $state; detail = $detail })
     Write-Host ("{0} {1}: {2}" -f $state, $name, $detail)
@@ -121,15 +132,18 @@ try {
         [void](Focus-Address $hwnd)
         $beforeD = Read-State $hwnd
         $tabBeforeD = @($beforeD.tabs | Where-Object { $_.id -eq $beforeD.active_tab })[0]
+        $statsBeforeD = Get-FixtureStats
         $atD = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         Send-GpuiShortcut $hwnd 0x77 -NoCtrl
         Start-Sleep -Milliseconds 800
         $afterD = Read-State $hwnd
+        $statsAfterD = Get-FixtureStats
         $tabAfterD = @($afterD.tabs | Where-Object { $_.id -eq $afterD.active_tab })[0]
         $okD = [int64]$afterD.direct_reload_count -gt [int64]$beforeD.direct_reload_count
+        $httpD = [int64]$statsAfterD.a - [int64]$statsBeforeD.a
         $navD = [int64]$tabAfterD.navigation_started -gt [int64]$tabBeforeD.navigation_started
-        if ($okD) { $directPass++ }
-        Add-Result "direct-reload-$i" ($(if ($okD) { "PASS" } else { "UNVERIFIED" })) "direct_delta=$([int64]$afterD.direct_reload_count - [int64]$beforeD.direct_reload_count) ok=$($afterD.last_direct_reload_ok) nav_started=$($tabBeforeD.navigation_started)->$($tabAfterD.navigation_started) nav_completed=$($tabBeforeD.navigation_completed)->$($tabAfterD.navigation_completed) source=$($afterD.source)"
+        if ($okD -and $httpD -ge 1 -and [string]$afterD.source -match "fixture-a") { $directPass++ }
+        Add-Result "direct-reload-$i" ($(if ($okD -and $httpD -ge 1 -and [string]$afterD.source -match "fixture-a") { "PASS" } else { "UNVERIFIED" })) "api=$okD ok=$($afterD.last_direct_reload_ok) http=$httpD nav=$navD nav_started=$($tabBeforeD.navigation_started)->$($tabAfterD.navigation_started) nav_completed=$($tabBeforeD.navigation_completed)->$($tabAfterD.navigation_completed) source=$($afterD.source)"
         Start-Sleep -Milliseconds 300
     }
     Add-Result "direct-reload-summary" "PASS" "pass=$directPass/$Reloads"
@@ -139,18 +153,21 @@ try {
         [void](Focus-Address $hwnd)
         $before = Read-State $hwnd
         $tabBefore = @($before.tabs | Where-Object { $_.id -eq $before.active_tab })[0]
+        $statsBefore = Get-FixtureStats
         $at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         Send-GpuiShortcut $hwnd 0x52
         Start-Sleep -Milliseconds 800
         $after = Read-State $hwnd
+        $statsAfter = Get-FixtureStats
         $tabAfter = @($after.tabs | Where-Object { $_.id -eq $after.active_tab })[0]
         $reloadDelta = [int64]$after.reload_count - [int64]$before.reload_count
         $startedDelta = [int64]$tabAfter.navigation_started - [int64]$tabBefore.navigation_started
         $completedDelta = [int64]$tabAfter.navigation_completed - [int64]$tabBefore.navigation_completed
         $key = @($after.keystroke_trace | Where-Object { $_.action -match "ReloadPage" -and [int64]$_.at_ms -ge [int64]$at } | Select-Object -Last 1)[0]
-        $ok = $reloadDelta -eq 1 -and ($startedDelta -ge 1 -or $completedDelta -ge 1)
+        $httpDelta = [int64]$statsAfter.a - [int64]$statsBefore.a
+        $ok = $reloadDelta -eq 1 -and $httpDelta -ge 1 -and [string]$after.source -match "fixture-a"
         if ($ok) { $reloadPass++ }
-        Add-Result "reload-$i" ($(if ($ok) { "PASS" } else { "UNVERIFIED" })) "reload_delta=$reloadDelta nav_started=$($tabBefore.navigation_started)->$($tabAfter.navigation_started) nav_completed=$($tabBefore.navigation_completed)->$($tabAfter.navigation_completed) key_action=$($key.action) source=$($after.source)"
+        Add-Result "reload-$i" ($(if ($ok) { "PASS" } else { "UNVERIFIED" })) "reload_delta=$reloadDelta http=$httpDelta nav_started=$($tabBefore.navigation_started)->$($tabAfter.navigation_started) nav_completed=$($tabBefore.navigation_completed)->$($tabAfter.navigation_completed) key_action=$($key.action) source=$($after.source)"
         Start-Sleep -Milliseconds 400
     }
     Add-Result "reload-summary" "PASS" "pass=$reloadPass/$Reloads"
@@ -162,7 +179,9 @@ try {
         $a = [IntPtr][int64]$states2[0].window_handle
         $b = [IntPtr][int64]$states2[1].window_handle
         $bLoaded = Paste-Url $b $FixtureB "fixture-b"
-        Add-Result "ab-b-load" ($(if ([string]$bLoaded.source -match "fixture-b") { "PASS" } else { "UNVERIFIED" })) "b=0x$('{0:X}' -f $b.ToInt64()) source=$($bLoaded.source) title=$($bLoaded.title)"
+        [void](Wait-FixtureReady 5)
+        $bStats = Get-FixtureStats
+        Add-Result "ab-b-load" ($(if ([string]$bLoaded.source -match "fixture-b" -and [int64]$bStats.b -ge 1) { "PASS" } else { "UNVERIFIED" })) "b=0x$('{0:X}' -f $b.ToInt64()) source=$($bLoaded.source) title=$($bLoaded.title) http_b=$($bStats.b)"
         $aState = Read-State $a
         $bBefore = Read-State $b
         Click-Page $a
@@ -172,7 +191,8 @@ try {
         $bAfter = Read-State $b
         $aTabBefore = @($aState.tabs | Where-Object { $_.id -eq $aState.active_tab })[0]
         $aTabAfter = @($aAfter.tabs | Where-Object { $_.id -eq $aAfter.active_tab })[0]
-        Add-Result "ab-reload-a" ($(if ([int64]$aTabAfter.navigation_started -gt [int64]$aTabBefore.navigation_started -and [string]$bAfter.source -eq [string]$bBefore.source) { "PASS" } else { "UNVERIFIED" })) "a_nav=$($aTabBefore.navigation_started)->$($aTabAfter.navigation_started) b_source_unchanged=$([string]$bAfter.source -eq [string]$bBefore.source) b_source=$($bAfter.source)"
+        $aStatsAfter = Get-FixtureStats
+        Add-Result "ab-reload-a" ($(if ([int64]$aStatsAfter.a -gt [int64]$bStats.a -and [int64]$aStatsAfter.b -eq [int64]$bStats.b) { "PASS" } else { "UNVERIFIED" })) "http_a=$($bStats.a)->$($aStatsAfter.a) http_b=$($bStats.b)->$($aStatsAfter.b) a_nav=$($aTabBefore.navigation_started)->$($aTabAfter.navigation_started) b_source=$($bAfter.source)"
         $bBefore2 = Read-State $b
         $aBefore2 = Read-State $a
         Click-Page $b
@@ -182,7 +202,8 @@ try {
         $aAfter2 = Read-State $a
         $bTabBefore = @($bBefore2.tabs | Where-Object { $_.id -eq $bBefore2.active_tab })[0]
         $bTabAfter = @($bAfter2.tabs | Where-Object { $_.id -eq $bAfter2.active_tab })[0]
-        Add-Result "ab-reload-b" ($(if ([int64]$bTabAfter.navigation_started -gt [int64]$bTabBefore.navigation_started -and [string]$aAfter2.source -eq [string]$aBefore2.source) { "PASS" } else { "UNVERIFIED" })) "b_nav=$($bTabBefore.navigation_started)->$($bTabAfter.navigation_started) a_source_unchanged=$([string]$aAfter2.source -eq [string]$aBefore2.source) a_source=$($aAfter2.source)"
+        $bStatsAfter = Get-FixtureStats
+        Add-Result "ab-reload-b" ($(if ([int64]$bStatsAfter.b -gt [int64]$aStatsAfter.b -and [int64]$bStatsAfter.a -eq [int64]$aStatsAfter.a) { "PASS" } else { "UNVERIFIED" })) "http_b=$($aStatsAfter.b)->$($bStatsAfter.b) http_a=$($aStatsAfter.a)->$($bStatsAfter.a) b_nav=$($bTabBefore.navigation_started)->$($bTabAfter.navigation_started) a_source=$($aAfter2.source)"
 
         Close-Window $b
         Start-Sleep -Seconds 2
