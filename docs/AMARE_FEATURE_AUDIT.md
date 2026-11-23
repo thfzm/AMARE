@@ -36,9 +36,9 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke | **48/48** |
-| Windows 통합 검증 | **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED** |
-| C#↔Rust interop | **70/70** |
+| WinUI UI smoke | **49/49** (Phase 1.1) |
+| Windows 통합 검증 | **143 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (package 단계 skip) |
+| C#↔Rust interop | **76/76** (Phase 1.1) |
 | Linux CI | SUCCESS |
 | WebView2 local navigation | back/forward/reload/stop/new-window/download PASS |
 | WebView2 profile isolation | cookies/localStorage/IndexedDB 격리 PASS |
@@ -82,7 +82,7 @@ WinUI UI smoke 48개 항목:
 | 4 | 북마크 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 5 | 방문 기록 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 6 | 다운로드 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
-| 7 | 세션 복원/충돌 복구 | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 7 | 세션 복원/충돌 복구 | `IMPLEMENTED_AND_VERIFIED` (멀티윈도우 P0 해결) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 8 | 비밀번호 저장/자동완성 | **`NOT_IMPLEMENTED`** | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 9 | Vault 보안 | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 10 | AI Web Panel | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
@@ -230,43 +230,45 @@ WinUI UI smoke 48개 항목:
 
 ---
 
-### 4.7 세션 복원 및 충돌 복구 — **P0**
+### 4.7 세션 복원 및 충돌 복구 — **P0 해결**
 
-**WinUI — `PARTIALLY_IMPLEMENTED`**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (CI/데이터 계층)**
 
-검증된 부분:
+Phase 1.1에서 last-writer-wins P0를 수정했다.
 
-- UI smoke `session_restore` PASS.
-- UI smoke `session_restore_forced` PASS (강제 종료 후 복원).
-- `SessionRestorePlanner`가 순서/active/pinned/빈 URL/상한을 처리하고 interop PASS.
-- 500ms debounce 저장, 종료 시 동기 저장, 재시도 정책이 있다.
+- schema v5: `session_windows` + `session_tabs.window_id`
+- `session.save_window`, `session.latest_windows`, `session.delete_window`
+- 창별 탭/active/ordinal/geometry 저장·복원
+- 기존 `session.save`/`session.latest`는 `main` 창으로 하위 호환
+- 앱 시작 시 전체 창을 ordinal 순서로 복원
+- 마지막 창은 스냅샷 유지, 다른 창이 남아 있으면 5초 grace 후 제거
+- 저장 실패 시 기존 정상 데이터 보존
 
-확인된 구조적 결함:
+검증:
 
-- `SessionClient.SaveAsync`는 **창 ID가 없는 단일 탭 목록**을 저장한다.
-- FFI `session.save`는 `session_id`가 없으면 새 세션을 만들고, 있으면
-  `replace_tabs`로 탭 목록을 교체한다.
-- `session.latest`는 가장 최근 세션 1개만 반환한다.
-- 각 `MainWindow`가 독립적으로 저장하므로, 멀티윈도우에서는 마지막으로 저장한
-  창의 탭 목록이 최신 세션이 된다. → **다른 창의 탭이 복원되지 않을 수 있다.**
-- 이는 사용자 데이터 손실 위험이므로 P0다.
+- Rust `session_windows` **10/10 PASS**
+  - 2창 3/2탭, 저장 순서 반전, 3창 6가지 순서, 한 창 삭제, 반복 저장,
+    비정상 종료 reopen, v4 migration, 동시 writer, 실패 rollback
+- C# interop **76/76 PASS** (신규 6개 포함)
+- WinUI UI smoke **49/49 PASS**
+  - `session_multiwindow_restore: restored_windows=2 tabs=[2,3]`
+  - 기존 `session_restore`, `session_restore_forced` 유지
+- Windows 통합 **143 PASS / 0 FAIL**
+- migration dry-run: 원본 SHA-256 불변, 복사본 `integrity_check=ok`
 
-GPUI는 `SessionWindowSnapshot`(window_id, geometry, active, tabs, revision)로
-창 단위 세션을 이미 설계했다. WinUI는 이 모델을 참고해야 한다.
+남은 제약:
+
+- 실제 Windows 11 실기기 2·3창 GUI/IME/DPI 검증은 **UNVERIFIED**
+- 3창은 Rust 데이터 계층에서 검증, 3창 UI smoke는 없음
+- 단일 창 종료 후 재시작은 Rust reopen 테스트로 검증, UI assertion은 없음
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
 - session suite 2/1/0, corrupt matrix 14/14 PASS.
-- A/B/close/exit는 UNVERIFIED.
+- A/B/close/exit는 UNVERIFIED. 동결 유지.
 
-**Phase 1 조치**
-
-1. `sessions`/`session_tabs`에 창 그룹을 표현할 schema를 **설계**한다.
-2. 기존 단일 세션을 깨지 않는 마이그레이션을 만든다.
-3. 창별 저장/복원과 “마지막 창 종료” 판정을 구현한다.
-4. 2창/3창/비정상 종료/한 창만 닫기 시나리오를 feature test로 고정한다.
-
-스키마 변경은 Phase 0에서 하지 않는다.
+상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`,
+`docs/SESSION_SCHEMA_DESIGN.md`.
 
 ---
 
@@ -504,11 +506,11 @@ GPUI는 `SessionWindowSnapshot`(window_id, geometry, active, tabs, revision)로
 
 ### P0 — 개인용 완료를 막는 항목
 
-| ID | 항목 | 근거 | 조치 |
+| ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
-| P0-1 | 멀티윈도우 세션 last-writer-wins | `SessionClient`에 창 ID 없음, FFI `session.save` 단일 탭 목록, `session.latest` 1개 | 창 단위 세션 모델 + 마이그레이션 + 2·3창 테스트 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | `PasswordVault`는 AI 키에만 사용, 로그인 저장/자동완성 없음 | Rust 암호화 + Windows 보호 저장소로 구현 |
-| P0-3 | 실제 Windows 11 핵심 입력 미검증 | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED | Phase 3 실기기 체크리스트 필수 |
+| P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN** | `PasswordVault`는 AI 키에만 사용, 로그인 저장/자동완성 없음 |
+| P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포
 
@@ -591,9 +593,10 @@ GPUI는 `SessionWindowSnapshot`(window_id, geometry, active, tabs, revision)로
 - WinUI는 이미 **브라우저 핵심 기능의 대부분을 CI 수준에서 검증**했다.
 - 따라서 “WinUI로 다시 만들기”가 아니라 **검증된 것을 유지하고 결손만 메우는**
   전략이 맞다.
-- 개인용 완료를 막는 진짜 결손은 다음 세 가지다.
-  1. 멀티윈도우 세션 데이터 모델
-  2. 비밀번호 관리자/Vault
-  3. 실제 Windows 11 실기기 입력/통합 검증
+- 개인용 완료를 막는 진짜 결손은 다음 두 가지다.
+  1. 비밀번호 관리자/Vault
+  2. 실제 Windows 11 실기기 입력/통합 검증
+- 멀티윈도우 세션 데이터 모델(P0-1)은 Phase 1.1에서 해결·검증했다.
+  상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.

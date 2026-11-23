@@ -27,19 +27,27 @@
 
 | 항목 | 결과 |
 |---|---|
-| Branch / HEAD | `master`, 제품/테스트 `49d4962`, 문서 `4ea8c82` |
+| Branch / HEAD | `feature/phase-1-session-integrity`, 제품/테스트 `bcd476d`; Phase 0 문서 `81dfc82` |
 | Working tree | clean |
 | Stash | `stash@{0}` 보존 |
-| WinUI UI smoke | **48/48** |
-| Windows 통합 | **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED** |
-| Interop | **70/70** |
+| WinUI UI smoke | **49/49** (기존 48 + multiwindow session 1) |
+| Windows 통합 | **143 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (패키지 단계 skip) |
+| Interop | **76/76** (기존 70 + session window 6) |
 | Linux | SUCCESS |
 | GPUI 반복 | **11/13**, **12/10**, **13/10** |
 | GPUI reload | DirectReload **10/10**, Ctrl+R **10/10** (HTTP 포함) |
 | GPUI titlebar | full **3/5**, crash **0/5** |
-| 최신 패키지 | **0.92.0** (0.93은 test/fixture only) |
+| 최신 패키지 | **0.92.0** (0.93/Phase 1.1은 패키지 생성 없음) |
 | 공개 Release | 0개 |
 | MSIX | unsigned, 설치 `0x80073D2C` **BLOCKED/UNVERIFIED** |
+
+### Phase 1.1 진행 상태
+
+- **P0-1 멀티윈도우 세션 last-writer-wins: RESOLVED**
+- schema v5 (`session_windows` + `session_tabs.window_id`)
+- 2창 UI smoke PASS (`restored_windows=2 tabs=[2,3]`)
+- 3창/순서/종료/강제종료/v4 migration Rust 테스트 PASS
+- 상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`, `docs/SESSION_SCHEMA_DESIGN.md`
 
 ---
 
@@ -49,7 +57,7 @@
 
 - **이미 충분히 검증된 것**: 탭, 주소창/검색, navigation, 북마크, 히스토리,
   다운로드, AI 패널, AI API(모의), Reader, Find, 설정, 성능/진단.
-- **부분 구현**: 세션 복원(멀티윈도우), Vault, 창 관리/Windows 통합.
+- **부분 구현**: Vault, 창 관리/Windows 통합. (세션 멀티윈도우 P0는 Phase 1.1에서 해결)
 - **미구현**: WinUI 비밀번호 관리자, WinUI 사이트 권한.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
   업데이트 설치 end-to-end, MSIX 설치.
@@ -90,7 +98,7 @@
 
 ### P0 — 이 단계가 끝나기 전에는 개인용 완료로 판정하지 않는다
 
-1. 멀티윈도우 세션 last-writer-wins/데이터 손실 위험
+1. ~~멀티윈도우 세션 last-writer-wins~~ — **RESOLVED (Phase 1.1)**
 2. WinUI 비밀번호 관리자/Vault 부재
 3. 실제 Windows 11 핵심 입력(IME/DPI/Snap/Alt+Tab) 미검증
 
@@ -200,7 +208,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 
 | 작업 | 내용 | 예상 |
 |---|---|---:|
-| 1-1 멀티윈도우 세션 | 창 ID/그룹 모델, migration, 창별 저장/복원, 마지막 창 판정 | 3–5일 |
+| 1-1 멀티윈도우 세션 | 창 ID/그룹 모델, migration, 창별 저장/복원, 마지막 창 판정 | **DONE** (`bcd476d`) |
 | 1-2 비밀번호/Vault | Rust 암호화 + Windows 보호 저장소, 저장/자동완성/잠금/삭제 | 5–8일 |
 | 1-3 Win11 조기 스모크 | 실행/navigation/IME/DPI/Snap/Alt+Tab 1차 확인 | 1–2일 |
 | 1-4 WinUI A/B fixture | A/B 독립 navigation, HTTP counter, readiness | 1–2일 |
@@ -210,10 +218,10 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 
 **Exit criteria**
 
-- P0-1, P0-2, P0-3 해소
-- 세션 2창/3창/강제 종료/한 창 닫기 테스트 PASS
+- P0-2, P0-3 해소 (P0-1은 완료)
+- 세션 2창/3창/강제 종료/한 창 닫기 테스트 PASS (완료)
 - 비밀번호 저장/자동완성/잠금/삭제/오류 키 거부 PASS
-- WinUI 48/48, 143/0/9/1, interop 70/70 유지
+- WinUI 49/49, 143/0, interop 76/76 유지
 - 실제 Win11 핵심 스모크 PASS
 - 새 기능의 최초 실패/재시도 기록 존재
 
@@ -343,7 +351,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 추가 품질 기준:
 
 - P0 0개, P1 0개(또는 명시적 수용), P2 목록 문서화
-- WinUI 기준선 유지: 48/48, 143/0/9/1, 70/70
+- WinUI 기준선 유지: 49/49, 143/0, 76/76 (package 단계는 skip)
 - GPUI 결과는 참고로만 기록, 합산 없음
 - 모든 FAIL/UNVERIFIED/BLOCKED에 근거와 다음 조치 기록
 
@@ -359,16 +367,13 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 2. **Phase 1 브랜치 생성**
    - `master`에서 작업 브랜치
    - 시작 HEAD/working tree/stash 기록
-3. **실패 테스트 먼저 작성**
-   - 멀티윈도우 세션 2창/3창/한 창 닫기
-   - 비밀번호 저장/자동완성/잠금/오류 키
-4. **세션 schema 설계 리뷰**
-   - 창 그룹 표현, 기존 단일 세션 호환
-   - 복사본 DB에서 migration dry-run
-5. **멀티윈도우 세션 구현**
+3. ~~실패 테스트 먼저 작성 — 세션~~ **DONE**
+   - 2창/3창/한 창 닫기, 저장 순서, 강제 종료, v4 migration
+4. ~~세션 schema 설계 리뷰~~ **DONE**
+   - v5 migration dry-run, 원본 hash 불변
+5. ~~멀티윈도우 세션 구현~~ **DONE** (`bcd476d`)
    - 창별 저장/복원, 마지막 창 판정, 강제 종료
-   - 기존 `session_restore`/`session_restore_forced` 유지
-6. **비밀번호/Vault 구현**
+6. **다음: 비밀번호/Vault 구현**
    - Rust 암호화/키 보호 재사용
    - Windows Credential/DPAPI, 잠금/자동 잠금/삭제
    - origin 일치, 평문 로그 금지
@@ -382,7 +387,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
    - 6개 control, Ctrl+L/T/W/N/R/text
    - 최초 실패 보존
 10. **Phase 1 full regression**
-    - 48/48, 143/0/9/1, 70/70
+    - 49/49, 143/0, 76/76
     - 새 세션/비밀번호 suite
 11. **Phase 1 문서/증거 커밋**
     - 코드와 문서 분리 commit
