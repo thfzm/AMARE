@@ -2,8 +2,8 @@
 //! types instead of these structs.
 
 use amare_core::{
-    Bookmark, BookmarkFolder, HistoryEntry, Profile, ProfileId, Session, SessionTab, SettingEntry,
-    SettingValue,
+    Bookmark, BookmarkFolder, HistoryEntry, Profile, ProfileId, Session, SessionTab, SessionWindow,
+    SettingEntry, SettingValue,
 };
 
 pub(crate) struct ProfileRow {
@@ -181,6 +181,35 @@ impl SessionTabRow {
             pinned: self.pinned,
             group_id: self.group_id,
             last_accessed_at_ms: self.last_accessed_at_ms,
+        }
+    }
+}
+
+pub(crate) struct SessionWindowRow {
+    pub window_id: String,
+    pub ordinal: i64,
+    pub active_tab_id: Option<i64>,
+    pub bounds_x: Option<f64>,
+    pub bounds_y: Option<f64>,
+    pub bounds_width: Option<f64>,
+    pub bounds_height: Option<f64>,
+    pub maximized: bool,
+    pub updated_at_ms: i64,
+}
+
+impl SessionWindowRow {
+    pub fn into_domain(self, tabs: Vec<SessionTab>) -> SessionWindow {
+        SessionWindow {
+            window_id: self.window_id,
+            ordinal: self.ordinal,
+            active_tab_id: self.active_tab_id,
+            bounds_x: self.bounds_x,
+            bounds_y: self.bounds_y,
+            bounds_width: self.bounds_width,
+            bounds_height: self.bounds_height,
+            maximized: self.maximized,
+            updated_at_ms: self.updated_at_ms,
+            tabs,
         }
     }
 }

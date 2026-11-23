@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
+using Windows.Graphics;
 using Windows.System;
 using WinRT.Interop;
 using WinColor = Windows.UI.Color;
@@ -35,7 +36,14 @@ public sealed partial class MainWindow : Window
     private readonly UpdateDownloader _updateDownloader = new();
     private static readonly object WindowRegistryGate = new();
     private static readonly List<WeakReference<MainWindow>> WindowRegistry = [];
-    private readonly Guid _windowId = Guid.NewGuid();
+    private static readonly object SessionRestoreGate = new();
+    private static readonly object ProcessSessionGate = new();
+    private static readonly Dictionary<string, long> ProcessSessionIds = [];
+    private static readonly SemaphoreSlim ProcessSessionSaveGate = new(1, 1);
+    private static bool _startupRestoreClaimed;
+    private static long _nextWindowOrdinal = -1;
+    private Guid _windowId;
+    private long _windowOrdinal;
 
     private AmareNative? _native;
     private ProfileClient? _profiles;
@@ -66,8 +74,12 @@ public sealed partial class MainWindow : Window
     private bool _initializingSettings;
     private bool _started;
     private TabTransferSnapshot? _initialTab;
+    private readonly SessionWindowDto? _initialWindow;
+    private readonly long? _initialSessionId;
+    private readonly bool _newWindowBootstrap;
     private long? _sessionId;
     private string? _lastSessionFingerprint;
+    private bool _restoringWindow;
 
     private sealed class BrowserTab
     {
@@ -92,9 +104,21 @@ public sealed partial class MainWindow : Window
 
     private sealed record AiServiceOption(string Id, string Name, string Url);
     private sealed record UpdatePreferences(bool CheckOnStartup, UpdateChannel Channel, long LastCheckUnixMs);
+    private sealed record SessionWindowBounds(double X, double Y, double Width, double Height, bool Maximized);
 
-    public MainWindow()
+    public MainWindow() : this(null, null, false)
     {
+    }
+
+    private MainWindow(long? sessionId, SessionWindowDto? initialWindow, bool isNewWindow)
+    {
+        _initialSessionId = sessionId;
+        _initialWindow = initialWindow;
+        _newWindowBootstrap = isNewWindow;
+        _windowId = initialWindow is not null && Guid.TryParse(initialWindow.WindowId, out var restoredId)
+            ? restoredId
+            : Guid.NewGuid();
+        _windowOrdinal = initialWindow?.Ordinal ?? TakeNextWindowOrdinal();
         InitializeComponent();
         ApplyWindowIcon();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
@@ -144,6 +168,51 @@ public sealed partial class MainWindow : Window
         {
             WindowRegistry.RemoveAll(reference => !reference.TryGetTarget(out _));
             WindowRegistry.Add(new WeakReference<MainWindow>(window));
+        }
+    }
+
+    private static long TakeNextWindowOrdinal()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _nextWindowOrdinal);
+            var next = current < 0 ? 0 : current + 1;
+            if (Interlocked.CompareExchange(ref _nextWindowOrdinal, next, current) == current)
+            {
+                return next;
+            }
+        }
+    }
+
+    private static void ObserveWindowOrdinal(long ordinal)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _nextWindowOrdinal);
+            if (current >= ordinal)
+            {
+                return;
+            }
+            if (Interlocked.CompareExchange(ref _nextWindowOrdinal, ordinal, current) == current)
+            {
+                return;
+            }
+        }
+    }
+
+    private static long? GetProcessSessionId(string profileId)
+    {
+        lock (ProcessSessionGate)
+        {
+            return ProcessSessionIds.TryGetValue(profileId, out var sessionId) ? sessionId : null;
+        }
+    }
+
+    private static void SetProcessSessionId(string profileId, long sessionId)
+    {
+        lock (ProcessSessionGate)
+        {
+            ProcessSessionIds[profileId] = sessionId;
         }
     }
 
@@ -388,7 +457,8 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var window = new MainWindow();
+            var window = new MainWindow(
+                _sessionId ?? GetProcessSessionId(_profileId), null, isNewWindow: true);
             window.Activate();
         }
         catch (Exception exception)
@@ -487,7 +557,21 @@ public sealed partial class MainWindow : Window
             _initialTab = null;
             await AddTransferredTabAsync(initialTab);
         }
-        else
+        else if (_initialWindow is { } initialWindow)
+        {
+            _sessionId = _initialSessionId;
+            if (_sessionId is { } sessionId)
+            {
+                SetProcessSessionId(_profileId, sessionId);
+            }
+            await RestoreWindowAsync(initialWindow);
+        }
+        else if (_newWindowBootstrap)
+        {
+            _sessionId = _initialSessionId ?? GetProcessSessionId(_profileId);
+            await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
+        }
+        else if (!await TryRestoreStartupWindowsAsync())
         {
             await RestoreSessionOrNewTabAsync();
         }
@@ -762,26 +846,65 @@ public sealed partial class MainWindow : Window
             null, folder, new CoreWebView2EnvironmentOptions());
     }
 
+    private async Task<bool> TryRestoreStartupWindowsAsync()
+    {
+        if (!_restoreSession || _context is null || _sessions is null)
+        {
+            return false;
+        }
+        lock (SessionRestoreGate)
+        {
+            if (_startupRestoreClaimed)
+            {
+                return false;
+            }
+            _startupRestoreClaimed = true;
+        }
+
+        SessionWindowsStateDto? state;
+        try
+        {
+            state = await _sessions.LatestWindowsAsync(_context);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Session windows load failed", exception);
+            StatusText.Text = $"Session restore unavailable: {exception.Message}";
+            return false;
+        }
+        if (state is null || state.Windows.Count == 0)
+        {
+            return false;
+        }
+
+        var windows = SessionWindowRestorePlanner.Order(state.Windows);
+        _sessionId = state.Session.Id;
+        SetProcessSessionId(_profileId, state.Session.Id);
+        ObserveWindowOrdinal(windows.Max(window => window.Ordinal));
+        await RestoreWindowAsync(windows[0]);
+        for (var index = 1; index < windows.Count; index++)
+        {
+            var extra = new MainWindow(state.Session.Id, windows[index], isNewWindow: false);
+            extra.Activate();
+        }
+        return true;
+    }
+
     private async Task RestoreSessionOrNewTabAsync()
     {
         if (_restoreSession && _context is not null && _sessions is not null)
         {
             try
             {
-                var latest = await _sessions.LatestAsync(_context);
-                var plan = SessionRestorePlanner.Create(latest);
-                if (plan is not null)
+                var latest = await _sessions.LatestWindowsAsync(_context);
+                var window = latest?.Windows.FirstOrDefault(candidate =>
+                                 candidate.WindowId.Equals(WindowIdText, StringComparison.OrdinalIgnoreCase))
+                             ?? latest?.Windows.FirstOrDefault();
+                if (window is not null && latest is not null)
                 {
-                    _sessionId = latest!.Session.Id;
-                    _lastSessionFingerprint = null;
-                    var models = new List<BrowserTabModel>(plan.Tabs.Count);
-                    foreach (var tab in plan.Tabs)
-                    {
-                        models.Add(await CreateTabAsync(tab.Url, tab.Title, tab.Pinned, activate: false));
-                    }
-                    var active = models[Math.Clamp(plan.ActiveIndex, 0, models.Count - 1)];
-                    SelectTab(active);
-                    StatusText.Text = "Session restored";
+                    _sessionId = latest.Session.Id;
+                    SetProcessSessionId(_profileId, latest.Session.Id);
+                    await RestoreWindowAsync(window);
                     return;
                 }
             }
@@ -791,6 +914,49 @@ public sealed partial class MainWindow : Window
             }
         }
         await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
+    }
+
+    private async Task RestoreWindowAsync(SessionWindowDto window)
+    {
+        ApplyWindowIdentity(window);
+        var plan = SessionWindowRestorePlanner.Create(window);
+        _restoringWindow = true;
+        try
+        {
+            if (plan is null)
+            {
+                await CreateTabAsync("amare://newtab", "New Tab", false, activate: true);
+            }
+            else
+            {
+                var models = new List<BrowserTabModel>(plan.Tabs.Count);
+                foreach (var tab in plan.Tabs)
+                {
+                    models.Add(await CreateTabAsync(tab.Url, tab.Title, tab.Pinned, activate: false));
+                }
+                var active = models[Math.Clamp(plan.ActiveIndex, 0, models.Count - 1)];
+                SelectTab(active);
+                StatusText.Text = "Session restored";
+            }
+        }
+        finally
+        {
+            _restoringWindow = false;
+        }
+        _lastSessionFingerprint = null;
+        ApplyWindowBounds(window);
+    }
+
+    private string WindowIdText => _windowId.ToString("N");
+
+    private void ApplyWindowIdentity(SessionWindowDto window)
+    {
+        if (Guid.TryParse(window.WindowId, out var restoredId))
+        {
+            _windowId = restoredId;
+        }
+        _windowOrdinal = window.Ordinal;
+        ObserveWindowOrdinal(window.Ordinal);
     }
 
     private async Task ResumeProfileCleanupAsync()
@@ -3057,7 +3223,7 @@ public sealed partial class MainWindow : Window
 
     private void ScheduleSessionSave()
     {
-        if (_saveTimer is null)
+        if (_saveTimer is null || _restoringWindow)
         {
             return;
         }
@@ -3067,7 +3233,7 @@ public sealed partial class MainWindow : Window
 
     private async Task SaveSessionAsync(bool waitForInFlight = false)
     {
-        if (_context is null || _sessions is null || _tabs.Tabs.Count == 0)
+        if (_context is null || _sessions is null || _tabs.Tabs.Count == 0 || _restoringWindow)
         {
             return;
         }
@@ -3085,29 +3251,26 @@ public sealed partial class MainWindow : Window
         try
         {
             var snapshot = _tabs.Snapshot();
-            var fingerprint = SessionFingerprint(_context, snapshot);
+            var bounds = CaptureWindowBounds();
+            var fingerprint = SessionFingerprint(_context, snapshot, bounds);
             if (fingerprint == _lastSessionFingerprint)
             {
                 return;
             }
-            var tabs = snapshot.Tabs.Select(tab => new SessionTabInput
-            {
-                Url = tab.Url,
-                Title = tab.Title,
-                Pinned = tab.Pinned
-            }).ToArray();
+            var input = CreateSessionWindowInput(snapshot, bounds);
             Exception? lastError = null;
             for (var attempt = 1; attempt <= SessionSaveRetryPolicy.DefaultMaxAttempts; attempt++)
             {
                 try
                 {
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    var state = await _sessions.SaveAsync(
+                    var state = await SaveWindowSharedAsync(
+                        _sessions,
                         _context,
+                        _profileId,
                         _sessionId,
-                        tabs,
-                        snapshot.ActiveIndex < 0 ? null : snapshot.ActiveIndex,
-                        cancellationToken: timeout.Token);
+                        input,
+                        timeout.Token);
                     _sessionId = state.Session.Id;
                     _lastSessionFingerprint = fingerprint;
                     return;
@@ -3132,71 +3295,254 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static string SessionFingerprint(ProfileContextDto context, TabSessionSnapshot snapshot) =>
+    private static async Task<SessionWindowsStateDto> SaveWindowSharedAsync(
+        SessionClient client,
+        ProfileContextDto context,
+        string profileId,
+        long? sessionId,
+        SessionWindowInput input,
+        CancellationToken cancellationToken)
+    {
+        await ProcessSessionSaveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // A second window may initialize before the first window has saved.
+            // The process-wide map prevents two sessions from being created for
+            // one window group.
+            sessionId ??= GetProcessSessionId(profileId);
+            var state = await client
+                .SaveWindowAsync(context, sessionId, input, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            SetProcessSessionId(profileId, state.Session.Id);
+            return state;
+        }
+        finally
+        {
+            ProcessSessionSaveGate.Release();
+        }
+    }
+
+    private SessionWindowInput CreateSessionWindowInput(TabSessionSnapshot snapshot, SessionWindowBounds? bounds) =>
+        new()
+        {
+            WindowId = WindowIdText,
+            Ordinal = _windowOrdinal,
+            ActivePosition = snapshot.ActiveIndex < 0 ? null : snapshot.ActiveIndex,
+            Tabs = snapshot.Tabs.Select(tab => new SessionTabInput
+            {
+                Url = tab.Url,
+                Title = tab.Title,
+                Pinned = tab.Pinned
+            }).ToArray(),
+            BoundsX = bounds?.X,
+            BoundsY = bounds?.Y,
+            BoundsWidth = bounds?.Width,
+            BoundsHeight = bounds?.Height,
+            Maximized = bounds?.Maximized ?? false
+        };
+
+    private string SessionFingerprint(
+        ProfileContextDto context,
+        TabSessionSnapshot snapshot,
+        SessionWindowBounds? bounds) =>
         JsonSerializer.Serialize(new
         {
             profile = context.ProfileId,
             generation = context.Generation,
+            window = WindowIdText,
+            ordinal = _windowOrdinal,
             active = snapshot.ActiveIndex,
-            tabs = snapshot.Tabs
+            tabs = snapshot.Tabs,
+            bounds
         });
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        bool hasOtherWindows;
         lock (WindowRegistryGate)
         {
             WindowRegistry.RemoveAll(reference =>
                 !reference.TryGetTarget(out var window) || window == this);
+            hasOtherWindows = WindowRegistry.Any(reference =>
+                reference.TryGetTarget(out var window) && window != this);
         }
         _saveTimer?.Stop();
+        var saved = false;
         try
         {
             // The process may exit immediately after this event returns. Capture
             // UI state on the UI thread, then block on an off-UI native save.
-            SaveSessionForShutdown();
+            saved = SaveSessionForShutdown();
         }
-        catch
+        catch (Exception exception)
         {
-            // Best-effort close; the debounced autosave normally already ran.
+            AppLog.Error("Shutdown session save failed", exception);
+        }
+        var native = _native;
+        var sessions = _sessions;
+        var context = _context;
+        var sessionId = _sessionId;
+        if (hasOtherWindows && saved && native is not null
+            && sessions is not null && context is not null && sessionId is { } closedSessionId)
+        {
+            // Do not delete immediately: a normal app shutdown closes windows
+            // one after another and all of them must survive the restart. If the
+            // app is still running after the grace period, the closed window is
+            // removed so it does not resurrect while another window is in use.
+            ScheduleClosedWindowCleanup(
+                native, sessions, context, closedSessionId, WindowIdText);
+        }
+        else
+        {
+            native?.Dispose();
         }
         CloseAllTabs();
-        _native?.Dispose();
         _native = null;
     }
 
-    private void SaveSessionForShutdown()
+    private static void ScheduleClosedWindowCleanup(
+        AmareNative native,
+        SessionClient sessions,
+        ProfileContextDto context,
+        long sessionId,
+        string windowId)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                if (!HasLiveWindow())
+                {
+                    // The process is shutting down; keep every snapshot so the
+                    // next launch restores the whole window set.
+                    return;
+                }
+                await sessions.DeleteWindowAsync(
+                    context, sessionId, windowId, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                AppLog.Error("Closed window session cleanup failed", exception);
+            }
+            finally
+            {
+                native.Dispose();
+            }
+        });
+    }
+
+    private static bool HasLiveWindow()
+    {
+        lock (WindowRegistryGate)
+        {
+            return WindowRegistry.Any(reference =>
+                reference.TryGetTarget(out var window) && window._started);
+        }
+    }
+
+    private bool SaveSessionForShutdown()
     {
         if (_context is null || _sessions is null || _tabs.Tabs.Count == 0)
         {
-            return;
+            return true;
         }
         var context = _context;
         var sessionId = _sessionId;
+        var profileId = _profileId;
         var snapshot = _tabs.Snapshot();
-        var fingerprint = SessionFingerprint(context, snapshot);
+        var bounds = CaptureWindowBounds();
+        var fingerprint = SessionFingerprint(context, snapshot, bounds);
         if (fingerprint == _lastSessionFingerprint)
         {
-            return;
+            return true;
         }
-        var tabs = snapshot.Tabs.Select(tab => new SessionTabInput
-        {
-            Url = tab.Url,
-            Title = tab.Title,
-            Pinned = tab.Pinned
-        }).ToArray();
-        var active = snapshot.ActiveIndex < 0 ? (int?)null : snapshot.ActiveIndex;
+        var input = CreateSessionWindowInput(snapshot, bounds);
         var client = _sessions;
         // Do not block on the UI-owned save gate here: an in-flight async save
-        // may need the UI context to release it. Native calls are serialized by
-        // AmareNative, and this snapshot is newer than any queued debounce save.
-        var save = Task.Run(async () => await client.SaveAsync(
-            context, sessionId, tabs, active, cancellationToken: CancellationToken.None));
-        if (!save.Wait(TimeSpan.FromSeconds(8)))
+        // may need the UI context to release it. The process-wide gate and
+        // native serialization keep the window update atomic.
+        var save = Task.Run(() => SaveWindowSharedAsync(
+            client, context, profileId, sessionId, input, CancellationToken.None));
+        if (!save.Wait(TimeSpan.FromSeconds(8)) || save.IsFaulted)
         {
-            return;
+            AppLog.Error("Shutdown session save failed",
+                save.Exception ?? new TimeoutException("session save timed out"));
+            return false;
         }
         _sessionId = save.Result.Session.Id;
         _lastSessionFingerprint = fingerprint;
+        return true;
+    }
+
+    private SessionWindowBounds? CaptureWindowBounds()
+    {
+        try
+        {
+            var position = AppWindow.Position;
+            var size = AppWindow.Size;
+            if (size.Width <= 0 || size.Height <= 0)
+            {
+                return null;
+            }
+            var maximized = AppWindow.Presenter is OverlappedPresenter
+            {
+                State: OverlappedPresenterState.Maximized
+            };
+            return new SessionWindowBounds(
+                position.X, position.Y, size.Width, size.Height, maximized);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"Window bounds capture failed: {exception.Message}");
+            return null;
+        }
+    }
+
+    private void ApplyWindowBounds(SessionWindowDto window)
+    {
+        if (window.BoundsWidth is not { } width
+            || window.BoundsHeight is not { } height
+            || window.BoundsX is not { } x
+            || window.BoundsY is not { } y
+            || !double.IsFinite(width)
+            || !double.IsFinite(height)
+            || !double.IsFinite(x)
+            || !double.IsFinite(y)
+            || width < 200
+            || height < 200)
+        {
+            return;
+        }
+        try
+        {
+            const int virtualScreenX = 76;
+            const int virtualScreenY = 77;
+            const int virtualScreenWidth = 78;
+            const int virtualScreenHeight = 79;
+            var left = GetSystemMetrics(virtualScreenX);
+            var top = GetSystemMetrics(virtualScreenY);
+            var virtualWidth = GetSystemMetrics(virtualScreenWidth);
+            var virtualHeight = GetSystemMetrics(virtualScreenHeight);
+            if (virtualWidth <= 0 || virtualHeight <= 0)
+            {
+                return;
+            }
+            var targetWidth = Math.Min((int)Math.Round(width), virtualWidth);
+            var targetHeight = Math.Min((int)Math.Round(height), virtualHeight);
+            var targetX = Math.Clamp((int)Math.Round(x), left, left + virtualWidth - targetWidth);
+            var targetY = Math.Clamp((int)Math.Round(y), top, top + virtualHeight - targetHeight);
+            AppWindow.MoveAndResize(new RectInt32(targetX, targetY, targetWidth, targetHeight));
+            if (window.Maximized && AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.Maximize();
+            }
+        }
+        catch (Exception exception)
+        {
+            // Geometry is optional; tab restoration must stand on its own.
+            AppLog.Warn($"Window bounds restore failed: {exception.Message}");
+        }
     }
 
     private async Task ShowErrorAsync(string title, string message)

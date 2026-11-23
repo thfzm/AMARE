@@ -7,7 +7,8 @@
 
 use crate::{AMARE_ERR_INTERNAL, set_last_error};
 use amare_core::{
-    NewBookmark, NewHistoryVisit, NewSessionTab, ProfileId, SearchKind, SettingValue,
+    NewBookmark, NewHistoryVisit, NewSessionTab, NewSessionWindow, ProfileId, SearchKind,
+    SettingValue,
 };
 use amare_services::{
     ProfileContext, ProfileService, SearchPage, SearchRequest, SearchSort, ServiceError,
@@ -463,6 +464,56 @@ fn dispatch(services: &AmareServices, request: &Value) -> Result<Value, CallFail
             };
             Ok(json!(state))
         }
+        "session.save_window" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            let window_id = required_str(&params, "window_id")?;
+            let ordinal = optional_i64(&params, "ordinal", 0)?;
+            let tabs = parse_session_tabs(&params)?;
+            let active_position = params
+                .get("active_position")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
+            let window = NewSessionWindow {
+                window_id,
+                ordinal,
+                active_position,
+                bounds_x: optional_f64(&params, "bounds_x")?,
+                bounds_y: optional_f64(&params, "bounds_y")?,
+                bounds_width: optional_f64(&params, "bounds_width")?,
+                bounds_height: optional_f64(&params, "bounds_height")?,
+                maximized: optional_bool(&params, "maximized", false)?,
+                tabs,
+            };
+            let state = profile.sessions().save_window(
+                params.get("session_id").and_then(Value::as_i64),
+                params
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("AMARE session"),
+                &window,
+            )?;
+            Ok(json!(state))
+        }
+        "session.latest_windows" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            Ok(match profile.sessions().latest_windows()? {
+                Some(state) => json!(state),
+                None => Value::Null,
+            })
+        }
+        "session.delete_window" => {
+            let context = required_context(&params)?;
+            let profile = profiles.profile_store(&context)?;
+            let session_id = params
+                .get("session_id")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| CallFailure::invalid("missing session_id"))?;
+            let window_id = required_str(&params, "window_id")?;
+            let deleted = profile.sessions().delete_window(session_id, &window_id)?;
+            Ok(json!({ "deleted": deleted }))
+        }
         "session.latest" => {
             let context = required_context(&params)?;
             let profile = profiles.profile_store(&context)?;
@@ -629,6 +680,43 @@ fn optional_u64(value: &Value, name: &str, default: u64) -> Result<u64, CallFail
             .as_u64()
             .ok_or_else(|| CallFailure::invalid(format!("{name} must be a u64"))),
     }
+}
+
+fn optional_i64(value: &Value, name: &str, default: i64) -> Result<i64, CallFailure> {
+    match value.get(name) {
+        None => Ok(default),
+        Some(value) => value
+            .as_i64()
+            .ok_or_else(|| CallFailure::invalid(format!("{name} must be an i64"))),
+    }
+}
+
+fn optional_f64(value: &Value, name: &str) -> Result<Option<f64>, CallFailure> {
+    match value.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| CallFailure::invalid(format!("{name} must be a number or null"))),
+    }
+}
+
+fn parse_session_tabs(params: &Value) -> Result<Vec<NewSessionTab>, CallFailure> {
+    let tabs = params
+        .get("tabs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CallFailure::invalid("tabs must be an array"))?;
+    tabs.iter()
+        .map(|tab| {
+            Ok(NewSessionTab {
+                url: required_str(tab, "url")?,
+                title: optional_str(tab, "title")?.unwrap_or_default(),
+                pinned: optional_bool(tab, "pinned", false)?,
+                group_id: optional_str(tab, "group_id")?,
+                position: None,
+            })
+        })
+        .collect()
 }
 
 fn parse_group(value: &str) -> Result<SettingGroup, CallFailure> {

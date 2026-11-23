@@ -173,6 +173,39 @@ public sealed class SessionStateDto
     public List<SessionTabDto> Tabs { get; init; } = [];
 }
 
+public sealed class SessionWindowDto
+{
+    public string WindowId { get; init; } = "";
+    public long Ordinal { get; init; }
+    public long? ActiveTabId { get; init; }
+    public double? BoundsX { get; init; }
+    public double? BoundsY { get; init; }
+    public double? BoundsWidth { get; init; }
+    public double? BoundsHeight { get; init; }
+    public bool Maximized { get; init; }
+    public long UpdatedAtMs { get; init; }
+    public List<SessionTabDto> Tabs { get; init; } = [];
+}
+
+public sealed class SessionWindowsStateDto
+{
+    public SessionDto Session { get; init; } = new();
+    public List<SessionWindowDto> Windows { get; init; } = [];
+}
+
+public sealed class SessionWindowInput
+{
+    public string WindowId { get; init; } = "";
+    public long Ordinal { get; init; }
+    public IReadOnlyList<SessionTabInput> Tabs { get; init; } = [];
+    public int? ActivePosition { get; init; }
+    public double? BoundsX { get; init; }
+    public double? BoundsY { get; init; }
+    public double? BoundsWidth { get; init; }
+    public double? BoundsHeight { get; init; }
+    public bool Maximized { get; init; }
+}
+
 public sealed class HistoryEntryDto
 {
     public long Id { get; init; }

@@ -44,6 +44,55 @@ public sealed class SessionClient
         return result.ValueKind == JsonValueKind.Null ? null : Deserialize<SessionStateDto>(result);
     }
 
+    public async Task<SessionWindowsStateDto> SaveWindowAsync(
+        ProfileContextDto context,
+        long? sessionId,
+        SessionWindowInput window,
+        string name = "AMARE session",
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        var result = await _bridge.CallAsync("session.save_window", new
+        {
+            context,
+            session_id = sessionId,
+            name,
+            window_id = window.WindowId,
+            ordinal = window.Ordinal,
+            tabs = window.Tabs,
+            active_position = window.ActivePosition,
+            bounds_x = window.BoundsX,
+            bounds_y = window.BoundsY,
+            bounds_width = window.BoundsWidth,
+            bounds_height = window.BoundsHeight,
+            maximized = window.Maximized
+        }, cancellationToken);
+        return Deserialize<SessionWindowsStateDto>(result);
+    }
+
+    public async Task<SessionWindowsStateDto?> LatestWindowsAsync(
+        ProfileContextDto context,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _bridge.CallAsync("session.latest_windows", new { context }, cancellationToken);
+        return result.ValueKind == JsonValueKind.Null ? null : Deserialize<SessionWindowsStateDto>(result);
+    }
+
+    public async Task<bool> DeleteWindowAsync(
+        ProfileContextDto context,
+        long sessionId,
+        string windowId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _bridge.CallAsync("session.delete_window", new
+        {
+            context,
+            session_id = sessionId,
+            window_id = windowId
+        }, cancellationToken);
+        return result.TryGetProperty("deleted", out var deleted) && deleted.GetBoolean();
+    }
+
     public async Task<bool> DeleteAsync(ProfileContextDto context, long sessionId, CancellationToken cancellationToken = default)
     {
         var result = await _bridge.CallAsync("session.delete", new { context, session_id = sessionId }, cancellationToken);

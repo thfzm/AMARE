@@ -2,8 +2,13 @@ param(
     [switch]$SkipManual,
     [switch]$SkipMemory,
     [switch]$SkipWinUI,
+    [switch]$SkipPackage,
     [switch]$CI
 )
+
+if ($env:AMARE_VERIFY_SKIP_PACKAGE -eq "1") {
+    $SkipPackage = $true
+}
 
 if ($CI) {
     $SkipManual = $true
@@ -145,6 +150,14 @@ function Add-SkippedStep($Name, $Status, $Detail) {
         detail = $Detail
         error = if ($Status -eq "FAIL") { $Detail } else { $null }
     })
+}
+
+function Invoke-PackageStep($Name, [scriptblock]$Command) {
+    if ($SkipPackage) {
+        Add-SkippedStep $Name "SKIPPED" "AMARE_VERIFY_SKIP_PACKAGE=1; package generation intentionally not run."
+        return
+    }
+    Invoke-Step $Name $Command
 }
 
 # ---------- Preflight ----------
@@ -332,7 +345,7 @@ if ($SkipWinUI) {
             throw "HandleForensics self-test did not produce a snapshot."
         }
     }
-    Invoke-Step "winui_package" {
+    Invoke-PackageStep "winui_package" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
@@ -368,7 +381,7 @@ if ($SkipWinUI) {
         Write-Host "SHA-256: $zipHash"
         Write-Host "Executable: $($exe.FullName)"
     }
-    Invoke-Step "portable_update_helper_smoke" {
+    Invoke-PackageStep "portable_update_helper_smoke" {
         $zip = Join-Path $OutputDir "$PortableName.zip"
         $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
         if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
@@ -415,7 +428,7 @@ if ($SkipWinUI) {
             if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
-    Invoke-Step "portable_clean_launch" {
+    Invoke-PackageStep "portable_clean_launch" {
         $zip = Join-Path $OutputDir "$PortableName.zip"
         if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
         $root = Join-Path $env:TEMP "AMARE 0.19 clean 테스트-$([guid]::NewGuid().ToString('N'))"
@@ -440,7 +453,7 @@ if ($SkipWinUI) {
             $global:LASTEXITCODE = 0
         }
     }
-    Invoke-Step "winui_msix" {
+    Invoke-PackageStep "winui_msix" {
         $makeAppx = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin") -Recurse -Filter MakeAppx.exe -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\x64\\' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -457,29 +470,33 @@ if ($SkipWinUI) {
         Write-Host "Unsigned MSIX: $msix"
     }
     $msix = Join-Path $OutputDir "$PortableName-unsigned.msix"
-    try {
-        Add-AppxPackage -Path $msix -AllowUnsigned -ErrorAction Stop
-        $package = Get-AppxPackage -Name "Amare.Browser" -ErrorAction Stop
-        if (-not $package) { throw "MSIX package was not registered." }
-        $Steps.Add([pscustomobject]@{
-            name = "winui_msix_install"
-            status = "PASS"
-            exit_code = 0
-            required = $false
-            started_at = (Get-Date).ToUniversalTime().ToString("o")
-            finished_at = (Get-Date).ToUniversalTime().ToString("o")
-            duration_ms = 0
-            log = $null
-            detail = "Unsigned MSIX installed; package=$($package.PackageFullName)."
-        })
-        Write-Host "Installed package: $($package.PackageFullName)"
-    } catch {
-        Add-SkippedStep "winui_msix_install" "UNVERIFIED" "Unsigned MSIX install was not available: $($_.Exception.Message)"
+    if ($SkipPackage) {
+        Add-SkippedStep "winui_msix_install" "SKIPPED" "AMARE_VERIFY_SKIP_PACKAGE=1; MSIX was not generated or installed."
+    } else {
+        try {
+            Add-AppxPackage -Path $msix -AllowUnsigned -ErrorAction Stop
+            $package = Get-AppxPackage -Name "Amare.Browser" -ErrorAction Stop
+            if (-not $package) { throw "MSIX package was not registered." }
+            $Steps.Add([pscustomobject]@{
+                name = "winui_msix_install"
+                status = "PASS"
+                exit_code = 0
+                required = $false
+                started_at = (Get-Date).ToUniversalTime().ToString("o")
+                finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                duration_ms = 0
+                log = $null
+                detail = "Unsigned MSIX installed; package=$($package.PackageFullName)."
+            })
+            Write-Host "Installed package: $($package.PackageFullName)"
+        } catch {
+            Add-SkippedStep "winui_msix_install" "UNVERIFIED" "Unsigned MSIX install was not available: $($_.Exception.Message)"
+        }
     }
 }
 
 # ---------- Release metadata ----------
-Invoke-Step "release_metadata" {
+Invoke-PackageStep "release_metadata" {
     $zip = Join-Path $OutputDir "$PortableName.zip"
     $msix = Join-Path $OutputDir "$PortableName-unsigned.msix"
     if (-not (Test-Path $zip)) { throw "Portable ZIP is missing." }
@@ -507,7 +524,7 @@ Invoke-Step "release_metadata" {
     Write-Utf8Json (Join-Path $OutputDir "AMARE-$Version-release-manifest.json") $releaseManifest
     Write-Host "Release metadata: AMARE-$Version-release-manifest.json"
 }
-Invoke-Step "release_preflight" {
+Invoke-PackageStep "release_preflight" {
     $releaseManifest = Get-Content (Join-Path $OutputDir "AMARE-$Version-release-manifest.json") -Raw | ConvertFrom-Json
     if ($releaseManifest.version -ne $Version) { throw "Release manifest version mismatch." }
     if ($releaseManifest.architecture -ne "win-x64") { throw "Release manifest architecture mismatch." }
@@ -533,7 +550,14 @@ Invoke-Step "webview2_probe_run" {
     dotnet run -c Release --project tools/windows-verify/WindowsVerify.csproj
 } -Required $false
 
-    $appExe = Join-Path (Join-Path $OutputDir $PortableName) "AMARE.Windows.exe"
+    if ($SkipPackage) {
+        $builtExe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $builtExe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
+        $appExe = $builtExe.FullName
+    } else {
+        $appExe = Join-Path (Join-Path $OutputDir $PortableName) "AMARE.Windows.exe"
+    }
     $appProcess = $null
     $appStarted = (Get-Date).ToUniversalTime().ToString("o")
     try {

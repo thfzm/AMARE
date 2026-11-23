@@ -59,7 +59,7 @@ pub(crate) fn run_migrations(
 }
 
 pub(crate) const ROOT_SCHEMA_VERSION: u32 = 2;
-pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 4;
+pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 5;
 
 pub(crate) const ROOT_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -508,6 +508,50 @@ pub(crate) const PROFILE_MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_downloads_created ON downloads(created_at_ms DESC, id DESC);
         "#,
     },
+    Migration {
+        version: 5,
+        sql: r#"
+            ALTER TABLE session_tabs
+                ADD COLUMN window_id TEXT NOT NULL DEFAULT 'main';
+
+            CREATE TABLE session_windows (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                window_id       TEXT NOT NULL,
+                ordinal         INTEGER NOT NULL DEFAULT 0,
+                active_tab_id   INTEGER NULL,
+                bounds_x        REAL NULL,
+                bounds_y        REAL NULL,
+                bounds_width    REAL NULL,
+                bounds_height   REAL NULL,
+                maximized       INTEGER NOT NULL DEFAULT 0 CHECK (maximized IN (0, 1)),
+                updated_at_ms   INTEGER NOT NULL,
+                UNIQUE(session_id, window_id)
+            );
+
+            CREATE INDEX idx_session_windows_session
+                ON session_windows(session_id, ordinal, id);
+            CREATE INDEX idx_session_tabs_window
+                ON session_tabs(session_id, window_id, position, id);
+
+            INSERT INTO session_windows
+                (session_id, window_id, ordinal, active_tab_id,
+                 bounds_x, bounds_y, bounds_width, bounds_height,
+                 maximized, updated_at_ms)
+            SELECT
+                s.id,
+                'main',
+                0,
+                s.active_tab_id,
+                NULL, NULL, NULL, NULL,
+                0,
+                s.updated_at_ms
+            FROM sessions s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM session_windows w WHERE w.session_id = s.id
+            );
+        "#,
+    },
 ];
 
 #[cfg(test)]
@@ -518,22 +562,22 @@ mod tests {
     fn applies_and_reapplies_migrations_idempotently() {
         let conn = Connection::open_in_memory().unwrap();
         let version = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
         let again = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(again, 4);
+        assert_eq!(again, 5);
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 5);
     }
 
     #[test]
     fn upgrades_a_v1_database_to_v3() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..1]).unwrap(), 1);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 4);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 5);
         for table in ["sessions", "library_items", "conversations", "workspaces"] {
             let count: u32 = conn
                 .query_row(
@@ -550,7 +594,7 @@ mod tests {
     fn upgrades_a_v2_database_to_v3() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..2]).unwrap(), 2);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 4);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 5);
         let fts: u32 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='library_fts'",

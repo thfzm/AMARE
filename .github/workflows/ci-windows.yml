@@ -5,6 +5,11 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      skip_package:
+        description: "Run verification without generating ZIP/MSIX packages"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,6 +97,7 @@ jobs:
         shell: pwsh
         env:
           AMARE_VERIFY_OUTPUT: ${{ github.workspace }}\artifacts\windows
+          AMARE_VERIFY_SKIP_PACKAGE: ${{ github.event.inputs.skip_package == 'true' && '1' || '0' }}
         run: |
           .\tools\verify-windows.ps1 -CI
 

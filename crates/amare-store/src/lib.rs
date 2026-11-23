@@ -222,6 +222,7 @@ impl ProfileStore {
              DELETE FROM library_items;
              DELETE FROM tags;
              DELETE FROM collections;
+             DELETE FROM session_windows;
              DELETE FROM session_tabs;
              DELETE FROM sessions;
              DELETE FROM history_visits;

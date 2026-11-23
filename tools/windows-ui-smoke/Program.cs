@@ -395,6 +395,7 @@ internal static class Program
             Check("multi_tab_stress", CreateTabsAndCheck);
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
+            Check("session_multiwindow_restore", SessionMultiwindowRestore);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -1777,6 +1778,107 @@ internal static class Program
         Launch(_exePath!);
         WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15), "forced restore tabs");
         return $"tabs_before={tabsBefore} tabs_after={CountTabs()}";
+    }
+
+    private static string SessionMultiwindowRestore()
+    {
+        if (_process is null || _window is null)
+        {
+            throw new InvalidOperationException("process missing");
+        }
+        var mainHandle = _process.MainWindowHandle;
+        var main = _window;
+        var existing = WindowsForProcess(_process.Id);
+        if (existing.Length > 1)
+        {
+            foreach (var extra in existing)
+            {
+                if (extra.Current.NativeWindowHandle != mainHandle.ToInt64())
+                {
+                    CloseWindow(extra);
+                }
+            }
+            WaitFor(() => WindowsForProcess(_process.Id).Length == 1,
+                TimeSpan.FromSeconds(10), "normalize to one window");
+            // Allow the closed-window grace cleanup to remove stale snapshots.
+            Thread.Sleep(6500);
+        }
+        mainHandle = _process.MainWindowHandle;
+        main = _window;
+        EnsureTabCount(main, 2);
+        SetForegroundWindow(mainHandle);
+        var before = WindowsForProcess(_process.Id).Length;
+        SendKeys.SendWait("^n");
+        WaitFor(() => WindowsForProcess(_process.Id).Length > before,
+            TimeSpan.FromSeconds(10), "second session window");
+        var second = WindowsForProcess(_process.Id)
+            .FirstOrDefault(window => window.Current.NativeWindowHandle != mainHandle.ToInt64())
+            ?? throw new InvalidOperationException("second window not found");
+        EnsureTabCount(second, 3);
+        Thread.Sleep(2000);
+
+        CloseWindow(second);
+        CloseWindow(main);
+        if (!_process.WaitForExit(15000))
+        {
+            _process.Kill(entireProcessTree: true);
+            WaitFor(() => _process.HasExited, TimeSpan.FromSeconds(10), "multi-window process exit");
+        }
+        _process = null;
+        _window = null;
+
+        Launch(_exePath!);
+        WaitFor(() => WindowsForProcess(_process!.Id).Length >= 2,
+            TimeSpan.FromSeconds(20), "two restored windows");
+        var restored = WindowsForProcess(_process.Id)
+            .OrderBy(window => window.Current.NativeWindowHandle)
+            .ToArray();
+        var counts = restored.Select(CountTabs).OrderBy(count => count).ToArray();
+        Require(counts.SequenceEqual([2, 3]),
+            $"expected independent 2/3 tabs, got [{string.Join(",", counts)}]");
+
+        // Leave the suite in a single-window state for the remaining tests.
+        foreach (var window in restored.Skip(1))
+        {
+            CloseWindow(window);
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length == 1,
+            TimeSpan.FromSeconds(10), "single window after cleanup");
+        Thread.Sleep(6500);
+        var remaining = WindowsForProcess(_process.Id).Single();
+        SetForegroundWindow((IntPtr)remaining.Current.NativeWindowHandle);
+        _window = remaining;
+        _process.Refresh();
+        return $"restored_windows={restored.Length} tabs=[{string.Join(",", counts)}]";
+    }
+
+    private static void EnsureTabCount(AutomationElement window, int target)
+    {
+        SetForegroundWindow((IntPtr)window.Current.NativeWindowHandle);
+        Thread.Sleep(250);
+        var count = CountTabs(window);
+        while (count > target)
+        {
+            SendKeys.SendWait("^w");
+            Thread.Sleep(300);
+            count = CountTabs(window);
+        }
+        while (count < target)
+        {
+            SendKeys.SendWait("^t");
+            Thread.Sleep(400);
+            count = CountTabs(window);
+        }
+        WaitFor(() => CountTabs(window) == target, TimeSpan.FromSeconds(10),
+            $"window tab count {target}");
+    }
+
+    private static void CloseWindow(AutomationElement window)
+    {
+        if (window.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+        {
+            ((WindowPattern)pattern).Close();
+        }
     }
 
     private static void TryClose(bool graceful = false)

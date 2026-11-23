@@ -117,6 +117,42 @@ pub struct SessionState {
     pub tabs: Vec<SessionTab>,
 }
 
+/// One restorable browser window inside a session group.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionWindow {
+    pub window_id: String,
+    pub ordinal: i64,
+    pub active_tab_id: Option<i64>,
+    pub bounds_x: Option<f64>,
+    pub bounds_y: Option<f64>,
+    pub bounds_width: Option<f64>,
+    pub bounds_height: Option<f64>,
+    pub maximized: bool,
+    pub updated_at_ms: TimestampMs,
+    pub tabs: Vec<SessionTab>,
+}
+
+/// A session group with one or more independently restorable windows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionWindowsState {
+    pub session: Session,
+    pub windows: Vec<SessionWindow>,
+}
+
+/// Input for atomically replacing one window's tabs and metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewSessionWindow {
+    pub window_id: String,
+    pub ordinal: i64,
+    pub active_position: Option<usize>,
+    pub bounds_x: Option<f64>,
+    pub bounds_y: Option<f64>,
+    pub bounds_width: Option<f64>,
+    pub bounds_height: Option<f64>,
+    pub maximized: bool,
+    pub tabs: Vec<NewSessionTab>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewBookmark {
     pub title: String,
