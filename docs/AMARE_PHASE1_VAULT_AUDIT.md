@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-vault-design`
 - 시작 HEAD: `63aa2b1`
 - 제품/테스트 HEAD: `bcd476d` (변경 없음)
-- 문서 HEAD: 이 문서 commit 후 갱신
+- 문서 HEAD: `462c8d1` (`Add Phase 1.2 vault security audit and design`)
 - 작성일: 2026-11-23
 - 범위: 조사·위협 모델·설계·테스트 계획. **제품 코드/DB/암호화 구현 변경 없음.**
 
@@ -297,7 +297,7 @@ lock/conflict, crash dump, redaction, ABI mismatch.
 | MSIX/서명/Release | 없음 |
 | 제품 코드/DB/암호화 구현 변경 | **없음** |
 
-문서 commit hash는 최종 commit 후 이 표에 기록한다.
+문서 commit hash: `462c8d1` (`Add Phase 1.2 vault security audit and design`).
 
 ---
 
