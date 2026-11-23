@@ -1,0 +1,435 @@
+# AMARE Finalization Plan — Phase 0
+
+- 문서 상태: **Phase 0 계획 / 승인 대기**
+- 작성일: 2026-11-23
+- 기준: `master`, 제품/테스트 `49d4962`, 문서 `4ea8c82`
+- 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
+- GPUI: **동결·보존**, 기본 패키지 전환 없음
+- 이번 Phase 0: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
+
+---
+
+## 1. 최종 결정
+
+1. AMARE의 최종 목표는 **Windows 11 개인용 메인 브라우저** 완성이다.
+2. Windows UI는 **WinUI 3**, 렌더링은 **WebView2 Evergreen**, 주 언어는 **C#**을
+   최종 방향으로 채택한다.
+3. Rust는 SQLite 저장소, 서비스 계층, 암호화, 업데이트 검증처럼 **공통 이득이
+   객관적인 모듈**에만 유지한다.
+4. GPUI는 신규 기능/테스트 확장을 중단하고 **소스·문서·패키지·증거를 보존**한다.
+5. 기존 WinUI 주요 기능은 제거/비활성화하지 않고 **결손만 보완**한다.
+6. 감사 결과 승인 전에는 제품 아키텍처와 기본 패키지를 변경하지 않는다.
+7. WinUI와 GPUI 테스트 결과는 **절대 합산하지 않는다.**
+
+---
+
+## 2. 현재 기준선
+
+| 항목 | 결과 |
+|---|---|
+| Branch / HEAD | `master`, 제품/테스트 `49d4962`, 문서 `4ea8c82` |
+| Working tree | clean |
+| Stash | `stash@{0}` 보존 |
+| WinUI UI smoke | **48/48** |
+| Windows 통합 | **143 PASS / 0 FAIL / 9 UNVERIFIED / 1 SKIPPED** |
+| Interop | **70/70** |
+| Linux | SUCCESS |
+| GPUI 반복 | **11/13**, **12/10**, **13/10** |
+| GPUI reload | DirectReload **10/10**, Ctrl+R **10/10** (HTTP 포함) |
+| GPUI titlebar | full **3/5**, crash **0/5** |
+| 최신 패키지 | **0.92.0** (0.93은 test/fixture only) |
+| 공개 Release | 0개 |
+| MSIX | unsigned, 설치 `0x80073D2C` **BLOCKED/UNVERIFIED** |
+
+---
+
+## 3. 감사 결과 요약
+
+상세 상태는 `docs/AMARE_FEATURE_AUDIT.md`에 기록했다.
+
+- **이미 충분히 검증된 것**: 탭, 주소창/검색, navigation, 북마크, 히스토리,
+  다운로드, AI 패널, AI API(모의), Reader, Find, 설정, 성능/진단.
+- **부분 구현**: 세션 복원(멀티윈도우), Vault, 창 관리/Windows 통합.
+- **미구현**: WinUI 비밀번호 관리자, WinUI 사이트 권한.
+- **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
+  업데이트 설치 end-to-end, MSIX 설치.
+
+핵심 원칙: 검증된 기능을 다시 개발하지 않는다. P0 결손과 실기기 게이트에
+자원을 집중한다.
+
+---
+
+## 4. 재사용 자산
+
+### 그대로 사용
+
+- C# Core: `TabManager`, `SessionRestorePlanner`, `AddressBarResolver`,
+  `SearchEngineCatalog`, `DownloadPolicy`, `ReaderPageBuilder`, `AiApiClient`,
+  `PortableUpdateEngine`, `ProfileDataCleanup`, `KeyboardShortcutRouter`
+- Rust: `amare-store`, `amare-services`, `amare-security`, `amare-update`,
+  `amare-ffi`, `amare-platform`
+- 테스트: UI smoke 48, Windows probes, interop 70, `fixture_server.py`,
+  `gpui-reload-probe.ps1`의 HTTP 계측 아이디어
+
+### 참고 후 재설계
+
+- GPUI `SessionWindowSnapshot` → WinUI 창 단위 세션
+- GPUI `password_vault.rs` → WinUI Vault/비밀번호 저장
+- GPUI 다운로드 관리/설정 카테고리/한국어 문자열
+
+### 이관하지 않음
+
+- GPUI custom rendering/input 계층
+- GPUI 전용 자동화/status probe
+- GPUI library/workspaces/tasks (현재 요구 범위 밖)
+- GPUI 기본 패키지 전환
+
+---
+
+## 5. P0 / P1 / P2 게이트
+
+### P0 — 이 단계가 끝나기 전에는 개인용 완료로 판정하지 않는다
+
+1. 멀티윈도우 세션 last-writer-wins/데이터 손실 위험
+2. WinUI 비밀번호 관리자/Vault 부재
+3. 실제 Windows 11 핵심 입력(IME/DPI/Snap/Alt+Tab) 미검증
+
+### P1 — 개인용 핵심 기능/배포
+
+- 사이트 권한
+- AI 패널 실제 서비스/세션 격리
+- 업데이트 설치 end-to-end
+- WinUI/GPUI 데이터 루트 불일치
+- WinUI 멀티윈도우 독립 navigation
+- First-click 6/6 최신 재실행
+- Backup/Restore UI
+- 기본 브라우저 등록
+- 한국어 UI/IME
+
+### P2 — 품질/자동화
+
+- 다운로드 이력 SQLite/취소 UI
+- 설정 범위/로컬라이제이션
+- UIA/titlebar 자동화 안정성
+- MSIX 서명
+- Reader 복잡 사이트 품질
+- 30탭 메모리/장시간 누수
+- GPUI 동결 유지보수
+
+**게이트 규칙**
+
+- P0가 하나라도 열려 있으면 Phase 4 패키지 생성 금지.
+- P1이 열려 있으면 “개인용 완료”가 아니라 “개발 빌드”다.
+- P2는 완료를 막지 않지만, 최종 패키지 전에 목록과 수용 여부를 기록한다.
+- FAIL을 UNVERIFIED로 바꾸거나 assertion을 약화해 통과시키지 않는다.
+
+---
+
+## 6. 테스트 체계 개편
+
+### A. Unit tests
+
+목적: 빠른 반복, 변경 모듈 중심.
+
+- Rust: `cargo test` (core/store/services/security/update/platform/ffi)
+- C#: `AMARE.Windows.Core` 정책/모델 테스트
+- 대상: 주소 해석, 검색 인코딩, 세션 planner, download policy, 암호화,
+  checksum, migration, rollback, shortcut routing
+- 목표: 10분 이내, 모든 변경에서 실행
+- 원칙: mock으로 계약을 검증하되, 제품 동작 증거로 과대평가하지 않는다.
+
+### B. Feature integration tests
+
+목적: 기능 완료 시 독립 검증.
+
+- WinUI UI smoke: 기능별 1개 이상 시나리오
+- WebView2 probe: 실제 navigation/profile/download/permission
+- Interop: C#↔Rust 계약
+- Fixture: HTTP request counter/readiness (`tools/fixture_server.py`)
+- 대상: 탭, 주소창, navigation, 세션, 비밀번호, 권한, AI, Reader, Find,
+  업데이트, 다운로드
+- 목표: 기능 PR마다 해당 suite 실행, 30~60분
+- 원칙: 최초 실패와 재시도 결과를 모두 보존한다.
+
+### C. Full regression
+
+목적: 마일스톤/패키지 전/실기기 검증.
+
+- `tools/verify-windows.ps1 -CI`
+- UI smoke 48 + Windows 143 + interop 70
+- 전체 feature integration
+- GPUI는 **동결 참고 실행**만 하고 WinUI 집계에 넣지 않는다.
+- 실제 Windows 11 수동 체크리스트 (`docs/WINDOWS_11_MANUAL_CHECKLIST.md`)
+- 목표: 패키지 전 1회, 릴리스 후보에서 2회 연속, 실기기 1회
+- 원칙: CI PASS와 실기기 PASS를 별도 표로 기록한다.
+
+### 결과 기록 형식
+
+```text
+run_id:
+head:
+environment:
+suite:
+first_failure:
+retry_result:
+product_code_reached:
+native_message_received:
+webview_event_received:
+fixture_ready:
+classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | UNRESOLVED
+```
+
+### CI 배치 제안
+
+| 시점 | 실행 |
+|---|---|
+| PR | Unit + 변경 기능 integration |
+| master merge | Unit + WinUI feature suite |
+| 주 1회 | Full regression (CI) |
+| 패키지 전 | Full regression + real Win11 checklist |
+| GPUI | 동결 상태 빌드/기존 suite 보존, 결과는 참고 |
+
+---
+
+## 7. WinUI 완성 로드맵
+
+### Phase 1 — 브라우저 핵심 안정화
+
+**목표:** 개인용으로 매일 켜도 데이터가 사라지지 않고, 핵심 입력이 실기기에서
+동작하는 상태.
+
+| 작업 | 내용 | 예상 |
+|---|---|---:|
+| 1-1 멀티윈도우 세션 | 창 ID/그룹 모델, migration, 창별 저장/복원, 마지막 창 판정 | 3–5일 |
+| 1-2 비밀번호/Vault | Rust 암호화 + Windows 보호 저장소, 저장/자동완성/잠금/삭제 | 5–8일 |
+| 1-3 Win11 조기 스모크 | 실행/navigation/IME/DPI/Snap/Alt+Tab 1차 확인 | 1–2일 |
+| 1-4 WinUI A/B fixture | A/B 독립 navigation, HTTP counter, readiness | 1–2일 |
+| 1-5 lifecycle/장시간 | 탭 30/50, 창 3, 반복 open/close, 핸들/메모리 | 1–2일 |
+| 1-6 다운로드 정리 | SQLite 이력, 취소/재시도/열기, 경로 설정 | 1–2일 |
+| 1-7 first-click 회귀 | New Tab/Settings/Password/Downloads/Bookmarks/Address | 0.5–1일 |
+
+**Exit criteria**
+
+- P0-1, P0-2, P0-3 해소
+- 세션 2창/3창/강제 종료/한 창 닫기 테스트 PASS
+- 비밀번호 저장/자동완성/잠금/삭제/오류 키 거부 PASS
+- WinUI 48/48, 143/0/9/1, interop 70/70 유지
+- 실제 Win11 핵심 스모크 PASS
+- 새 기능의 최초 실패/재시도 기록 존재
+
+**예상:** 12–22 person-days
+
+---
+
+### Phase 2 — 주요 기능 완성
+
+**목표:** 개인용 완료 기준의 기능 결손을 없앤다.
+
+| 작업 | 내용 | 예상 |
+|---|---|---:|
+| 2-1 사이트 권한 | `PermissionRequested`, origin별 저장, 허용/차단/초기화 | 3–4일 |
+| 2-2 AI 패널/API | 실제 서비스 로그인/격리, 실제 API 1회, 키 삭제 | 2–4일 |
+| 2-3 설정/한국어 | 다운로드/홈/개인정보/권한/언어, 리소스 문자열 | 2–4일 |
+| 2-4 업데이터 E2E | Portable ZIP 적용/롤백/health marker/데이터 보존 | 3–5일 |
+| 2-5 Reader/Find 보완 | 실제 사이트 표본, IME 중 Find | 1–2일 |
+| 2-6 Backup/Restore | 사용자 백업/복구 UI, 검증/체크섬 | 2–3일 |
+
+**Exit criteria**
+
+- P1 기능 결손 해소
+- 사이트 권한/백업/업데이트가 실제 시나리오에서 PASS
+- AI 실제 호출/취소/오류/키 삭제 PASS
+- 기능별 integration suite 존재
+
+**예상:** 13–22 person-days
+
+---
+
+### Phase 3 — Windows 11 실사용 안정화
+
+**목표:** CI가 아닌 실제 Windows 11 개인 PC에서 매일 사용 가능한 상태.
+
+| 작업 | 내용 | 예상 |
+|---|---|---:|
+| 3-1 DPI/멀티모니터 | 100/125/150/200%, 창 이동, 재배치 | 2–3일 |
+| 3-2 한국어 IME | 주소창/페이지/Find/비밀번호 입력, 조합/Enter | 2–3일 |
+| 3-3 Snap/Alt+Tab/작업표시줄 | Snap Layouts, 그룹화, 포커스 | 1–2일 |
+| 3-4 장시간/자원 | 8시간 soak, 30/50탭, 창 반복, 핸들/메모리 | 2–3일 |
+| 3-5 기본 브라우저 | 등록/해제, 시작 인자, 복원 | 1–2일 |
+
+**Exit criteria**
+
+- `WINDOWS_11_MANUAL_CHECKLIST.md`의 P0/P1 항목 PASS
+- 치명적 크래시 0
+- IME/DPI/Snap/Alt+Tab 실제 확인
+- 장시간 실행 후 데이터 손실/누수 없음
+
+**예상:** 5–8 person-days + 실기기 접근 시간
+
+---
+
+### Phase 4 — 개인용 최종 패키지
+
+| 작업 | 내용 | 예상 |
+|---|---|---:|
+| 4-1 Portable ZIP | x64/ARM64, self-contained, 실행 확인 | 1일 |
+| 4-2 데이터 무결성 | 업그레이드/다운그레이드/rollback/backup | 2–3일 |
+| 4-3 패키지 검증 | SHA-256, unsigned 표시, 설치 한계 문서화 | 1일 |
+| 4-4 최종 회귀 | 2회 연속 full regression + 실기기 | 2–3일 |
+
+**Exit criteria**
+
+- ZIP 실행/데이터 보존/업데이트/롤백 PASS
+- SHA-256 기록, unsigned/MSIX BLOCKED 명시
+- 공개 Release 없이 개인 배포 가능
+- P0/P1 미해결 항목 없음
+
+**예상:** 4–6 person-days
+
+---
+
+## 8. 예상 기간과 불확실성
+
+| 구분 | 예상 |
+|---|---|
+| Phase 1 | 12–22 person-days |
+| Phase 2 | 13–22 person-days |
+| Phase 3 | 5–8 person-days + 실기기 |
+| Phase 4 | 4–6 person-days |
+| 합계 | **34–58 person-days** |
+| full-time 1인 | **7–12주** |
+| part-time | **3–5개월** |
+
+불확실성:
+
+| 요인 | 영향 | 완화 |
+|---|---|---|
+| Windows 11 실기기 접근 | 높음 | Phase 1에서 조기 스모크 |
+| WebView2/AI 외부 서비스 | 중~높음 | 실제 서비스 표본 고정, 실패 로그 |
+| 세션 schema migration | 중간 | 복사본에서 dry-run, rollback 테스트 |
+| Windows Hello/DPAPI | 중간 | Credential Manager 우선, 단계적 |
+| MSIX 서명/설치 | 높음(외부) | Portable ZIP 1차, MSIX는 BLOCKED 유지 |
+| GPUI 동결 영향 | 낮음 | 공통 crate 변경 시 양쪽 빌드 확인 |
+| 자동화 flakiness | 중간 | first failure 보존, 환경 실패 분리 |
+
+이 기간은 **기능을 새로 만드는 기간이 아니라 검증된 기능을 유지하면서 P0/P1을
+메우는 기간**이다. 요구가 늘어나면 별도 승인과 재산정이 필요하다.
+
+---
+
+## 9. 개인용 최종 완료 조건
+
+아래 조건을 모두 만족해야 “개인용 AMARE 완성”으로 판정한다.
+하나라도 미충족이면 완료가 아니다. 기능을 제거/비활성화해 통과시키지 않는다.
+
+| # | 조건 | 검증 방법 |
+|---:|---|---|
+| 1 | Windows 11에서 정상 실행, 치명적 크래시 없음 | 실기기 + soak |
+| 2 | 주요 웹사이트 브라우징 | 실제 사이트 표본 |
+| 3 | 탭/멀티윈도우 정상 | UI smoke + 실기기 |
+| 4 | 주소창/한국어 IME 정상 | 실기기 입력 |
+| 5 | 북마크/방문 기록 유지 | 재시작 후 확인 |
+| 6 | 다운로드 정상 | 실제 파일 다운로드 |
+| 7 | 세션 복원/충돌 복구 | 2·3창 + 강제 종료 |
+| 8 | 비밀번호 저장/자동완성 보안 | unit + 실기기 |
+| 9 | AI Web Panel 정상 | 실제 서비스 |
+| 10 | Reader/Find 정상 | UI smoke + 실기기 |
+| 11 | 사이트 권한 설정 가능 | feature test |
+| 12 | 설정/데이터 보존 | 업데이트 전후 비교 |
+| 13 | 업데이트/실패 복구 | ZIP apply/rollback |
+| 14 | 장시간 사용 중 치명적 크래시 없음 | 8시간 soak |
+| 15 | 최종 ZIP 실행/데이터 무결성 | 패키지 검증 |
+
+추가 품질 기준:
+
+- P0 0개, P1 0개(또는 명시적 수용), P2 목록 문서화
+- WinUI 기준선 유지: 48/48, 143/0/9/1, 70/70
+- GPUI 결과는 참고로만 기록, 합산 없음
+- 모든 FAIL/UNVERIFIED/BLOCKED에 근거와 다음 조치 기록
+
+---
+
+## 10. 다음 개발 작업의 구체적인 순서
+
+승인 직후 **Phase 1**에서 다음 순서로 진행한다.
+
+1. **동결 선언 확인**
+   - GPUI 신규 기능/테스트 확장 중단
+   - 소스/패키지/증거/stash 보존 확인
+2. **Phase 1 브랜치 생성**
+   - `master`에서 작업 브랜치
+   - 시작 HEAD/working tree/stash 기록
+3. **실패 테스트 먼저 작성**
+   - 멀티윈도우 세션 2창/3창/한 창 닫기
+   - 비밀번호 저장/자동완성/잠금/오류 키
+4. **세션 schema 설계 리뷰**
+   - 창 그룹 표현, 기존 단일 세션 호환
+   - 복사본 DB에서 migration dry-run
+5. **멀티윈도우 세션 구현**
+   - 창별 저장/복원, 마지막 창 판정, 강제 종료
+   - 기존 `session_restore`/`session_restore_forced` 유지
+6. **비밀번호/Vault 구현**
+   - Rust 암호화/키 보호 재사용
+   - Windows Credential/DPAPI, 잠금/자동 잠금/삭제
+   - origin 일치, 평문 로그 금지
+7. **WinUI A/B fixture 테스트**
+   - HTTP counter/readiness
+   - A/B 독립 navigation, 다른 창 불변 확인
+8. **Windows 11 조기 스모크**
+   - 실행/IME/DPI/Snap/Alt+Tab
+   - 실패는 즉시 P0/P1로 등록
+9. **first-click/keyboard 회귀 재실행**
+   - 6개 control, Ctrl+L/T/W/N/R/text
+   - 최초 실패 보존
+10. **Phase 1 full regression**
+    - 48/48, 143/0/9/1, 70/70
+    - 새 세션/비밀번호 suite
+11. **Phase 1 문서/증거 커밋**
+    - 코드와 문서 분리 commit
+    - 패키지는 만들지 않음
+12. **승인 후 Phase 2 진입**
+    - 사이트 권한 → AI → 설정 → 업데이터 → 백업
+
+각 단계는 “제품 결함”과 “테스트 자동화 결함”을 분리해 기록한다.
+
+---
+
+## 11. 변경 통제
+
+### 이번 Phase 0에서 금지된 것 (완료)
+
+- 제품 코드 수정 없음
+- 프레임워크 마이그레이션 없음
+- GPUI 삭제 없음
+- 사용자 데이터 삭제 없음
+- DB 스키마 변경 없음
+- 패키지 재생성 없음
+- 공개 GitHub Release 없음
+- 인증서 생성/서명 없음
+- force push/history rewrite 없음
+
+### Phase 1 이후 규칙
+
+- P0/P1 이슈는 이슈 번호와 재현 절차를 먼저 기록
+- 스키마 변경은 migration + backup/restore + dry-run 필수
+- 보안 저장은 평문 로그/스크린샷/status JSON 금지
+- 테스트 약화/삭제 금지
+- GPUI 결과를 WinUI 통과 근거로 사용 금지
+- 패키지는 full regression 후에만 생성
+- 공개 Release는 별도 승인
+
+---
+
+## 12. 승인 체크리스트
+
+- [ ] WinUI 3 + WebView2 + C# 최종 방향 승인
+- [ ] GPUI 동결·보존 승인
+- [ ] 멀티윈도우 세션 P0 수정 승인
+- [ ] 비밀번호/Vault P0 구현 승인
+- [ ] 실제 Windows 11 실기기 검증을 Phase 3 필수 게이트로 승인
+- [ ] Portable ZIP 1차 배포, MSIX는 BLOCKED 유지 승인
+- [ ] GPUI 데이터 자동 이전 금지, 필요 시 명시적 import 승인
+- [ ] Phase 1 예산/기간(12–22 person-days) 승인
+
+승인 전까지 **제품 아키텍처와 기본 패키지를 변경하지 않는다.**
+WinUI를 기본 패키지로 유지한다.
