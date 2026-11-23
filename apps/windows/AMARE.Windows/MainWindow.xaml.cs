@@ -3467,7 +3467,7 @@ public sealed partial class MainWindow : Window
         if (!save.Wait(TimeSpan.FromSeconds(8)) || save.IsFaulted)
         {
             AppLog.Error("Shutdown session save failed",
-                save.Exception ?? new TimeoutException("session save timed out"));
+                (Exception?)save.Exception ?? new TimeoutException("session save timed out"));
             return false;
         }
         _sessionId = save.Result.Session.Id;
