@@ -256,6 +256,9 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);
 
@@ -1817,7 +1820,7 @@ internal static class Program
         EnsureTabCount(second, 3);
         Thread.Sleep(2000);
 
-        CloseWindow(second);
+        CloseWindowHandle((IntPtr)second.Current.NativeWindowHandle);
         WaitFor(() => WindowsForProcess(_process.Id).Length == 1,
             TimeSpan.FromSeconds(10), "second window closed");
         // Close the last window through the same path used by the existing
@@ -1840,14 +1843,12 @@ internal static class Program
         // Leave the suite in a single-window state for the remaining tests.
         foreach (var window in restored.Skip(1))
         {
-            CloseWindow(window);
+            CloseWindowHandle((IntPtr)window.Current.NativeWindowHandle);
         }
         WaitFor(() => WindowsForProcess(_process.Id).Length == 1,
             TimeSpan.FromSeconds(10), "single window after cleanup");
         Thread.Sleep(6500);
-        var remaining = WindowsForProcess(_process.Id).Single();
-        SetForegroundWindow((IntPtr)remaining.Current.NativeWindowHandle);
-        _window = remaining;
+        _window = WindowsForProcess(_process.Id).Single();
         _process.Refresh();
         return $"restored_windows={restored.Length} tabs=[{string.Join(",", counts)}]";
     }
@@ -1878,6 +1879,15 @@ internal static class Program
         if (window.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
         {
             ((WindowPattern)pattern).Close();
+        }
+    }
+
+    private static void CloseWindowHandle(IntPtr handle)
+    {
+        const uint wmClose = 0x0010;
+        if (handle != IntPtr.Zero)
+        {
+            PostMessage(handle, wmClose, IntPtr.Zero, IntPtr.Zero);
         }
     }
 
