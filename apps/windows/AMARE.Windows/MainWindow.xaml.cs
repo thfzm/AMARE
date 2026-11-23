@@ -878,6 +878,8 @@ public sealed partial class MainWindow : Window
         }
 
         var windows = SessionWindowRestorePlanner.Order(state.Windows);
+        AppLog.Info($"Session windows restored count={windows.Count} session={state.Session.Id} " +
+                    $"windows=[{string.Join(",", windows.Select(window => $"{window.WindowId}:{window.Tabs.Count}"))}]");
         _sessionId = state.Session.Id;
         SetProcessSessionId(_profileId, state.Session.Id);
         ObserveWindowOrdinal(windows.Max(window => window.Ordinal));
@@ -3314,6 +3316,8 @@ public sealed partial class MainWindow : Window
                 .SaveWindowAsync(context, sessionId, input, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             SetProcessSessionId(profileId, state.Session.Id);
+            AppLog.Info($"Session window saved window={input.WindowId} ordinal={input.Ordinal} " +
+                        $"tabs={input.Tabs.Count} session={state.Session.Id} windows={state.Windows.Count}");
             return state;
         }
         finally

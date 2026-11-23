@@ -1818,12 +1818,12 @@ internal static class Program
         Thread.Sleep(2000);
 
         CloseWindow(second);
-        CloseWindow(main);
-        if (!_process.WaitForExit(15000))
-        {
-            _process.Kill(entireProcessTree: true);
-            WaitFor(() => _process.HasExited, TimeSpan.FromSeconds(10), "multi-window process exit");
-        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length == 1,
+            TimeSpan.FromSeconds(10), "second window closed");
+        // Close the last window through the same path used by the existing
+        // session tests so the process exits before the 5s closed-window grace.
+        TryClose(graceful: true);
+        WaitFor(() => _process.HasExited, TimeSpan.FromSeconds(15), "multi-window process exit");
         _process = null;
         _window = null;
 
