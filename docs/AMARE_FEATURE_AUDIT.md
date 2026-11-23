@@ -84,7 +84,7 @@ WinUI UI smoke 48개 항목:
 | 6 | 다운로드 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 7 | 세션 복원/충돌 복구 | `IMPLEMENTED_AND_VERIFIED` (멀티윈도우 P0 해결) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 8 | 비밀번호 저장/자동완성 | **`NOT_IMPLEMENTED`** | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
-| 9 | Vault 보안 | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 9 | Vault 보안 | `PARTIALLY_IMPLEMENTED` (백엔드만) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 10 | AI Web Panel | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
@@ -278,42 +278,61 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 - WinUI에서 `PasswordVault`는 `AiCredentialStore`의 **AI API 키 1개**에만 쓰인다.
 - 브라우저 로그인 폼 저장/자동완성/목록/삭제 UI가 없다.
-- `PasswordBox`는 AI 키 입력 다이얼로그에만 등장한다.
+- WebView2 설정을 명시하지 않아 `IsGeneralAutofillEnabled` 기본값 **true**가
+  적용될 수 있고, 기존에 저장된 password 데이터는 autofill될 수 있다.
+- `WebMessageReceived`는 새 탭 검색에서 nonce만 확인하며 `args.Source` origin
+  검증을 하지 않는다. Vault 메시지에는 source 검증이 필수다.
+
+**Phase 1.2 감사 결과 (WinUI 구현 전)**
+
+- 권장: Rust `amare_security` XChaCha20-Poly1305 + `KeyFile` +
+  `WindowsDpapiKeyProtector` 재사용.
+- DB schema 변경 없이 기존 `secrets` 테이블 1행에 Vault blob 저장 가능.
+- key file은 DB 밖 `<root>\vault\<profile>.key`, DPAPI user scope.
+- 자동완성은 exact origin + HTTPS + top-level + explicit Fill + no auto-submit.
+- 상세: `docs/VAULT_SECURITY_DESIGN.md`, `docs/VAULT_THREAT_MODEL.md`,
+  `docs/VAULT_TEST_PLAN.md`, `docs/AMARE_PHASE1_VAULT_AUDIT.md`.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
-- `password_vault.rs`: XChaCha20-Poly1305, DPAPI 보호 키 파일, origin 정규화,
-  tombstone, 다중 창 전역 lock, backup, merge.
-- 0.93 password suite 2/1/0로 FAIL이 있어 “검증됨”이 아니다.
+- `password_vault.rs`: XChaCha20-Poly1305, DPAPI 보호 키 파일, exact origin,
+  revision/tombstone/merge, 전역 lock, atomic save.
+- 0.93 password **2 PASS / 1 FAIL** (초기 normal page timeout), vault multiwindow
+  **1 PASS / 1 FAIL** (unlock timeout). 0.81~0.83에서도 password 2/1, vault 1/1.
+- 알려진 결함: format version 미검증, idle auto-lock 없음, 전역 Vault(프로필
+  격리 없음), backup key 제외, fill의 form action/visibility 검증 부족.
+- GPUI 코드를 그대로 복사하지 않고 Rust 보안 로직만 참고한다.
 
 **판정**
 
 - 개인용 완료 기준의 “비밀번호 저장과 자동완성의 보안 검증”을 충족하지 못한다.
-- GPUI 코드를 그대로 복사하지 않고, **Rust 암호화/키 보호 로직을 WinUI Core에서
-  재사용**하는 설계가 필요하다.
+- Phase 1.2에서 설계는 완료했지만 **제품 구현/검증은 아직 시작하지 않았다.**
 
 ---
 
 ### 4.9 Vault 보안 — **P0**
 
-**WinUI — `PARTIALLY_IMPLEMENTED`**
+**WinUI — `PARTIALLY_IMPLEMENTED` (백엔드만) / 제품 Vault `NOT_IMPLEMENTED`**
 
 - Rust `amare-security`의 키 유도/암호화/서명과 `secrets` 테이블은 존재하고
   storage 테스트에서 PASS했다.
-- 그러나 WinUI에 사용자 Vault UI/잠금/복구가 없다.
+- `KeyFile` + `WindowsDpapiKeyProtector`의 DPAPI user-scope 테스트가 Windows
+  CI에서 PASS했다 (`platform_key_tests`).
+- 그러나 WinUI에는 Vault UI/잠금/복구/자동완성이 없다.
+- **FFI에 `secrets.*`/`vault.*` method가 없어** C#에서 Rust Vault를 호출할 수 없다.
 - AI 키는 Windows Credential Manager에 저장된다.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
 - Password vault가 사실상 Vault 역할을 한다.
-- Windows Hello/DPAPI 통합은 GPUI 쪽에 있고, WinUI에는 없다.
+- Windows Hello는 없고 DPAPI만 사용한다.
+- Windows 계정/프로필 손실 복구 정책이 없다.
 
 **판정**
 
 - “Vault 백엔드”와 “사용자 Vault 기능”을 분리해야 한다.
 - 백엔드는 재사용 가능, 제품 기능은 미완성이다.
-
----
+- Phase 1.2는 **감사/설계 PASS**, 구현은 별도 승인 후 진행한다.
 
 ### 4.10 AI Web Panel
 
@@ -509,7 +528,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN** | `PasswordVault`는 AI 키에만 사용, 로그인 저장/자동완성 없음 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — 감사/설계 완료 (Phase 1.2)** | `PasswordVault`는 AI 키에만 사용; Rust VaultService/FFI/UI 구현 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포
@@ -526,6 +545,9 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | P1-8 | Backup/Restore UI 없음 | Rust backup 테스트만 PASS | 사용자 백업/복구 UI 검토 |
 | P1-9 | 기본 브라우저 등록 없음 | 코드 없음 | Phase 3 |
 | P1-10 | 한국어 UI/IME | UI 영어 중심, IME UNVERIFIED | Phase 2/3 |
+| P1-11 | WebView2 내장 autofill 데이터 | `IsGeneralAutofillEnabled` 기본 true, 기존 password autofill 가능 | 명시적 비활성 + 동의 후 clear |
+| P1-12 | Vault 백업/복구 키 정책 부재 | DB backup에 ciphertext만 포함, key file 제외 | Master Password export 또는 key 포함 백업 |
+| P1-13 | Windows 계정/DPAPI 손실 복구 | DPAPI-only는 복구 불가 | 복구 정책/UX 승인 |
 
 ### P2 — 품질/자동화
 
@@ -538,6 +560,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | P2-5 | Reader 복잡 사이트 품질 | 단순 페이지 위주 | 실제 사이트 표본 |
 | P2-6 | 30탭 2GB 수준 | memory probe | 장시간/누수 측정 |
 | P2-7 | GPUI 패키지/테스트 유지보수 | 동결 | 동결 정책 준수 |
+| P2-8 | GPUI Vault format version 무검증 | `normalise()`가 format 2로 강제 | WinUI에서 정확한 version 거부 |
 
 ---
 
