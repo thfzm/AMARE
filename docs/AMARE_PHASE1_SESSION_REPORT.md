@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-session-integrity`
 - 시작 HEAD: `81dfc82` (`master`, Phase 0 문서)
 - 최종 제품/테스트 HEAD: `bcd476d`
-- 최종 문서 HEAD: 이 문서 commit 후 갱신
+- 최종 문서 HEAD: `f6b1f14` (`Document Phase 1.1 multi-window session integrity`)
 - 작성일: 2026-11-23
 - 범위: 세션 저장/복원 데이터 무결성만. 비밀번호/Vault, 사이트 권한, AI, 패키지 작업 없음.
 
@@ -278,6 +278,7 @@ session_tabs.window_id=main
 | `57a3fc2` | native handle close |
 | `7cc3bbd` | dry-run hash 기록 |
 | `bcd476d` | UI smoke를 2창 복원 증거로 유지 |
+| `f6b1f14` | Phase 1.1 문서/보고서 |
 
 문서 commit은 이 보고서와 함께 별도로 추가한다.
 
