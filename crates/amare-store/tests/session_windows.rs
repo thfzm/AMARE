@@ -394,6 +394,10 @@ fn migration_dry_run_preserves_original_and_copy_integrity() {
     let before_hash = amare_security::sha256_hex(&before);
     let copy_before = std::fs::read(&copy).unwrap();
     assert_eq!(before, copy_before, "copy must start identical");
+    eprintln!(
+        "dry_run original_sha256={before_hash} bytes={}",
+        before.len()
+    );
 
     {
         let profile = ProfileStore::open_at(&copy, ProfileId::new("p1")).unwrap();
@@ -414,6 +418,10 @@ fn migration_dry_run_preserves_original_and_copy_integrity() {
     let after = std::fs::read(&original).unwrap();
     assert_eq!(before, after, "original fixture bytes must not change");
     assert_eq!(before_hash, amare_security::sha256_hex(&after));
+    eprintln!(
+        "dry_run original_unchanged=true copy_sha256={}",
+        amare_security::sha256_hex(&std::fs::read(&copy).unwrap())
+    );
 
     let conn = Connection::open(&copy).unwrap();
     let integrity: String = conn

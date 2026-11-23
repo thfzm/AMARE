@@ -1850,7 +1850,20 @@ internal static class Program
         Thread.Sleep(6500);
         _window = WindowsForProcess(_process.Id).Single();
         _process.Refresh();
-        return $"restored_windows={restored.Length} tabs=[{string.Join(",", counts)}]";
+
+        // The explicitly closed window must not resurrect after a restart.
+        TryClose(graceful: true);
+        WaitFor(() => _process.HasExited, TimeSpan.FromSeconds(15), "single-window session exit");
+        _process = null;
+        _window = null;
+        Launch(_exePath!);
+        WaitFor(() => WindowsForProcess(_process!.Id).Length == 1,
+            TimeSpan.FromSeconds(15), "single session window after close policy");
+        _window = WindowsForProcess(_process.Id).Single();
+        var singleTabs = CountTabs(_window);
+        Require(singleTabs == 2, $"closed window resurrected or tabs changed: {singleTabs}");
+        return $"restored_windows={restored.Length} tabs=[{string.Join(",", counts)}] " +
+               $"after_close=1/{singleTabs}";
     }
 
     private static void EnsureTabCount(AutomationElement window, int target)
