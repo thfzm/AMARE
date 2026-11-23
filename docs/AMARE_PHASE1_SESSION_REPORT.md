@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-session-integrity`
 - 시작 HEAD: `81dfc82` (`master`, Phase 0 문서)
 - 최종 제품/테스트 HEAD: `bcd476d`
-- 최종 문서 HEAD: `f6b1f14` (`Document Phase 1.1 multi-window session integrity`)
+- 최종 문서 HEAD: 이 보고서를 포함한 문서 commit (아래 Git log 참조)
 - 작성일: 2026-11-23
 - 범위: 세션 저장/복원 데이터 무결성만. 비밀번호/Vault, 사이트 권한, AI, 패키지 작업 없음.
 
@@ -222,8 +222,8 @@ session_tabs.window_id=main
 - [x] 한 창 종료 시 다른 창 세션 보존 — Rust reopen test, UI cleanup
 - [x] 강제 종료 복구 정책 검증 — Rust reopen after drop, UI forced-kill 단일 창
 - [x] 기존 단일 창 DB 호환성 — v4 migration test
-- [x] migration dry-run 성공 — 원본 hash 불변, 복사본 integrity ok
-- [x] 원본 DB 무결성 보존 — bytes/SHA 동일
+- [x] migration dry-run 성공 — synthetic v4 fixture 원본 hash 불변, 복사본 integrity ok
+- [x] 원본 DB 무결성 보존 — fixture bytes/SHA 동일 (실제 사용자 DB는 접근/변경하지 않음)
 - [x] 기존 검증 기능 회귀 없음 — 143/0, UI 49/49, interop 76/76
 - [x] 새로운 테스트 결과/증거 보존 — CI artifact + 본 문서
 
