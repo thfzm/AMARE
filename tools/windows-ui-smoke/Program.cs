@@ -1225,9 +1225,26 @@ internal static class Program
         catch (TimeoutException)
         {
             var status = FindById("StatusText");
-            Console.WriteLine($"DIAG {description}: status={(status is null ? "<missing>" : $"{status.Current.Name} offscreen={status.Current.IsOffscreen}")} mainTitle={_process?.MainWindowTitle}");
-            Console.WriteLine($"DIAG {description}: windows={WindowsForProcess(_process!.Id).Length}");
+            Console.WriteLine($"DIAG {description}: status={(status is null ? "<missing>" : $"{status.Current.Name} offscreen={status.Current.IsOffscreen}")} mainTitle={_process?.MainWindowTitle} pid={_process?.Id} exited={_process?.HasExited}");
+            var windows = WindowsForProcess(_process!.Id);
+            Console.WriteLine($"DIAG {description}: windows={windows.Length} cachedHwnd={_window?.Current.NativeWindowHandle} mainHwnd={_process!.MainWindowHandle.ToInt64()}");
+            foreach (var window in windows)
+            {
+                var freshStatus = FindByIdIn(window, "StatusText");
+                Console.WriteLine($"DIAG {description}: window hwnd={window.Current.NativeWindowHandle} title={window.Current.Name} status={(freshStatus is null ? "<missing>" : freshStatus.Current.Name)} count={window.FindAll(TreeScope.Descendants, Condition.TrueCondition).Count}");
+            }
+            CaptureWindow("vault-profile-switch-failure");
             DumpTree();
+            var handle = _process!.MainWindowHandle;
+            if (handle != IntPtr.Zero)
+            {
+                var fresh = AutomationElement.FromHandle(handle);
+                Console.WriteLine($"DIAG {description}: fresh main window title={fresh.Current.Name} status={(FindByIdIn(fresh, "StatusText")?.Current.Name ?? "<missing>")}");
+                var stale = _window;
+                _window = fresh;
+                DumpTree();
+                _window = stale;
+            }
             throw;
         }
     }
