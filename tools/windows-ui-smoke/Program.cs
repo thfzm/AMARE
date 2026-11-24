@@ -386,6 +386,8 @@ internal static class Program
             Check("history_dialog", OpenAndCloseHistory);
             Check("bookmarks_menu", OpenAndCloseBookmarks);
             Check("downloads_menu", OpenAndCloseDownloads);
+            Check("vault_ui_initialize_lock_unlock", VaultInitializeLockUnlock);
+            Check("vault_ui_crud_reveal_backup", VaultCrudRevealBackup);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("new_window_button", OpenAndCloseNewWindowButton);
@@ -1079,6 +1081,146 @@ internal static class Program
         EscapeDialog("API AI", "Ask API AI");
         return "API AI no-key guard opened";
     }
+
+    private static string VaultInitializeLockUnlock()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        Invoke(FindById("VaultLockButton") ?? throw new InvalidOperationException("VaultLockButton missing"));
+        WaitVaultStatus("Locked");
+        Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
+        WaitVaultStatus("Unlocked");
+        return "vault initialize/lock/unlock";
+    }
+
+    private static string VaultCrudRevealBackup()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        var before = CountVaultEntries();
+        Invoke(FindById("VaultAddButton") ?? throw new InvalidOperationException("VaultAddButton missing"));
+        SetValue(FindById("VaultSiteBox") ?? throw new InvalidOperationException("VaultSiteBox missing"), "Vault smoke");
+        SetValue(FindById("VaultOriginBox") ?? throw new InvalidOperationException("VaultOriginBox missing"), "https://vault-smoke.example");
+        SetValue(FindById("VaultUsernameBox") ?? throw new InvalidOperationException("VaultUsernameBox missing"), "smoke-user");
+        SetVaultPassword("VaultSmoke-Password-1");
+        Invoke(FindById("VaultSaveButton") ?? throw new InvalidOperationException("VaultSaveButton missing"));
+        WaitFor(() => CountVaultEntries() == before + 1, TimeSpan.FromSeconds(10), "vault account added");
+
+        var list = FindById("VaultEntryList") ?? throw new InvalidOperationException("VaultEntryList missing");
+        var items = list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+        Require(items.Count > 0, "vault entry missing");
+        ((SelectionItemPattern)items[^1].GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        Thread.Sleep(400);
+        Invoke(FindById("VaultRevealButton") ?? throw new InvalidOperationException("VaultRevealButton missing"));
+        WaitText("VaultRevealStateText", "Password visible");
+        Invoke(FindById("VaultRevealButton") ?? throw new InvalidOperationException("VaultRevealButton missing"));
+        WaitText("VaultRevealStateText", "Password hidden");
+
+        var backupPath = Path.Combine(Path.GetTempPath(), $"amare-vault-smoke-{Environment.ProcessId}.amarevault");
+        OpenVaultBackupMenu("Export encrypted backup…");
+        SetVaultPasswordField("VaultBackupPassword", "Vault-Backup-Password");
+        SetVaultPasswordField("VaultBackupPasswordConfirm", "Vault-Backup-Password");
+        SetValue(FindById("VaultBackupPath") ?? throw new InvalidOperationException("VaultBackupPath missing"), backupPath);
+        InvokeDialogButton("Export encrypted backup", "Export");
+        WaitFor(() => File.Exists(backupPath), TimeSpan.FromSeconds(10), "vault backup file");
+        Require(new FileInfo(backupPath).Length > 0, "vault backup empty");
+
+        Invoke(FindById("VaultDeleteButton") ?? throw new InvalidOperationException("VaultDeleteButton missing"));
+        WaitFor(() => FindByName("Delete account?") is not null, TimeSpan.FromSeconds(5), "delete dialog");
+        InvokeDialogButton("Delete account?", "Delete");
+        WaitFor(() => CountVaultEntries() == before, TimeSpan.FromSeconds(10), "vault account deleted");
+
+        OpenVaultBackupMenu("Import backup…");
+        SetVaultPasswordField("VaultBackupPassword", "Vault-Backup-Password");
+        SetValue(FindById("VaultBackupPath") ?? throw new InvalidOperationException("VaultBackupPath missing"), backupPath);
+        InvokeDialogButton("Import encrypted backup", "Import");
+        WaitFor(() => CountVaultEntries() == before + 1, TimeSpan.FromSeconds(10), "vault backup imported");
+
+        var validatePath = Path.Combine(Path.GetTempPath(), $"amare-vault-smoke-{Environment.ProcessId}.amarevault");
+        OpenVaultBackupMenu("Validate backup…");
+        SetVaultPasswordField("VaultBackupPassword", "Vault-Backup-Password");
+        SetValue(FindById("VaultBackupPath") ?? throw new InvalidOperationException("VaultBackupPath missing"), validatePath);
+        InvokeDialogButton("Validate encrypted backup", "Validate");
+        WaitFor(() => StatusTextContains("Backup valid"), TimeSpan.FromSeconds(10), "vault backup validation");
+
+        Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
+        WaitFor(() => FindById("VaultHost") is null, TimeSpan.FromSeconds(10), "vault panel close");
+        try { File.Delete(backupPath); } catch { }
+        return "vault CRUD/reveal/backup export/import/validate";
+    }
+
+    private static void InvokeDialogButton(string dialogTitle, string buttonText)
+    {
+        var dialog = FindByName(dialogTitle) ?? throw new InvalidOperationException($"dialog {dialogTitle} missing");
+        var button = dialog.FindFirst(TreeScope.Descendants,
+            new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, buttonText)))
+            ?? throw new InvalidOperationException($"dialog button {buttonText} missing");
+        Invoke(button);
+    }
+
+    private static void OpenVault()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Passwords…");
+        WaitFor(() => FindById("VaultHost") is not null, TimeSpan.FromSeconds(10), "vault panel");
+        var primary = FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing");
+        var label = primary.Current.Name;
+        if (label.Contains("Create", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Unlock", StringComparison.OrdinalIgnoreCase))
+        {
+            Invoke(primary);
+        }
+    }
+
+    private static void OpenVaultBackupMenu(string item)
+    {
+        Invoke(FindById("VaultBackupButton") ?? throw new InvalidOperationException("VaultBackupButton missing"));
+        InvokeMenu(item);
+    }
+
+    private static void SetVaultPasswordField(string id, string value)
+    {
+        var element = FindById(id) ?? throw new InvalidOperationException($"{id} missing");
+        element.SetFocus();
+        SendKeys.SendWait("^a");
+        SendKeys.SendWait(value);
+        Thread.Sleep(200);
+    }
+
+    private static void SetVaultPassword(string value)
+    {
+        var element = FindById("VaultPasswordInput") ?? throw new InvalidOperationException("VaultPasswordInput missing");
+        element.SetFocus();
+        SendKeys.SendWait("^a");
+        SendKeys.SendWait(value);
+        Thread.Sleep(200);
+    }
+
+    private static int CountVaultEntries()
+    {
+        var list = FindById("VaultEntryList");
+        if (list is null) return 0;
+        return list.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
+    }
+
+    private static void WaitVaultStatus(string text)
+    {
+        WaitFor(() => FindById("VaultStatusText")?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(15), $"vault status {text}");
+    }
+
+    private static void WaitText(string id, string text)
+    {
+        WaitFor(() => FindById(id)?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(10), $"{id} {text}");
+    }
+
+    private static bool StatusTextContains(string text) =>
+        FindById("StatusText")?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true;
 
     private static string OpenAndCloseHistory()
     {
