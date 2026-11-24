@@ -49,6 +49,10 @@ impl AmareVaultServices {
         protector: Arc<dyn KeyProtector>,
     ) -> Result<Self, VaultFailure> {
         let profiles = ProfileService::open(root_dir).map_err(VaultFailure::from)?;
+        // ABI 2 owns a separate ProfileService generation counter. Initialize
+        // it so the normal ABI 1 initialize flow produces the same generation
+        // number in both handles.
+        profiles.initialize().map_err(VaultFailure::from)?;
         Ok(Self {
             profiles: Mutex::new(profiles),
             vaults: Mutex::new(HashMap::new()),
@@ -171,20 +175,13 @@ impl AmareVaultServices {
                 .profiles
                 .lock()
                 .map_err(|_| VaultFailure::internal("profile service poisoned"))?;
-            // ABI 2 owns a separate ProfileService instance, so its in-memory
-            // generation counter is not comparable to ABI 1's generation. The
-            // profile registry remains the authority for existence/deletion;
-            // the caller's generation is used to lock cached vault state when
-            // it changes (see below).
-            if !profiles
-                .exists(&context.profile_id)
-                .map_err(VaultFailure::from)?
-            {
-                return Err(VaultFailure::new(
-                    AMARE_ERR_VAULT_PROFILE,
-                    "profile is not available",
-                ));
-            }
+            // The ABI 2 handle initializes its own ProfileService, so a
+            // caller context from the standard ABI 1 initialize flow matches
+            // this generation. Profile switches must recreate the ABI 2 handle
+            // (documented limitation) or a future shared-context API.
+            profiles
+                .profile_store(context)
+                .map_err(VaultFailure::from)?;
             profiles.root_dir().map_err(VaultFailure::from)?
         };
         let key = context.profile_id.as_str().to_string();
@@ -544,7 +541,7 @@ mod tests {
             .unwrap();
         ProfileContext {
             profile_id: id,
-            generation: 1,
+            generation: 2,
         }
     }
 
@@ -678,7 +675,7 @@ mod tests {
         let wrong_context = json!({
             "version":2,
             "method":"vault.status",
-            "params":{"context":{"profile_id":"missing","generation":999}}
+            "params":{"context":{"profile_id":"p1","generation":999}}
         });
         let error = call(service, wrong_context).unwrap_err();
         assert_eq!(error.0, AMARE_ERR_VAULT_PROFILE);
