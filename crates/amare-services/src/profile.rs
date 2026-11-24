@@ -60,6 +60,16 @@ impl ProfileService {
         let default_available = profiles
             .default_profile()?
             .is_some_and(|profile| !store.is_profile_deleting(&profile.id));
+        if default_available {
+            if let Some(active_id) = active.profile_id.as_ref() {
+                if !store.is_profile_deleting(active_id) && profiles.get(active_id)?.is_some() {
+                    return Ok(ProfileContext {
+                        profile_id: active_id.clone(),
+                        generation: active.generation,
+                    });
+                }
+            }
+        }
         if !default_available {
             let first = profiles
                 .list(10, 0)?

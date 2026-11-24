@@ -16,7 +16,7 @@ use amare_services::{
 };
 use serde_json::{Value, json};
 use std::ffi::c_char;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const AMARE_SERVICES_ABI_VERSION: u32 = 1;
@@ -32,13 +32,13 @@ pub const AMARE_ERR_JSON: i32 = 11;
 pub const AMARE_ERR_UNSUPPORTED: i32 = 12;
 
 pub struct AmareServices {
-    profiles: Mutex<ProfileService>,
+    profiles: Arc<Mutex<ProfileService>>,
 }
 
 impl AmareServices {
     fn new(root_dir: &str) -> Result<Self, ServiceError> {
         Ok(Self {
-            profiles: Mutex::new(ProfileService::open(root_dir)?),
+            profiles: crate::shared::profile_service(root_dir)?,
         })
     }
 

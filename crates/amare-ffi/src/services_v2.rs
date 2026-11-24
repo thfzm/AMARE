@@ -32,7 +32,7 @@ pub const AMARE_ERR_VAULT_ORIGIN_MISMATCH: i32 = 31;
 const MAX_ABI2_REQUEST: usize = 32 * 1024 * 1024;
 
 pub struct AmareVaultServices {
-    profiles: Mutex<ProfileService>,
+    profiles: Arc<Mutex<ProfileService>>,
     vaults: Mutex<HashMap<String, Arc<VaultService>>>,
     vault_generations: Mutex<HashMap<String, u64>>,
     protector: Arc<dyn KeyProtector>,
@@ -48,13 +48,14 @@ impl AmareVaultServices {
         root_dir: &str,
         protector: Arc<dyn KeyProtector>,
     ) -> Result<Self, VaultFailure> {
-        let profiles = ProfileService::open(root_dir).map_err(VaultFailure::from)?;
-        // ABI 2 owns a separate ProfileService generation counter. Initialize
-        // it so the normal ABI 1 initialize flow produces the same generation
-        // number in both handles.
-        profiles.initialize().map_err(VaultFailure::from)?;
+        let profiles = crate::shared::profile_service(root_dir).map_err(VaultFailure::from)?;
+        profiles
+            .lock()
+            .map_err(|_| VaultFailure::internal("profile service poisoned"))?
+            .initialize()
+            .map_err(VaultFailure::from)?;
         Ok(Self {
-            profiles: Mutex::new(profiles),
+            profiles,
             vaults: Mutex::new(HashMap::new()),
             vault_generations: Mutex::new(HashMap::new()),
             protector,
@@ -541,7 +542,7 @@ mod tests {
             .unwrap();
         ProfileContext {
             profile_id: id,
-            generation: 2,
+            generation: 1,
         }
     }
 
