@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-vault-ui`
 - 시작 HEAD: `4ca823e` (`feature/phase-1-vault-ffi`)
 - 제품/테스트 HEAD: **`7e09d04`**
-- 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 문서 HEAD: `7685b10` (`Document Phase 1.3C WinUI vault UI results`)
 - 작성일: 2026-11-24
 - 범위: WinUI Vault UI, 수명 관리, idle/session lock, clipboard, backup UI.
 - 범위 밖: WebView2 로그인 감지/자동완성/폼 주입 (`get_for_fill` 호출 포함), Windows Hello, 패키지.
