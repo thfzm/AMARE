@@ -388,6 +388,9 @@ internal static class Program
             Check("downloads_menu", OpenAndCloseDownloads);
             Check("vault_ui_initialize_lock_unlock", VaultInitializeLockUnlock);
             Check("vault_ui_crud_reveal_backup", VaultCrudRevealBackup);
+            Check("vault_ui_profile_switch_isolation", VaultProfileSwitchIsolation);
+            Check("vault_ui_multiwindow_lock", VaultMultiwindowLock);
+            Check("vault_ui_idle_lock", VaultIdleLock);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("new_window_button", OpenAndCloseNewWindowButton);
@@ -1177,6 +1180,116 @@ internal static class Program
                 new PropertyCondition(AutomationElement.NameProperty, buttonText)))
             ?? throw new InvalidOperationException($"dialog button {buttonText} missing");
         Invoke(button);
+    }
+
+    private static string VaultProfileSwitchIsolation()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        var before = CountVaultEntries();
+        Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
+        InvokeMenu("New profile…");
+        WaitFor(() => FindByName("New profile") is not null, TimeSpan.FromSeconds(5), "new profile dialog");
+        var dialog = FindByName("New profile")!;
+        var edit = dialog.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
+            ?? throw new InvalidOperationException("new profile name field missing");
+        SetValue(edit, "vault-smoke-profile");
+        InvokeDialogButton("New profile", "Create");
+        WaitFor(() => StatusTextContains("Profile: profile-"), TimeSpan.FromSeconds(15), "profile switch");
+        OpenVault();
+        WaitVaultStatus("Not initialized");
+        Require(CountVaultEntries() == 0, "new profile exposed old vault entries");
+        Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
+        WaitFor(() => FindById("VaultStatusText")?.Current.IsOffscreen != false,
+            TimeSpan.FromSeconds(10), "vault panel close after profile switch");
+
+        Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
+        InvokeMenuContaining("Personal");
+        WaitFor(() => StatusTextContains("Profile: default"), TimeSpan.FromSeconds(15), "default profile switch");
+        OpenVault();
+        WaitVaultStatus("Locked");
+        Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
+        WaitVaultStatus("Unlocked");
+        Require(CountVaultEntries() == before, "default vault entries changed after profile switch");
+        Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
+        return "profile switch isolation";
+    }
+
+    private static string VaultMultiwindowLock()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        var main = _window!;
+        var mainHandle = _process!.MainWindowHandle;
+        SetForegroundWindow(mainHandle);
+        var before = WindowsForProcess(_process.Id).Length;
+        SendKeys.SendWait("^n");
+        WaitFor(() => WindowsForProcess(_process.Id).Length > before,
+            TimeSpan.FromSeconds(10), "vault multiwindow");
+        var second = WindowsForProcess(_process.Id)
+            .FirstOrDefault(window => window.Current.NativeWindowHandle != mainHandle.ToInt64())
+            ?? throw new InvalidOperationException("second vault window missing");
+        SetForegroundWindow((IntPtr)second.Current.NativeWindowHandle);
+        Invoke(FindByIdIn(second, "MenuButton") ?? throw new InvalidOperationException("second MenuButton missing"));
+        InvokeMenu("Passwords…");
+        WaitFor(() => FindByIdIn(second, "VaultStatusText") is { } text && !text.Current.IsOffscreen,
+            TimeSpan.FromSeconds(15), "second vault panel");
+        var primary = FindByIdIn(second, "VaultPrimaryActionButton")
+            ?? throw new InvalidOperationException("second vault primary missing");
+        if (primary.Current.Name.Contains("Create", StringComparison.OrdinalIgnoreCase)
+            || primary.Current.Name.Contains("Unlock", StringComparison.OrdinalIgnoreCase))
+        {
+            Invoke(primary);
+        }
+        WaitTextIn(second, "VaultStatusText", "Unlocked");
+        Invoke(FindByIdIn(second, "VaultLockButton") ?? throw new InvalidOperationException("second lock missing"));
+        WaitTextIn(main, "VaultStatusText", "Locked");
+        Invoke(FindByIdIn(main, "VaultPrimaryActionButton") ?? throw new InvalidOperationException("main unlock missing"));
+        WaitTextIn(main, "VaultStatusText", "Unlocked");
+        WaitTextIn(second, "VaultStatusText", "Unlocked");
+
+        if (second.TryGetCurrentPattern(WindowPattern.Pattern, out var pattern))
+        {
+            ((WindowPattern)pattern).Close();
+        }
+        WaitFor(() => WindowsForProcess(_process.Id).Length <= before,
+            TimeSpan.FromSeconds(10), "second vault window close");
+        Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
+        return "multiwindow lock/unlock broadcast";
+    }
+
+    private static string VaultIdleLock()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        Thread.Sleep(35000);
+        WaitVaultStatus("Locked");
+        Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
+        WaitVaultStatus("Unlocked");
+        Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
+        return "idle timeout locked vault";
+    }
+
+    private static void WaitTextIn(AutomationElement window, string id, string text)
+    {
+        WaitFor(() => FindByIdIn(window, id)?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(15), $"{id} in window {text}");
+    }
+
+    private static void InvokeMenuContaining(string text)
+    {
+        AutomationElement? item = null;
+        WaitFor(() =>
+        {
+            item = AutomationElement.RootElement.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(candidate => candidate.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase));
+            return item is not null;
+        }, TimeSpan.FromSeconds(5), $"menu containing {text}");
+        Invoke(item!);
     }
 
     private static void OpenVault()
