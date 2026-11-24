@@ -80,13 +80,17 @@
 
 ### Phase 1.3C 진행 상태
 
-- **WinUI Vault UI 완료** (`7e09d04`)
+- **WinUI Vault UI + 잔여 lock 경계 검증 완료** (`e645a3f`)
 - Vault overlay: init/lock/unlock/list/detail/add/edit/delete/reveal/copy
 - backup export/validate/import, failed import 보존
 - idle 5분 policy + timer, session lock 코드, multiwindow lock broadcast
-- UI smoke **51/51**, C# interop **80/80**, Windows **147/0**
-- UNVERIFIED: 실제 5분 idle/session lock/profile switch/multiwindow UI,
-  Windows 11 실기기
+- UI smoke **54/54**: profile switch isolation, multiwindow lock/unlock,
+  idle timeout(30s 단축) 실제 WinUI 검증
+- C# interop **80/80**, Windows **147/0**, Linux SUCCESS
+- `VaultService::status`가 영속 Vault를 감지하도록 수정 (새 client가 기존
+  Vault를 Locked로 표시)
+- UNVERIFIED: 실제 5분 idle, 실제 Windows session lock, Windows 11 실기기
+- 기존 결함: New Tab `data:` navigation 차단 (범위 밖, 별도 승인 필요)
 - 다음: Phase 1.3D WebView2 autofill/login capture
 - 상세: `docs/AMARE_PHASE1_VAULT_UI_REPORT.md`
 

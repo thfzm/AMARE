@@ -1,13 +1,14 @@
 # AMARE Phase 1.3C — WinUI Password Vault UI Report
 
-- 상태: **WinUI Vault UI 구현 완료 / 일부 Windows 시나리오 UNVERIFIED**
+- 상태: **WinUI Vault UI PASS / 잔여 lock 경계 검증 PASS / Windows session lock·실기기 항목 UNVERIFIED**
 - Branch: `feature/phase-1-vault-ui`
 - 시작 HEAD: `4ca823e` (`feature/phase-1-vault-ffi`)
-- 제품/테스트 HEAD: **`7e09d04`**
-- 문서 HEAD: `7685b10` (`Document Phase 1.3C WinUI vault UI results`)
+- 최종 제품/테스트 HEAD: **`e645a3f`**
+- 문서 HEAD: 이 보고서를 포함한 문서 commit
 - 작성일: 2026-11-24
-- 범위: WinUI Vault UI, 수명 관리, idle/session lock, clipboard, backup UI.
-- 범위 밖: WebView2 로그인 감지/자동완성/폼 주입 (`get_for_fill` 호출 포함), Windows Hello, 패키지.
+- 범위: WinUI Vault UI, ABI 2 client 수명, lock 경계, clipboard, backup UI.
+- 범위 밖: WebView2 로그인 감지/자동완성/폼 주입 (`get_for_fill` 호출 포함),
+  Windows Hello, 패키지/MSIX/서명, WebView2 브라우저 영역 변경.
 
 ---
 
@@ -18,14 +19,41 @@
 | 시작 branch | `feature/phase-1-vault-ffi` |
 | 시작 HEAD | `4ca823e` |
 | 작업 branch | **`feature/phase-1-vault-ui`** |
-| 최종 제품/테스트 HEAD | **`7e09d04`** |
+| 1차 UI 제품/테스트 HEAD | `7e09d04` |
+| 잔여 lock 검증 제품/테스트 HEAD | **`e645a3f`** |
 | Working tree | clean (문서 commit 전) |
 | Stash | `stash@{0}` 보존 |
 | Phase 1.3A/1.3B | 보존 |
-| GPUI 변경 | 없음 |
+| GPUI 변경 | **없음** |
 | DB schema | **v5 유지, migration 없음** |
-| ABI 1 | 변경/삭제 없음 |
-| 패키지/MSIX/Release | 없음 |
+| ABI 1 | **변경/삭제 없음** (7/7) |
+| 패키지/MSIX/Release/서명 | **없음** |
+| `feature/phase-1-vault-webview` | 로컬 보존, rewrite/삭제 없음 |
+
+제품/테스트 commit:
+
+```text
+1c9bbde Add WinUI password vault panel and lifetime management
+6a7e268 Import Core vault DTO types in WinUI partial
+67401b5 Use valid ContentDialog close button
+9fdc9e9 Add WinUI vault UI smoke coverage
+a6e9f1b Fix vault UI smoke panel detection and log lifecycle
+81e1a22 Keep vault panel open between smoke tests
+7e09d04 Cover vault edit and failed import in UI smoke
+c12e52f Log vault profile switch diagnostics on smoke timeout
+889384e Dump fresh main window on vault profile smoke timeout
+d30ede6 Probe vault profile status text after switch
+2bc2c96 Trace long status text assignments in smoke
+b4b2d19 Verify vault profile isolation via profile menu state
+cfb4b4b Log vault status and profile isolation timeout details
+458ff68 Do not auto-create vault during profile isolation smoke
+94aae57 Report persisted vault state before unlock
+e645a3f Run vault lifetime smoke after window regression tests
+```
+
+> `c12e52f`~`2bc2c96`은 실패 원인 진단을 위한 임시 계측이고,
+> `b4b2d19`에서 진단 계측을 제거하고 실제 검증으로 대체했다. 진단 commit은
+> history rewrite 없이 보존한다.
 
 ---
 
@@ -43,8 +71,11 @@
 - `apps/windows/AMARE.Interop.Tests/Phase27Tests.cs`
 - `apps/windows/AMARE.Interop.Tests/Program.cs`
 - `tools/windows-ui-smoke/Program.cs`
-- ABI profile 공유 보완: `crates/amare-ffi/src/shared.rs`, `services.rs`, `services_v2.rs`,
-  `crates/amare-services/src/profile.rs`
+- ABI profile 공유 보완: `crates/amare-ffi/src/shared.rs`, `services.rs`,
+  `services_v2.rs`, `crates/amare-services/src/profile.rs`
+- **vault 상태 정정**: `crates/amare-services/src/vault.rs`
+- **회귀 테스트**: `crates/amare-services/tests/vault.rs`,
+  `crates/amare-ffi/src/services_v2.rs`
 
 ---
 
@@ -59,7 +90,7 @@ Vault는 기존 AI/Reader와 같은 **콘텐츠 오버레이 패널**로 통합�
 - detail: title/origin/username, masked PasswordBox, Reveal/Copy/Edit/Delete
 - editor: site, origin, username, password, reveal checkbox, Save/Cancel
 - backup menu: export, validate, import
-- `VaultIdleMonitor` / `VaultSessionMonitor`
+- `VaultIdleMonitor` / `VaultSessionMonitor` / `VaultWindowCoordinator`
 
 상태:
 
@@ -71,229 +102,256 @@ Vault는 기존 AI/Reader와 같은 **콘텐츠 오버레이 패널**로 통합�
 - `Empty`
 - `Error`
 
+### 3.1 상태 판정 결함 수정
+
+진단 중 **기존 Vault가 있는데도 새 ABI 2 client가 `initialized=false`를 반환**하는
+제품 결함을 발견했다. 이 때문에 잠긴 Vault가 "Create vault"로 표시됐다.
+`VaultService::status`가 in-memory 상태가 비어 있을 때 영속 secret 존재 여부를
+확인하도록 수정했다.
+
+- 기존 Vault + 새 client → `initialized=true`, `unlocked=false` → **Locked**
+- Vault가 없는 profile → `initialized=false` → **Uninitialized**
+- 기존 데이터는 변경하지 않는다 (status 조회만 수행).
+
 ---
 
 ## 4. ABI 2 client 수명 / profile 전환
 
-- ABI1 profile 초기화 완료 후 `_context`가 준비되면 ABI2 `AmareVaultClient`를 생성.
-- root는 ABI1과 동일한 `<appDataRoot>\data`.
-- `_profileId`와 `_context.Generation`이 바뀌면 이전 client를 lock/dispose하고 재생성.
+- ABI 1 profile 초기화 후 ABI 2 `AmareVaultClient` 생성.
+- root는 ABI 1과 동일한 `<appDataRoot>\data`.
+- `_profileId`/`_context.Generation`이 바뀌면 이전 client를 lock/dispose 후 재생성.
 - profile 전환/삭제 전 `ResetVaultForProfileChangeAsync`:
-  - native Vault를 lock
-  - ABI2 handle Dispose
+  - native Vault lock
+  - ABI 2 handle Dispose
   - UI 목록/상세/secret/편집 상태 제거
   - 다른 창에 profile change broadcast
-- 새 profile context로 ABI2 client 재생성.
-- ABI1/ABI2가 같은 `ProfileService`를 공유하도록 FFI를 보완했다
-  (`shared.rs`). 이로써 ABI1 context generation과 ABI2 context generation이 일치한다.
-- 초기화 실패는 `VaultErrorText`에 일반화된 메시지로 표시하고 unlocked 상태로
-  남기지 않는다.
+- ABI 1과 ABI 2가 같은 `ProfileService`를 공유해 context generation을 일치시켰다
+  (`crates/amare-ffi/src/shared.rs`).
+- 초기화 실패 시 UI를 unlocked로 남기지 않고 일반화된 오류를 표시한다.
 
-**UNVERIFIED:** 실제 UI에서 profile switch 후 ABI2 client 재생성/이전 profile
-데이터 접근 차단은 WinUI smoke에 포함되지 않았다. native profile 격리는
-ABI2/Core 테스트로 검증했다.
+**검증됨 (UI smoke `vault_ui_profile_switch_isolation`):**
+
+1. default profile에서 Vault를 unlock하고 계정 수를 기록.
+2. 새 profile을 생성하고, profile 메뉴의 `(current)` 표시로 전환 확인.
+3. 새 profile의 Vault는 **Not initialized / 0 entries** — 이전 profile 데이터 없음.
+4. default로 복귀 후 Vault는 **Locked**, unlock 후 계정 수가 이전과 동일.
 
 ---
 
 ## 5. 다중 창 동작
 
-- 각 창은 자체 `AmareVaultClient` handle과 UI state를 가진다.
-- `VaultWindowCoordinator`로 다음을 broadcast:
-  - lock 요청
-  - unlock 알림(같은 profile만)
-  - profile 변경
+- 창마다 자체 `AmareVaultClient` handle과 UI state.
+- `VaultWindowCoordinator`가 lock 요청, 같은 profile의 unlock, profile 변경을 broadcast.
 - lock 시 각 창이 **실제 native `vault.lock`**을 호출한 뒤 UI를 비운다.
-- UI만 잠금 표시하고 native Vault를 열어두는 경로는 없다.
-- idle/session lock도 같은 lock broadcast를 사용한다.
-- 같은 profile의 다른 창에서 unlock하면 해당 창도 native unlock을 수행한다.
+- UI만 잠그고 native Vault를 열어두는 경로는 없다.
 
-**UNVERIFIED:** 다중 창 lock/unlock 일관성은 WinUI smoke에 포함되지 않았다.
-기존 multiwindow UI harness의 UIA flake도 있어 별도 실기기 검증이 필요하다.
+**검증됨 (UI smoke `vault_ui_multiwindow_lock`, 실제 두 개의 WinUI 창):**
+
+1. main 창에서 Vault unlock.
+2. 새 창(Ctrl+N)에서 Vault unlock → main과 동일 상태.
+3. 두 번째 창에서 Lock → **main 창도 Locked**.
+4. main에서 Unlock → **두 번째 창도 Unlocked**.
+5. 두 번째 창을 닫고 main Vault를 정리.
 
 ---
 
 ## 6. Idle / Session lock
 
-- 기본 idle timeout **5분** (`VaultIdlePolicy`).
-- `VaultIdleMonitor` singleton timer (5초 tick), 모든 창이 하나의 timer를 공유.
-- 활동 감지:
-  - RootGrid PointerMoved/PointerPressed/KeyDown
-  - Window Activated
-  - Vault 작업/버튼 조작
-  - WebView2 페이지 내부 입력은 자동 감지 범위에 포함되지 않는다 (명시적 한계).
-- idle 만료 시 lock broadcast.
+- 기본 idle timeout **5분** (`VaultIdlePolicy`, unit test PASS).
+- `VaultIdleMonitor` 단일 timer (5초 tick), 모든 창이 공유.
+- 활동 감지: RootGrid pointer/key, Window Activated, Vault UI 조작.
+- **WebView2 페이지 내부 입력은 자동 감지 범위 밖** (문서화된 한계).
 - `VaultSessionMonitor`는 `Microsoft.Win32.SystemEvents.SessionSwitch`의
-  SessionLock/ConsoleDisconnect/RemoteDisconnect를 사용한다.
-- session event를 받지 못하는 환경은 UNVERIFIED.
+  SessionLock/ConsoleDisconnect/RemoteDisconnect를 사용.
 
-**UNVERIFIED:** 실제 5분 idle UI와 Windows session lock을 실기기에서
-검증하지 않았다. `VaultIdlePolicy` unit test는 PASS.
+**검증됨 (UI smoke `vault_ui_idle_lock`):**
+`AMARE_VAULT_IDLE_SECONDS=30`으로 timeout을 단축해, 실제 WinUI에서
+idle 만료 → native `vault.lock` → 목록/상세 제거 → 재unlock까지 확인했다.
+
+**UNVERIFIED:**
+- 실제 기본값 5분 대기
+- 실제 Windows workstation lock에 의한 session lock (CI에서 잠금 불가)
+- idle timer와 백그라운드 WebView2 활동의 상호작용
 
 ---
 
 ## 7. 비밀번호 평문 수명
 
-- `status`/`list`에는 password가 없다.
-- `get`은 다음 경우에만 호출:
-  - 사용자가 Reveal을 클릭
-  - 사용자가 Copy를 클릭
-  - 사용자가 Edit를 클릭
-- `get_for_fill`은 **이번 단계에서 호출하지 않는다.**
-- `VaultEntryDto.Password`는 immutable string이며 `ClearPassword()`는 best-effort.
+- `status`/`list`는 password-free.
+- `get`은 명시적 Reveal/Copy/Edit에서만 호출.
+- **`get_for_fill`은 이번 단계에서 호출하지 않는다.**
 - Reveal/Hide, selection 변경, lock, panel close, profile change 시:
   - PasswordBox.Password = ""
   - PasswordRevealMode = Hidden
   - DTO `ClearPassword()`
-- 편집/추가 저장 후 PasswordBox와 credential DTO 참조를 폐기.
-- ViewModel/global state/검색 인덱스/진단에 password를 저장하지 않는다.
-- immutable string이 실제 zeroize되지 않는다는 한계를 문서화했다.
+- ViewModel/global state/검색/진단에 password를 저장하지 않는다.
+- `VaultEntryDto.Password`는 immutable string이며 `ClearPassword()`는
+  실제 zeroize가 아닌 best-effort다.
 
 ---
 
 ## 8. Clipboard 정책
 
-- 사용자가 Copy를 명시적으로 클릭할 때만 복사.
-- `VaultClipboard`가 30초 후 정리 시도.
-- 정리 전 현재 clipboard 텍스트가 복사한 값과 **정확히 같을 때만** `Clipboard.Clear()`.
-- 사용자가 다른 값을 복사했다면 건드리지 않는다.
-- lock / profile change / panel close 시 `ClearIfOwnedAsync`.
-- Windows Clipboard History/Cloud Clipboard/다른 앱의 보존은 best-effort이며
-  완전 삭제를 주장하지 않는다.
+- 명시적 Copy 동작에서만 복사.
+- 30초 후 best-effort 정리.
+- 현재 clipboard 텍스트가 AMARE가 복사한 값과 **정확히 같을 때만** clear.
+- 다른 내용이면 건드리지 않는다.
+- lock/profile change/panel close 시 `ClearIfOwnedAsync`.
+- Windows Clipboard History/Cloud Clipboard는 통제 밖임을 문서화했다.
 
 ---
 
 ## 9. Backup UI
 
-- Backup 메뉴:
-  - Export encrypted backup
-  - Validate backup
-  - Import backup
-- Export:
-  - backup password + confirmation
-  - encrypted payload만 파일에 기록 (`vault-*.amarevault`)
-  - plaintext JSON/로그 없음
-  - temp file 후 atomic move
-- Validate:
-  - 파일/password로 `vault.validate_backup`
-  - entry/tombstone/format 요약
-- Import:
-  - “현재 Vault를 교체” 확인 문구
-  - 잘못된 password/손상/format 오류는 기존 Vault 보존
-  - 성공 시 목록 새로고침
-- 파일 선택은 OS picker 대신 path TextBox를 사용해 자동화/일관성을 확보.
-  사용자 경로를 직접 지정할 수 있다.
+- Export: backup password + confirmation, 암호화 payload만 파일 저장,
+  temp file 후 atomic move.
+- Validate: 파일/password 검증, entry/tombstone/format 요약.
+- Import: 현재 Vault 교체 확인, 실패 시 기존 Vault 보존, 성공 시 목록 새로고침.
+- 잘못된 password import가 entry를 변경하지 않는 것을 UI smoke로 확인했다.
+- OS picker 대신 path TextBox를 사용해 자동화/일관성을 확보했다.
 
 ---
 
-## 10. 테스트 결과 (실제 실행)
+## 10. 테스트 결과 (최종)
 
 | Suite | 결과 |
 |---|---|
 | Rust ABI 1 | **7/7 PASS** |
-| Rust ABI 2 | **5/5 PASS** |
-| Linux Vault Core | 23/23 PASS |
-| Windows Vault Core | 24/24 PASS |
-| `amare-store` | 79/79 PASS |
+| Rust ABI 2 | **6/6 PASS** (기존 5 + persisted status 1) |
+| Linux Vault Core | **24/24 PASS** (기존 23 + 1) |
+| Windows Vault Core | **25/25 PASS** (기존 24 + 1) |
+| `amare-store` | 79/79 PASS (기존 기준선) |
 | `amare-services` 기존 | 38/38 PASS |
-| C# interop | **80/80 PASS** (기존 79 + idle policy 1) |
-| WinUI UI smoke | **51/51 PASS** (기존 49 + Vault 2) |
+| C# interop | **80/80 PASS** |
+| WinUI UI smoke | **54/54 PASS** (기존 49 + Vault 5) |
 | Windows CI 최종 | **147 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** |
 | Linux CI | **SUCCESS** |
 
-Windows 최종: [45371417168](https://github.com/thfzm/AMARE/actions/runs/45371417168)  
-Linux 최종: [45374432218](https://github.com/thfzm/AMARE/actions/runs/45374432218)
+Windows 최종: [45474184039](https://github.com/thfzm/AMARE/actions/runs/45474184039)
+Linux 최종: [45476359088](https://github.com/thfzm/AMARE/actions/runs/45476359088)
 
 Vault UI smoke:
 
 ```text
 PASS vault_ui_initialize_lock_unlock
 PASS vault_ui_crud_reveal_backup
+PASS vault_ui_profile_switch_isolation
+PASS vault_ui_multiwindow_lock
+PASS vault_ui_idle_lock
 ```
-
-`vault_ui_crud_reveal_backup` covers:
-
-- add account
-- list
-- detail
-- reveal → hide
-- edit
-- export encrypted backup
-- failed import with wrong password (entries unchanged)
-- delete
-- valid import restore
-- validate backup
-- close/lock
 
 8 SKIPPED = package 7 + Netflix/Disney 1. **패키지는 생성하지 않았다.**
 
+> `vault_ui_*` 5개 테스트는 기존 window/session 회귀 테스트 **뒤**에 배치했다.
+> Vault 테스트가 추가 창 생성/전환을 수행해 기존 UIA 테스트의 focus 조건을
+> 바꾸지 않도록 하기 위함이다.
+
 ---
 
-## 11. 최초 실패와 수정
+## 11. UI smoke 증거
 
-| # | 실패 | 분류 | 수정 |
+- `artifacts/windows/phase1.3c/` — 1차 51/51 증거 (기존)
+- `artifacts/windows/phase1.3c/lock-verification/`
+  - `final-45474184039/` — 최종 54/54, Windows 147/0
+  - `flake-45471640788/` — vault 5개 PASS, `tear_off_tab` 기존 flake 실패 로그
+  - `first-failure-45445869450/` — 최초 profile status timeout + certificate flake
+  - `root-cause-45457832491/` — New Tab `data:` 차단이 status를 덮어쓴 stack trace
+  - `auto-create-45463332983/` — smoke helper가 Vault를 자동 생성한 실패
+  - `README.md` — 분석 요약
+- `SHA256SUMS.txt` — 증거 파일 checksum.
+
+모든 증거는 `vault-smoke.example` fixture 데이터만 포함하며 password, backup
+plaintext, Vault JSON은 포함하지 않는다.
+
+---
+
+## 12. 최초 실패와 분류
+
+| # | 실패 | 분류 | 수정/결과 |
 |---:|---|---|---|
-| 1 | `VaultStatusDto`/`AmareVaultClient` using 누락 | PRODUCT_BUILD_DEFECT | `using Amare.Windows.Core` |
-| 2 | `ContentDialogButton.Cancel` 없음 | PRODUCT_BUILD_DEFECT | `Close` |
-| 3 | Vault panel UIA 탐지 timeout (`VaultHost` Grid) | TEST_AUTOMATION_BUG | visible `VaultStatusText` 기준 탐지 |
-| 4 | 두 번째 Vault smoke에서 panel toggle로 닫힘 | TEST_AUTOMATION_BUG | panel이 열려 있으면 재사용 |
-| 5 | 최초 UI smoke에서 `tear_off_tab`/`tab_churn`/multiwindow 연쇄 실패 | TEST_AUTOMATION_BUG | Vault panel 상태 정리 후 재실행 PASS |
+| 1 | `using Amare.Windows.Core` 누락 | PRODUCT_BUILD_DEFECT | using 추가 |
+| 2 | `ContentDialogButton.Cancel` 미존재 | PRODUCT_BUILD_DEFECT | `Close` |
+| 3 | `VaultHost` Grid UIA 미탐지 | TEST_AUTOMATION_BUG | visible `VaultStatusText` 기준 |
+| 4 | 두 번째 Vault smoke에서 panel toggle로 닫힘 | TEST_AUTOMATION_BUG | panel 재사용 |
+| 5 | Vault panel이 열린 채 후속 UIA 테스트 실패 | TEST_AUTOMATION_BUG | panel 정리 후 PASS |
+| 6 | profile switch status timeout | **PRE-EXISTING PRODUCT DEFECT (out of scope)** | New Tab `data:` 차단이 `StatusText`를 4,624자로 덮어씀. profile 검증을 메뉴 `(current)` + Vault 격리로 변경 |
+| 7 | 새 profile Vault가 `Not initialized`가 아님 | TEST_AUTOMATION_BUG | smoke helper가 primary button을 자동 실행 → `OpenVault(autoPrimary:false)` |
+| 8 | default 복귀 후 `Locked`가 아님 | **PRODUCT_DEFECT** | `VaultService::status`가 영속 Vault를 감지하도록 수정 + 회귀 테스트 |
+| 9 | `tear_off_tab`/`certificate`/`new_window`/`session_multiwindow`/`websocket` 간헐 실패 | PRE-EXISTING UI FLAKE | Vault 테스트와 무관(일부는 Vault 테스트보다 먼저 실행). 동일 HEAD 재실행 54/54 PASS, 실패 로그 보존 |
 
 최초 Windows build run [45358382926](https://github.com/thfzm/AMARE/actions/runs/45358382926)은
-컴파일 실패였고, 최초 UI Vault run [45364000703](https://github.com/thfzm/AMARE/actions/runs/45364000703)은
-Vault panel 탐지 실패였다. 최초 로그를 evidence에 보존했다.
+컴파일 실패, 최초 Vault UI run [45364000703](https://github.com/thfzm/AMARE/actions/runs/45364000703)은
+panel 탐지 실패였다. 실패 로그는 evidence에 보존했다.
 
 ---
 
-## 12. 미해결 / UNVERIFIED
+## 13. 발견된 기존 결함 — New Tab `data:` navigation
 
-1. 실제 5분 idle 후 UI lock — **UNVERIFIED** (`VaultIdlePolicy` unit test만 PASS)
-2. Windows session lock 이벤트 실기기 — **UNVERIFIED** (`SystemEvents` 코드만)
-3. 다중 창 lock/unlock 일관성 UI smoke — **UNVERIFIED** (broadcast 코드만)
-4. profile switch 후 이전 Vault 접근 차단 UI — **UNVERIFIED** (native/profile 코드만)
-5. 실제 Windows 11 IME/DPI/접근성 — **UNVERIFIED**
-6. C# immutable string zeroize — 구조적 한계, best-effort only
-7. WebView2 autofill / login detection / get_for_fill — 이번 단계에서 **미구현**
+- `NavigationPolicy`는 `data:`를 차단한다.
+- 이 WebView2 버전에서 `NavigateToString`은 `data:text/html;charset=utf-8,...`
+  NavigationStarting을 발생시키고, 앱이 이를 취소한다.
+- 결과:
+  1. New Tab 페이지 내용이 로드되지 않는다 (빈 화면).
+  2. `StatusText`에 4,600~4,900자의 data URI가 기록되어 다른 상태 메시지를 덮어쓴다.
+- Phase 1.3C 이전부터 존재하던 동작이며, Phase 1.3C는 WebView2 브라우저 영역을
+  변경하지 않는다는 제약에 따라 **수정하지 않았다**.
+- 권장 수정(별도 승인 필요):
+  - `NavigateToString` 직전에만 허용되는 명시적 플래그 또는 정확한 payload 비교로
+    해당 `data:text/html` 탐색 1회만 허용 (그 외 `data:`는 계속 차단),
+  - status 텍스트 길이 상한/축약,
+  - New Tab 렌더링과 차단 navigation 회귀 테스트 추가.
+- Phase 1.3D(autofill/origin 검증) 전에 이 항목을 먼저 처리할지 결정해야 한다.
+
+---
+
+## 14. 미해결 / UNVERIFIED
+
+1. 실제 기본값 5분 idle 후 UI lock — **UNVERIFIED** (30초 단축 UI smoke PASS)
+2. 실제 Windows session lock — **UNVERIFIED** (SystemEvents 코드만)
+3. 실제 Windows 11 IME/DPI/접근성 — **UNVERIFIED**
+4. C# immutable password string zeroize — 구조적 한계, best-effort
+5. 프로세스 강제 종료 중 Vault UI — UNVERIFIED
+6. 비동기 작업 중 창 닫힘/취소의 모든 경합 — UNVERIFIED
+7. WebView2 autofill/login detection/`get_for_fill` — Phase 1.3D 범위
 8. Windows Hello — 미구현
-9. process kill 중 vault UI — UNVERIFIED
-10. 실제 사용자 데이터가 아닌 smoke fixture만 사용
+9. New Tab `data:` navigation — 기존 결함, 미수정 (13절)
+10. 실제 사용자 데이터가 아닌 fixture만 사용
 
 ---
 
-## 13. Phase 1.3D 준비
+## 15. Phase 1.3D 준비
 
 Phase 1.3D — WebView2 Password Capture & Autofill Security:
 
-- `get_for_fill`을 처음 호출하는 단계
-- exact origin, top-level, no auto-submit
-- form detection / username/password field 검증
+- `get_for_fill` 첫 사용, exact origin, top-level document, no auto-submit
+- username/password field 및 form action 검증
 - login submit capture + 사용자 저장 승인
-- WebView2 built-in password/general autofill 비활성 및 기존 데이터 clear
-- clipboard/IME/frame/iframe 테스트
-- Vault UI 51/51, Windows 147/0, interop 80/80 유지
+- WebView2 내장 password/general autofill 비활성 + 사용자 동의 후 clear
+- iframe/cross-origin/IDN/punycode 테스트
+- 실제 Windows 11 IME/autofill 검증
+- Vault UI 54/54, Windows 147/0, interop 80/80 유지
 
-OpenCode 프롬프트에 포함할 것:
+진입 전 결정 필요:
 
-- `get_for_fill`의 평문 수명
-- exact origin/profile AAD 정책 유지
-- 자동 입력/자동 submit 금지
-- 사용자 명시적 Fill 승인
-- built-in autofill 데이터 삭제는 사용자 동의
-- 실제 Windows 11 실기기 검증 항목
+- 13절의 New Tab `data:` navigation 결함을 1.3D와 함께/먼저 수정할지
+- WebView2 브라우저 영역 변경에 대한 별도 승인
+- `get_for_fill` 평문 수명과 로그 금지 규칙 유지
 
 ---
 
-## 14. 결론
+## 16. 결론
 
-**WinUI Vault UI 구현 범위는 PASS**:
+**Phase 1.3C PASS (실기기 항목 제외):**
 
-- 초기화/lock/unlock
-- account CRUD/list/detail/reveal/edit/delete
-- backup export/validate/import
-- 실패 import rollback
-- profile별 ABI2 client 수명/재생성
-- idle/session lock 코드
+- 초기화/lock/unlock, CRUD/list/detail/reveal/edit/delete
+- backup export/validate/import, 실패 import rollback
+- profile 전환 시 Vault 격리 (UI 검증)
+- 다중 창 lock/unlock 일관성 (UI 검증)
+- idle timeout → native lock (단축 timeout UI 검증)
+- session lock 코드 경로 (실기기 UNVERIFIED)
 - clipboard 30초 best-effort
-- 평문 로그/상태 미노출
+- password-free status/list, `get_for_fill` 미호출
+- 최종 Windows CI **147 PASS / 0 FAIL**, UI **54/54**, interop **80/80**, Linux SUCCESS
 
-단, idle/session/profile/multiwindow의 실제 WinUI/Windows 11 시나리오는
-**UNVERIFIED**이며, 이 항목을 전체 Vault 완료로 과장하지 않는다.
+실제 5분 idle·Windows session lock·Windows 11 실기기 항목은 **UNVERIFIED**로
+남기며, New Tab `data:` 결함은 범위 밖 기존 결함으로 보고한다.

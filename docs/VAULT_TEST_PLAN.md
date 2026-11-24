@@ -66,9 +66,9 @@ T01–T35 상태 (이번 단계 범위 기준):
 | T26 hidden field | **UNVERIFIED** | WinUI 범위 밖 |
 | T27 username field | **UNVERIFIED** | WinUI 범위 밖 |
 | T28 clipboard | **UNVERIFIED** | WinUI 범위 밖 |
-| T29 idle lock | **PARTIAL** | policy unit PASS; real 5-minute UI UNVERIFIED |
+| T29 idle lock | **PARTIAL** | 30s 단축 UI PASS; real 5-minute UNVERIFIED |
 | T30 session lock | **PARTIAL** | SystemEvents code; real session UNVERIFIED |
-| T31 multiwindow lock | **PARTIAL** | broadcast/native lock code; UI smoke UNVERIFIED |
+| T31 multiwindow lock | **PASS** | 실제 2창 lock/unlock UI 검증 |
 | T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
 | T33 crash dump | **UNVERIFIED** | 정책 미구현 |
 | T34 redaction | PASS (unit) | error Display 검사 |
@@ -140,18 +140,26 @@ PASS vault_abi2_platform_contract:
 
 ---
 
-## 1.3 Phase 1.3C 실제 결과 (WinUI Vault UI)
+## 1.3 Phase 1.3C 실제 결과 (WinUI Vault UI + 잔여 lock)
 
 | 항목 | 결과 |
 |---|---|
-| WinUI UI smoke | **51/51 PASS** (기존 49 + Vault 2) |
+| WinUI UI smoke | **54/54 PASS** (기존 49 + Vault 5) |
 | Vault UI: init/lock/unlock | PASS |
 | Vault UI: add/list/detail/reveal/edit/delete | PASS |
 | Vault UI: export/validate/import | PASS |
 | Vault UI: wrong-password import failure | PASS (entries unchanged) |
+| Vault UI: profile switch isolation | **PASS** (menu current + vault isolation) |
+| Vault UI: multiwindow lock/unlock | **PASS** |
+| Vault UI: idle timeout (30s 단축) | **PASS** |
 | Windows CI | **147 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** |
+| Rust ABI 1 / ABI 2 | 7/7 / **6/6** |
+| Linux/Windows Vault Core | **24/24 / 25/25** |
 | C# interop | 80/80 PASS |
 | Linux CI | SUCCESS |
+
+Windows: [45474184039](https://github.com/thfzm/AMARE/actions/runs/45474184039)
+Linux: [45476359088](https://github.com/thfzm/AMARE/actions/runs/45476359088)
 
 UI smoke scenario status:
 
@@ -168,19 +176,29 @@ UI smoke scenario status:
 | 9 | backup export | PASS |
 | 10 | 잘못된 backup import | PASS |
 | 11 | 정상 backup import | PASS |
-| 12 | idle timeout | **UNVERIFIED** (policy unit PASS only) |
-| 13 | Windows session lock | **UNVERIFIED** (code only) |
-| 14 | profile switch | **UNVERIFIED** (native/profile code; UI smoke 없음) |
-| 15 | 다중 창 lock 일관성 | **UNVERIFIED** (broadcast code only) |
+| 12 | idle timeout | **PASS (30s 단축)** / 실제 5분 UNVERIFIED |
+| 13 | Windows session lock | **UNVERIFIED** (SystemEvents 코드만) |
+| 14 | profile switch | **PASS** (Vault 격리 + 메뉴 current) |
+| 15 | 다중 창 lock 일관성 | **PASS** (실제 2창) |
 
-최초 실패:
+최초 실패와 분류:
 
 - `using Amare.Windows.Core` 누락 → build failure (PRODUCT_BUILD_DEFECT)
 - `ContentDialogButton.Cancel` 미존재 → build failure (PRODUCT_BUILD_DEFECT)
 - `VaultHost` Grid UIA 탐지 실패 → visible `VaultStatusText` 기준으로 변경
 - 두 번째 smoke에서 panel toggle로 닫힘 → panel open 상태 재사용
-- 최초 UI flake로 후속 `tear_off_tab`/`tab_churn`/multiwindow 실패
-  → panel 정리 후 동일 HEAD 재실행 51/51 PASS
+- profile switch status timeout → **기존 New Tab `data:` 차단 결함**이 status를
+  4,624자로 덮어씀. WebView2 영역 밖 범위라 수정하지 않고, profile 검증을
+  메뉴 `(current)` + Vault 격리로 변경.
+- 새 profile에서 `Not initialized` 미표시 → smoke helper가 Vault를 자동 생성
+  (TEST_AUTOMATION_BUG) → `OpenVault(autoPrimary:false)`
+- default 복귀 후 `Locked` 미표시 → **PRODUCT_DEFECT** (새 client가 기존 Vault를
+  `initialized=false`로 반환) → `VaultService::status` 수정 + 회귀 테스트 2개 추가
+- `tear_off_tab`/`certificate`/`new_window`/`session_multiwindow`/`websocket`
+  간헐 실패 → 기존 UI flake. 동일 HEAD 재실행 54/54 PASS, 최초 로그 보존.
+
+상세: `docs/AMARE_PHASE1_VAULT_UI_REPORT.md`,
+`artifacts/windows/phase1.3c/lock-verification/README.md`
 
 ---
 

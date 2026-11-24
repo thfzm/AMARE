@@ -1,6 +1,6 @@
 # AMARE Vault Security Design — Phase 1.2
 
-- 상태: **WinUI Vault UI 구현 완료 / WebView2 autofill 미구현, 일부 Windows 시나리오 UNVERIFIED**
+- 상태: **WinUI Vault UI + 잔여 lock 경계 검증 완료 / WebView2 autofill 미구현, 실기기 항목 UNVERIFIED**
 - 작성일: 2026-11-23
 - 기준: WinUI 3 + WebView2 + C#, Rust `amare-security`/`amare-platform`/`amare-store`
 - 관련 문서: `VAULT_THREAT_MODEL.md`, `VAULT_TEST_PLAN.md`, `AMARE_PHASE1_VAULT_AUDIT.md`
@@ -99,10 +99,22 @@
 - `VaultIdleMonitor` (5-minute default), `VaultSessionMonitor`
   (`SystemEvents.SessionSwitch`), `VaultWindowCoordinator` lock/unlock broadcasts.
 - `VaultClipboard`: explicit copy + best-effort 30-second cleanup.
-- UI smoke: 51/51 PASS (Vault: initialize/lock/unlock, CRUD/reveal/edit/backup).
-- **UNVERIFIED**: real 5-minute idle, actual session lock, UI profile-switch
-  isolation, multiwindow UI lock consistency, real Windows 11 session.
+- `VaultService::status` checks the persisted vault secret when in-memory state
+  is empty, so a fresh ABI 2 client reports `Locked` (not `Uninitialized`) for an
+  existing vault. Service/ABI 2 regression tests cover handle recreation.
+- UI smoke: **54/54 PASS**. Verified in real WinUI windows:
+  - profile switch isolation (new profile not initialized / 0 entries; returning
+    to the default profile requires unlock and preserves the account count)
+  - multiwindow lock/unlock broadcast (both windows change state)
+  - idle timeout using `AMARE_VAULT_IDLE_SECONDS=30` → native lock → UI clear
+  - CRUD/reveal/edit/backup export/import/validate and failed-import rollback
+- **UNVERIFIED**: real 5-minute idle, actual Windows session lock, real Windows
+  11 session/IME/DPI/accessibility.
 - **미구현**: WebView2 autofill/login capture/`get_for_fill`, Windows Hello.
+- 기존 결함: 이 WebView2 버전의 `NavigateToString`이 만드는 `data:text/html`
+  NavigationStarting을 `NavigationPolicy`가 차단해 New Tab 페이지가 비고 status에
+  전체 data URI가 기록된다. Phase 1.3C에서는 브라우저 영역을 변경하지 않았고,
+  별도 승인 후 수정해야 한다 (`docs/AMARE_PHASE1_VAULT_UI_REPORT.md` 13절).
 
 ### 1.4 GPUI Vault (참고, 복사 금지)
 
