@@ -517,6 +517,13 @@ public sealed partial class MainWindow : Window
             return;
         }
         _started = true;
+        StatusText.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
+        {
+            if (StatusText.Text.Length > 500)
+            {
+                AppLog.Info("DIAG long status set stack:\n" + Environment.StackTrace);
+            }
+        });
         try
         {
             await InitializeAsync();
