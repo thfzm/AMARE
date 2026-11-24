@@ -1167,13 +1167,17 @@ internal static class Program
 
     private static void OpenVault()
     {
-        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
-        InvokeMenu("Passwords…");
-        WaitFor(() =>
+        var existing = FindById("VaultStatusText");
+        if (existing is null || existing.Current.IsOffscreen)
         {
-            var status = FindById("VaultStatusText");
-            return status is not null && !status.Current.IsOffscreen;
-        }, TimeSpan.FromSeconds(15), "vault panel");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Passwords…");
+            WaitFor(() =>
+            {
+                var status = FindById("VaultStatusText");
+                return status is not null && !status.Current.IsOffscreen;
+            }, TimeSpan.FromSeconds(15), "vault panel");
+        }
         var primary = FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing");
         var label = primary.Current.Name;
         if (label.Contains("Create", StringComparison.OrdinalIgnoreCase)
