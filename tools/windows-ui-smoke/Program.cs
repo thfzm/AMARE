@@ -1187,7 +1187,6 @@ internal static class Program
         OpenVault();
         WaitVaultStatus("Unlocked");
         var before = CountVaultEntries();
-        Console.WriteLine($"DIAG pre-switch status={(FindById("StatusText")?.Current.Name ?? "<missing>")}");
         Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
         InvokeMenu("New profile…");
         WaitFor(() => FindByName("New profile") is not null, TimeSpan.FromSeconds(5), "new profile dialog");
@@ -1197,7 +1196,7 @@ internal static class Program
             ?? throw new InvalidOperationException("new profile name field missing");
         SetValue(edit, "vault-smoke-profile");
         InvokeDialogButton("New profile", "Create");
-        WaitForStatus("Profile: profile-", "profile switch");
+        AssertCurrentProfile("vault-smoke-profile");
         OpenVault();
         WaitVaultStatus("Not initialized");
         Require(CountVaultEntries() == 0, "new profile exposed old vault entries");
@@ -1207,7 +1206,7 @@ internal static class Program
 
         Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
         InvokeMenuContaining("Personal");
-        WaitForStatus("Profile: default", "default profile switch");
+        AssertCurrentProfile("Personal");
         OpenVault();
         WaitVaultStatus("Locked");
         Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
@@ -1217,38 +1216,23 @@ internal static class Program
         return "profile switch isolation";
     }
 
-    private static void WaitForStatus(string text, string description)
+    private static void AssertCurrentProfile(string expectedName)
     {
-        try
-        {
-            WaitFor(() => StatusTextContains(text), TimeSpan.FromSeconds(15), description);
-        }
-        catch (TimeoutException)
-        {
-            var status = FindById("StatusText");
-            Console.WriteLine($"DIAG {description}: status={(status is null ? "<missing>" : $"{status.Current.Name} offscreen={status.Current.IsOffscreen}")} mainTitle={_process?.MainWindowTitle} pid={_process?.Id} exited={_process?.HasExited}");
-            var windows = WindowsForProcess(_process!.Id);
-            Console.WriteLine($"DIAG {description}: windows={windows.Length} cachedHwnd={_window?.Current.NativeWindowHandle} mainHwnd={_process!.MainWindowHandle.ToInt64()}");
-            foreach (var window in windows)
-            {
-                var freshStatus = FindByIdIn(window, "StatusText");
-                Console.WriteLine($"DIAG {description}: window hwnd={window.Current.NativeWindowHandle} title={window.Current.Name} status={(freshStatus is null ? "<missing>" : freshStatus.Current.Name)} count={window.FindAll(TreeScope.Descendants, Condition.TrueCondition).Count}");
-            }
-            CaptureWindow("vault-profile-switch-failure");
-            DumpTree();
-            var handle = _process!.MainWindowHandle;
-            if (handle != IntPtr.Zero)
-            {
-                var fresh = AutomationElement.FromHandle(handle);
-                Console.WriteLine($"DIAG {description}: fresh main window title={fresh.Current.Name} status={(FindByIdIn(fresh, "StatusText")?.Current.Name ?? "<missing>")}");
-                var stale = _window;
-                _window = fresh;
-                DumpTree();
-                _window = stale;
-            }
-            throw;
-        }
+        Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
+        WaitFor(() => ProfileMenuCurrentItem()?.Contains(expectedName, StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(15), $"current profile {expectedName}");
+        SetForegroundWindow(_process!.MainWindowHandle);
+        SendKeys.SendWait("{ESC}");
+        WaitFor(() => ProfileMenuCurrentItem() is null, TimeSpan.FromSeconds(5), "profile menu close");
     }
+
+    private static string? ProfileMenuCurrentItem() =>
+        AutomationElement.RootElement.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem))
+            .Cast<AutomationElement>()
+            .Select(item => item.Current.Name)
+            .FirstOrDefault(name => name.Contains("(current)", StringComparison.OrdinalIgnoreCase));
 
     private static string VaultMultiwindowLock()
     {
