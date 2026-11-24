@@ -1117,6 +1117,11 @@ internal static class Program
         Invoke(FindById("VaultRevealButton") ?? throw new InvalidOperationException("VaultRevealButton missing"));
         WaitText("VaultRevealStateText", "Password hidden");
 
+        Invoke(FindById("VaultEditButton") ?? throw new InvalidOperationException("VaultEditButton missing"));
+        SetValue(FindById("VaultSiteBox") ?? throw new InvalidOperationException("VaultSiteBox missing"), "Vault smoke edited");
+        Invoke(FindById("VaultSaveButton") ?? throw new InvalidOperationException("VaultSaveButton missing"));
+        WaitText("VaultDetailTitle", "Vault smoke edited");
+
         var backupPath = Path.Combine(Path.GetTempPath(), $"amare-vault-smoke-{Environment.ProcessId}.amarevault");
         OpenVaultBackupMenu("Export encrypted backup…");
         SetVaultPasswordField("VaultBackupPassword", "Vault-Backup-Password");
@@ -1125,6 +1130,15 @@ internal static class Program
         InvokeDialogButton("Export encrypted backup", "Export");
         WaitFor(() => File.Exists(backupPath), TimeSpan.FromSeconds(10), "vault backup file");
         Require(new FileInfo(backupPath).Length > 0, "vault backup empty");
+
+        OpenVaultBackupMenu("Import backup…");
+        SetVaultPasswordField("VaultBackupPassword", "wrong-password");
+        SetValue(FindById("VaultBackupPath") ?? throw new InvalidOperationException("VaultBackupPath missing"), backupPath);
+        InvokeDialogButton("Import encrypted backup", "Import");
+        WaitFor(() => FindById("VaultErrorText")?.Current.Name.Contains("authenticated", StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(10), "vault import failure");
+        Require(CountVaultEntries() == before + 1, "failed import changed entries");
+        EscapeDialog("Import encrypted backup");
 
         Invoke(FindById("VaultDeleteButton") ?? throw new InvalidOperationException("VaultDeleteButton missing"));
         WaitFor(() => FindByName("Delete account?") is not null, TimeSpan.FromSeconds(5), "delete dialog");
