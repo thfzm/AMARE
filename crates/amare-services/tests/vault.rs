@@ -298,6 +298,19 @@ fn wrong_format_and_wrong_aad_are_rejected() {
 }
 
 #[test]
+fn existing_key_without_vault_initializes_empty_without_new_key() {
+    let (_dir, root, profile, protector) = fixture(PROFILE);
+    let vault = service(&root, &profile, &protector);
+    KeyFile::new(vault.key_path())
+        .load_or_create(protector.as_ref(), KEY_CONTEXT)
+        .unwrap();
+    let before = std::fs::read(vault.key_path()).unwrap();
+    let status = vault.initialize().unwrap();
+    assert_eq!(status.entry_count, 0);
+    assert_eq!(std::fs::read(vault.key_path()).unwrap(), before);
+}
+
+#[test]
 fn missing_and_corrupt_key_files_are_preserved() {
     let (_dir, root, profile, protector) = fixture(PROFILE);
     let vault = service(&root, &profile, &protector);
