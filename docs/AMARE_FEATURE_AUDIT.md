@@ -290,8 +290,14 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - DB schema 변경 없이 기존 `secrets` 테이블 1행에 Vault blob 저장 가능.
 - key file은 DB 밖 `<root>\vault\<profile>.key`, DPAPI user scope.
 - 자동완성은 exact origin + HTTPS + top-level + explicit Fill + no auto-submit.
+- Phase 1.3A에서 Rust Vault Core를 구현/검증했다:
+  - `VaultService` initialize/unlock/lock/list/get/create/update/delete/export/import
+  - XChaCha20-Poly1305, profile AAD, strict format 1, CAS, key-file lock
+  - Linux Vault **23/23**, Windows **24/24**, `windows_dpapi_vault_roundtrip` PASS
+- 아직 없음: FFI ABI 2, C# client, WinUI Vault UI, WebView2 자동완성.
 - 상세: `docs/VAULT_SECURITY_DESIGN.md`, `docs/VAULT_THREAT_MODEL.md`,
-  `docs/VAULT_TEST_PLAN.md`, `docs/AMARE_PHASE1_VAULT_AUDIT.md`.
+  `docs/VAULT_TEST_PLAN.md`, `docs/AMARE_PHASE1_VAULT_AUDIT.md`,
+  `docs/AMARE_PHASE1_VAULT_CORE_REPORT.md`.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
@@ -319,7 +325,8 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - `KeyFile` + `WindowsDpapiKeyProtector`의 DPAPI user-scope 테스트가 Windows
   CI에서 PASS했다 (`platform_key_tests`).
 - 그러나 WinUI에는 Vault UI/잠금/복구/자동완성이 없다.
-- **FFI에 `secrets.*`/`vault.*` method가 없어** C#에서 Rust Vault를 호출할 수 없다.
+- Phase 1.3A에서 Rust `VaultService`를 구현했지만 `amare-ffi`에는 아직
+  `vault.*` method가 없어 C#에서 호출할 수 없다.
 - AI 키는 Windows Credential Manager에 저장된다.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
@@ -528,7 +535,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — 감사/설계 완료 (Phase 1.2)** | `PasswordVault`는 AI 키에만 사용; Rust VaultService/FFI/UI 구현 필요 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — Rust Core 완료 (Phase 1.3A)** | Rust VaultService PASS; FFI ABI 2/UI/자동완성 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포
@@ -617,7 +624,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - 따라서 “WinUI로 다시 만들기”가 아니라 **검증된 것을 유지하고 결손만 메우는**
   전략이 맞다.
 - 개인용 완료를 막는 진짜 결손은 다음 두 가지다.
-  1. 비밀번호 관리자/Vault
+  1. 비밀번호 관리자/Vault (Rust Core 완료, FFI/UI 미구현)
   2. 실제 Windows 11 실기기 입력/통합 검증
 - 멀티윈도우 세션 데이터 모델(P0-1)은 Phase 1.1에서 해결·검증했다.
   상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`.

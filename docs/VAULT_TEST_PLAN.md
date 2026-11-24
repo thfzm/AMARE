@@ -20,6 +20,76 @@ CI Windows runner와 Windows 11 실기기 결과를 별도로 기록한다.
 
 ---
 
+## 1.1 Phase 1.3A 실제 결과 (Rust Core)
+
+| 항목 | 결과 |
+|---|---|
+| Rust Vault Core (Linux) | **23/23 PASS** |
+| Rust Vault Core (Windows) | **24/24 PASS** (`windows_dpapi_vault_roundtrip` 포함) |
+| `amare-security` | 11/11 PASS |
+| `amare-store` | 79/79 PASS (storage 13/13) |
+| `amare-services` 기존 | 38/38 PASS |
+| `amare-ffi` | 7/7 PASS |
+| C# interop | 76/76 PASS |
+| Windows CI 재실행 | 143 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED |
+| WinUI UI smoke | 49/49 PASS (재실행) |
+
+T01–T35 상태 (이번 단계 범위 기준):
+
+| ID | 상태 | 비고 |
+|---|---|---|
+| T01 wrong key | PASS | `wrong_key_does_not_change_existing_vault` |
+| T02 ciphertext 1-byte | PASS | `ciphertext_and_tag_tamper...` |
+| T03 tag tamper | PASS | 동일 |
+| T04 nonce | PASS | 24-byte, 저장마다 상이 |
+| T05 format/version | PASS | format 2 거부 |
+| T06 DB schema | PASS | schema v5, 새 table 없음 |
+| T07 kill during save | **UNVERIFIED** | Rust process-kill 주입은 이번 단계 미구현 |
+| T08 concurrent save | PASS | CAS + simultaneous initialize |
+| T09 DPAPI failure | PASS | failing protector; Windows DPAPI round-trip PASS |
+| T10 different Windows account | **UNVERIFIED** | 별도 계정 실기기 필요 |
+| T11 lock plaintext | PASS | locked list/get/create/export 차단 |
+| T12 wrong origin | PASS | `get_for_fill` exact origin |
+| T13 iframe autofill | **UNVERIFIED** | WinUI/WebView2 범위 밖 |
+| T14 lookalike | **PARTIAL** | core origin normalize test; UI 미구현 |
+| T15 delete/tombstone | PASS (논리 삭제) | 물리 삭제/백업 잔존 미검증 |
+| T16 logs/status | PASS (unit) | log redaction test; UI log 미검증 |
+| T17 AAD/profile | PASS | wrong AAD 거부 |
+| T18 key missing | PASS | 원본 보존 |
+| T19 vault missing + key | PASS | existing key 유지, empty vault 초기화 |
+| T20 export/import | PASS | wrong password/corrupt 원본 보존 |
+| T21 backup key absent | **UNVERIFIED** | UI/정책 미구현 |
+| T22 built-in autofill disable | **UNVERIFIED** | WinUI 범위 밖 |
+| T23 existing autofill clear | **UNVERIFIED** | WinUI 범위 밖 |
+| T24 HTTP/HTTPS | **UNVERIFIED** | WinUI 범위 밖 |
+| T25 form action | **UNVERIFIED** | WinUI 범위 밖 |
+| T26 hidden field | **UNVERIFIED** | WinUI 범위 밖 |
+| T27 username field | **UNVERIFIED** | WinUI 범위 밖 |
+| T28 clipboard | **UNVERIFIED** | WinUI 범위 밖 |
+| T29 idle lock | **UNVERIFIED** | WinUI 범위 밖 |
+| T30 session lock | **UNVERIFIED** | WinUI 범위 밖 |
+| T31 multiwindow lock | **PARTIAL** | Vault Core lock만; UI 다중 창 미구현 |
+| T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
+| T33 crash dump | **UNVERIFIED** | 정책 미구현 |
+| T34 redaction | PASS (unit) | error Display 검사 |
+| T35 ABI mismatch | **N/A** | ABI 2 미구현, ABI 1 유지 |
+
+최초 실패:
+
+```text
+cas_rejects_stale_writer_and_allows_reload
+Conflict { expected: <db version>, actual: <newer db version> }
+```
+
+원인: 초기 `unlock`이 이미 unlocked state를 reload하지 않아 stale writer가
+재시도하지 못함. **PRODUCT_DEFECT (초기 구현)** → unlock always reload로 수정.
+
+Windows UI smoke 최초 실행 실패 (session_multiwindow_restore stale UIA,
+websocket NewTabButton missing)는 **TEST_AUTOMATION_BUG/ENVIRONMENT_LIMITATION**;
+동일 HEAD 재실행 49/49 PASS. 최초 실패는 보존한다.
+
+---
+
 ## 2. 테스트 픽스처
 
 - `vault-v1-fixture.bin`: format 1, entry 2개, tombstone 1개

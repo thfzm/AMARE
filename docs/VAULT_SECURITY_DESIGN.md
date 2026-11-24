@@ -1,6 +1,6 @@
 # AMARE Vault Security Design — Phase 1.2
 
-- 상태: **설계 제안 / 승인 대기 (구현 없음)**
+- 상태: **설계 승인 / Rust Vault Core 구현 완료 (FFI·UI 미구현)**
 - 작성일: 2026-11-23
 - 기준: WinUI 3 + WebView2 + C#, Rust `amare-security`/`amare-platform`/`amare-store`
 - 관련 문서: `VAULT_THREAT_MODEL.md`, `VAULT_TEST_PLAN.md`, `AMARE_PHASE1_VAULT_AUDIT.md`
@@ -62,7 +62,21 @@
 - `ProfileDataCleanup`은 WebView2 폴더만 정리한다. Vault 키 파일 정리 정책이 없다.
 - `ProfilePathPolicy`는 profile id를 영숫자/`-`/`_`/`.`로 제한한다.
 
-### 1.3 GPUI Vault (참고, 복사 금지)
+### 1.3 Rust Vault Core 구현 상태 (Phase 1.3A)
+
+- `crates/amare-services/src/vault.rs`:
+  - `VaultService::{initialize,unlock,lock,status,list_entries,get_entry,get_for_fill,create_entry,update_entry,delete_entry,export_backup,validate_backup,import_backup}`
+  - format 1 strict, generation/revision/tombstone, exact origin
+  - XChaCha20-Poly1305 + per-profile AAD
+  - `KeyFile` + injected `KeyProtector`, per-profile key path
+  - `fs2` key-file exclusive lock + key revalidation
+  - `SecretRepository::set_with_aad_cas` (DB schema v5 유지)
+  - Argon2id Master Password backup export/import
+- 테스트: Linux Vault 23/23, Windows 24/24 (`windows_dpapi_vault_roundtrip` 포함)
+- **아직 없음**: FFI ABI 2, C# client, WinUI UI, WebView2 자동완성, Master Password UI,
+  Windows Hello, 자동 잠금/session lock, key rotation.
+
+### 1.4 GPUI Vault (참고, 복사 금지)
 
 `apps/amare-gpui/src/password_vault.rs`:
 
@@ -471,12 +485,12 @@ v1 최소안:
 
 | 단계 | 내용 | 예상 |
 |---|---|---:|
-| 1 | Rust VaultService (format, crypto, key file, CAS, profile path) | 5–8일 |
-| 2 | FFI ABI 2 + C# Session/Vault client + error mapping | 3–5일 |
-| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | 5–7일 |
-| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | 5–8일 |
-| 5 | Backup/export/recovery + clipboard + logs/memory hardening | 4–6일 |
-| 6 | Failure tests, security review, Windows 11 real-device | 5–8일 |
+| 1 | Rust VaultService (format, crypto, key file, CAS, profile path) | **DONE (Phase 1.3A)** |
+| 2 | FFI ABI 2 + C# Session/Vault client + error mapping | **다음 단계** |
+| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **미구현** |
+| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **미구현** |
+| 5 | Backup/export/recovery + clipboard + logs/memory hardening | **Rust export/import DONE; UI 미구현** |
+| 6 | Failure tests, security review, Windows 11 real-device | **Core PASS; 전체 미완료** |
 | **합계** | | **27–42 person-days** |
 
 기존 계획의 5–8일은 “최소 저장/조회” 기준이며, 자동완성·복구·보안 검증을

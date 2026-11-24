@@ -51,7 +51,7 @@
 
 ### Phase 1.2 진행 상태
 
-- **P0-2 Vault: 보안 감사/설계 완료, 구현 전**
+- **P0-2 Vault: 보안 감사/설계 완료**
 - 재사용: XChaCha20-Poly1305 + KeyFile + DPAPI, 기존 `secrets` 테이블
 - DB schema 변경 없이 whole-blob Vault 가능
 - key file 분리, exact origin, top-level autofill, no auto-submit
@@ -59,6 +59,15 @@
 - 상세: `docs/AMARE_PHASE1_VAULT_AUDIT.md`,
   `docs/VAULT_THREAT_MODEL.md`, `docs/VAULT_SECURITY_DESIGN.md`,
   `docs/VAULT_TEST_PLAN.md`
+
+### Phase 1.3A 진행 상태
+
+- **Rust Vault Core 완료** (`22e3e51`)
+- `VaultService` CRUD/lock/CAS/export/import, profile AAD, format 1, key-file lock
+- Linux Vault 22/22, Windows 23/23, DPAPI round-trip PASS
+- DB schema **v5 유지**
+- 아직 없음: FFI ABI 2, C# client, WinUI UI, WebView2 자동완성
+- 상세: `docs/AMARE_PHASE1_VAULT_CORE_REPORT.md`
 
 ---
 
@@ -220,7 +229,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 | 작업 | 내용 | 예상 |
 |---|---|---:|
 | 1-1 멀티윈도우 세션 | 창 ID/그룹 모델, migration, 창별 저장/복원, 마지막 창 판정 | **DONE** (`bcd476d`) |
-| 1-2 비밀번호/Vault | Rust 암호화 + Windows 보호 저장소, 저장/자동완성/잠금/삭제 | **감사/설계 DONE; 구현 27–42일** |
+| 1-2 비밀번호/Vault | Rust 암호화 + Windows 보호 저장소, 저장/자동완성/잠금/삭제 | **Rust Core DONE; FFI/UI 남음** |
 | 1-3 Win11 조기 스모크 | 실행/navigation/IME/DPI/Snap/Alt+Tab 1차 확인 | 1–2일 |
 | 1-4 WinUI A/B fixture | A/B 독립 navigation, HTTP counter, readiness | 1–2일 |
 | 1-5 lifecycle/장시간 | 탭 30/50, 창 3, 반복 open/close, 핸들/메모리 | 1–2일 |
@@ -236,7 +245,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 - 실제 Win11 핵심 스모크 PASS
 - 새 기능의 최초 실패/재시도 기록 존재
 
-**예상:** **31–48 person-days (남은 Phase 1)** — Phase 1.2 Vault 감사 결과 27–42일 반영
+**예상:** **22–34 person-days (남은 Phase 1)** — Rust Core 완료분 제외
 
 > 기존 12–22일 추정은 세션 P0만 기준이었다. Vault 구현/자동완성/보안 검증을
 > 포함하면 상향이 필요하다.
@@ -314,13 +323,13 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 
 | 구분 | 예상 |
 |---|---|
-| Phase 1 (남은) | **31–48 person-days** |
+| Phase 1 (남은) | **22–34 person-days** |
 | Phase 2 | 13–22 person-days |
 | Phase 3 | 5–8 person-days + 실기기 |
 | Phase 4 | 4–6 person-days |
-| 합계 (남은) | **53–84 person-days** |
-| full-time 1인 | **11–17주** |
-| part-time | **4–7개월** |
+| 합계 (남은) | **44–70 person-days** |
+| full-time 1인 | **9–14주** |
+| part-time | **3.5–6개월** |
 
 Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/복구/실패 테스트)가
 확인되어 기존 12–22일 추정을 상향했다.
@@ -390,11 +399,11 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
    - v5 migration dry-run, 원본 hash 불변
 5. ~~멀티윈도우 세션 구현~~ **DONE** (`bcd476d`)
    - 창별 저장/복원, 마지막 창 판정, 강제 종료
-6. **비밀번호/Vault 구현 (감사/설계 완료, 승인 대기)**
-   - Rust VaultService + 기존 `secrets` 테이블 (DB 변경 없음)
-   - KeyFile + DPAPI, 5분 idle lock, exact origin, top-level, no auto-submit
-   - WebView2 내장 autofill 비활성 + 동의 후 clear
-   - Master Password export/복구 정책 승인 필요
+6. **비밀번호/Vault 구현 (Rust Core 완료)**
+   - FFI ABI 2 `vault.*` + C# client/error mapping
+   - WinUI Vault UI + 5분 idle lock
+   - WebView2 exact origin/top-level/no auto-submit + builtin autofill disable/clear
+   - Master Password export/복구 UI
 7. **WinUI A/B fixture 테스트**
    - HTTP counter/readiness
    - A/B 독립 navigation, 다른 창 불변 확인
