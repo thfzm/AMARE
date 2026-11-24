@@ -22,6 +22,11 @@ pub enum StoreError {
     },
     #[error("security error: {0}")]
     Security(#[from] SecurityError),
+    #[error("concurrent update conflict: expected {expected:?}, actual {actual:?}")]
+    Conflict {
+        expected: Option<i64>,
+        actual: Option<i64>,
+    },
     #[error("database is corrupt or incomplete: {0}")]
     Corrupt(String),
 }

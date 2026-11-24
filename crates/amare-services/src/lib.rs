@@ -8,6 +8,7 @@ mod error;
 mod profile;
 mod search;
 mod settings;
+pub mod vault;
 
 pub use context::ProfileContext;
 pub use error::ServiceError;

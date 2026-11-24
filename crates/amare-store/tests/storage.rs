@@ -451,6 +451,42 @@ fn encrypted_secret_round_trip_and_wrong_key() {
 }
 
 #[test]
+fn secret_aad_and_cas_are_independent_of_legacy_set() {
+    let (_dir, store, id) = setup();
+    let profile = store.open_profile(&id).unwrap();
+    let secrets = profile.secrets();
+    let key = [4u8; 32];
+    let aad = b"amare.winui.password-vault.v1:p1";
+    let version = secrets
+        .set_with_aad_cas("vault", "security", b"first", &key, aad, None)
+        .unwrap();
+    assert_eq!(secrets.version("vault").unwrap(), Some(version));
+    assert_eq!(
+        secrets.get_with_aad("vault", &key, aad).unwrap().unwrap(),
+        b"first"
+    );
+    assert!(matches!(
+        secrets.get_with_aad("vault", &key, b"wrong-aad"),
+        Err(StoreError::Security(_))
+    ));
+    assert!(matches!(
+        secrets.set_with_aad_cas("vault", "security", b"stale", &key, aad, None),
+        Err(StoreError::Conflict { .. })
+    ));
+    let next = secrets
+        .set_with_aad_cas("vault", "security", b"second", &key, aad, Some(version))
+        .unwrap();
+    assert!(next > version);
+    assert_eq!(
+        secrets.get_with_aad("vault", &key, aad).unwrap().unwrap(),
+        b"second"
+    );
+    // Legacy set/get still use key-name AAD and do not disturb the vault row.
+    secrets.set("api.key", "ai", b"legacy", &key).unwrap();
+    assert_eq!(secrets.get("api.key", &key).unwrap().unwrap(), b"legacy");
+}
+
+#[test]
 fn rejects_unsafe_profile_ids() {
     let dir = tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
