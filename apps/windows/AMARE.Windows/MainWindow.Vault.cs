@@ -475,6 +475,7 @@ public sealed partial class MainWindow
 
     private async Task OpenVaultPanelAsync()
     {
+        AppLog.Info("Vault panel requested");
         if (_vaultOpen)
         {
             await CloseVaultPanelAsync();
@@ -486,9 +487,11 @@ public sealed partial class MainWindow
         WebViewHost.Visibility = Visibility.Collapsed;
         VaultHost.Visibility = Visibility.Visible;
         _vaultOpen = true;
+        AppLog.Info("Vault panel visible");
         VaultIdleMonitor.Touch();
         if (!EnsureVaultClient())
         {
+            AppLog.Warn("Vault client creation failed");
             _vaultState = VaultUiState.Error;
             VaultStatusText.Text = "Unavailable";
             VaultPrimaryActionButton.IsEnabled = false;
@@ -497,6 +500,7 @@ public sealed partial class MainWindow
             VaultLockedDetail.Text = "The Windows-protected vault service could not be initialized.";
             return;
         }
+        AppLog.Info("Vault client ready");
         await RefreshVaultStateAsync();
     }
 

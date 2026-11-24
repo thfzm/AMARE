@@ -1145,7 +1145,11 @@ internal static class Program
         WaitFor(() => StatusTextContains("Backup valid"), TimeSpan.FromSeconds(10), "vault backup validation");
 
         Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
-        WaitFor(() => FindById("VaultHost") is null, TimeSpan.FromSeconds(10), "vault panel close");
+        WaitFor(() =>
+        {
+            var status = FindById("VaultStatusText");
+            return status is null || status.Current.IsOffscreen;
+        }, TimeSpan.FromSeconds(10), "vault panel close");
         try { File.Delete(backupPath); } catch { }
         return "vault CRUD/reveal/backup export/import/validate";
     }
@@ -1165,7 +1169,11 @@ internal static class Program
     {
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Passwords…");
-        WaitFor(() => FindById("VaultHost") is not null, TimeSpan.FromSeconds(10), "vault panel");
+        WaitFor(() =>
+        {
+            var status = FindById("VaultStatusText");
+            return status is not null && !status.Current.IsOffscreen;
+        }, TimeSpan.FromSeconds(15), "vault panel");
         var primary = FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing");
         var label = primary.Current.Name;
         if (label.Contains("Create", StringComparison.OrdinalIgnoreCase)
