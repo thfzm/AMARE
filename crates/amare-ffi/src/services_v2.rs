@@ -171,9 +171,20 @@ impl AmareVaultServices {
                 .profiles
                 .lock()
                 .map_err(|_| VaultFailure::internal("profile service poisoned"))?;
-            profiles
-                .profile_store(context)
-                .map_err(VaultFailure::from)?;
+            // ABI 2 owns a separate ProfileService instance, so its in-memory
+            // generation counter is not comparable to ABI 1's generation. The
+            // profile registry remains the authority for existence/deletion;
+            // the caller's generation is used to lock cached vault state when
+            // it changes (see below).
+            if !profiles
+                .exists(&context.profile_id)
+                .map_err(VaultFailure::from)?
+            {
+                return Err(VaultFailure::new(
+                    AMARE_ERR_VAULT_PROFILE,
+                    "profile is not available",
+                ));
+            }
             profiles.root_dir().map_err(VaultFailure::from)?
         };
         let key = context.profile_id.as_str().to_string();
@@ -667,7 +678,7 @@ mod tests {
         let wrong_context = json!({
             "version":2,
             "method":"vault.status",
-            "params":{"context":{"profile_id":"p1","generation":999}}
+            "params":{"context":{"profile_id":"missing","generation":999}}
         });
         let error = call(service, wrong_context).unwrap_err();
         assert_eq!(error.0, AMARE_ERR_VAULT_PROFILE);
