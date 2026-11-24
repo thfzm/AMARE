@@ -2970,6 +2970,15 @@ public sealed partial class MainWindow : Window
             await RestoreSessionOrNewTabAsync();
             AppLog.Info($"Profile switched to {id}");
             StatusText.Text = $"Profile: {id}";
+            LogProfileStatusProbe("immediate");
+            var probe = _dispatcher.CreateTimer();
+            probe.Interval = TimeSpan.FromSeconds(3);
+            probe.Tick += (_, _) =>
+            {
+                probe.Stop();
+                LogProfileStatusProbe("after-3s");
+            };
+            probe.Start();
         }
         catch (Exception exception)
         {
@@ -2990,6 +2999,13 @@ public sealed partial class MainWindow : Window
                 StatusText.Text = $"Profile recovery failed: {recovery.Message}";
             }
         }
+    }
+
+    private void LogProfileStatusProbe(string stage)
+    {
+        AppLog.Info($"Profile status probe {stage}: length={StatusText.Text.Length} " +
+                    $"loaded={StatusText.IsLoaded} visibility={StatusText.Visibility} " +
+                    $"height={StatusText.ActualHeight:0} root={RootGrid.ActualHeight:0}");
     }
 
     private async Task CreateProfileAsync()

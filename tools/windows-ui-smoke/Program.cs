@@ -1187,6 +1187,7 @@ internal static class Program
         OpenVault();
         WaitVaultStatus("Unlocked");
         var before = CountVaultEntries();
+        Console.WriteLine($"DIAG pre-switch status={(FindById("StatusText")?.Current.Name ?? "<missing>")}");
         Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
         InvokeMenu("New profile…");
         WaitFor(() => FindByName("New profile") is not null, TimeSpan.FromSeconds(5), "new profile dialog");
