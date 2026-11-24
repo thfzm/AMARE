@@ -298,7 +298,19 @@ impl VaultService {
 
     pub fn status(&self) -> Result<VaultStatus, VaultError> {
         let state = self.state.lock().map_err(|_| VaultError::Corrupt)?;
-        Ok(self.snapshot(&state))
+        let mut status = self.snapshot(&state);
+        if !status.initialized {
+            // A fresh client/handle must distinguish a persisted vault from a
+            // never-initialized profile before the user unlocks it.
+            let store = self.store.lock().map_err(|_| VaultError::Corrupt)?;
+            let profile = store.open_profile(&self.profile)?;
+            status.initialized = profile
+                .secrets()
+                .version(VAULT_SECRET_KEY)
+                .map_err(map_store_error)?
+                .is_some();
+        }
+        Ok(status)
     }
 
     pub fn list_entries(&self) -> Result<Vec<VaultEntryView>, VaultError> {

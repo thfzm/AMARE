@@ -1075,10 +1075,6 @@ public sealed partial class MainWindow : Window
             if (decision == NavigationDecision.Block)
             {
                 args.Cancel = true;
-                var blockedScheme = Uri.TryCreate(args.Uri, UriKind.Absolute, out var blockedUri)
-                    ? blockedUri.Scheme
-                    : "invalid";
-                AppLog.Info($"Blocked navigation scheme={blockedScheme} length={args.Uri.Length}");
                 StatusText.Text = $"Blocked navigation: {args.Uri}";
                 return;
             }

@@ -97,6 +97,27 @@ fn initialize_creates_key_and_empty_vault_without_schema_change() {
 }
 
 #[test]
+fn status_reports_existing_vault_before_unlock() {
+    let (_dir, root, profile, protector) = fixture(PROFILE);
+    {
+        let vault = service(&root, &profile, &protector);
+        vault.initialize().unwrap();
+        create(&vault, "https://example.com", "alice", "secret");
+    }
+
+    let reopened = service(&root, &profile, &protector);
+    let status = reopened.status().unwrap();
+    assert!(status.initialized, "persisted vault must be detected");
+    assert!(!status.unlocked, "reopened vault must stay locked");
+    assert_eq!(status.entry_count, 0);
+    assert!(status.key_present);
+
+    let unlocked = reopened.unlock().unwrap();
+    assert!(unlocked.unlocked);
+    assert_eq!(unlocked.entry_count, 1);
+}
+
+#[test]
 fn create_update_delete_keep_generation_and_revision_monotonic() {
     let (_dir, root, profile, protector) = fixture(PROFILE);
     let vault = service(&root, &profile, &protector);

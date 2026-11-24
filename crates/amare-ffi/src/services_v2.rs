@@ -684,6 +684,40 @@ mod tests {
     }
 
     #[test]
+    fn abi2_status_detects_persisted_vault_after_recreate() {
+        let dir = tempdir().unwrap();
+        let context = context(dir.path());
+        let protector = Arc::new(InMemoryKeyProtector::random());
+        let first = create_handle_with(dir.path(), protector.clone());
+        call(first, make_request(&context, "vault.initialize", json!({}))).unwrap();
+        call(
+            first,
+            make_request(
+                &context,
+                "vault.create",
+                json!({
+                    "origin": "https://example.com",
+                    "username": "reexisting",
+                    "password": "top-secret",
+                    "title": "Example"
+                }),
+            ),
+        )
+        .unwrap();
+        unsafe { amare_services_abi2_destroy(first) };
+
+        let second = create_handle_with(dir.path(), protector);
+        let status = call(second, make_request(&context, "vault.status", json!({}))).unwrap();
+        assert_eq!(status["initialized"], true);
+        assert_eq!(status["unlocked"], false);
+        assert_eq!(status["entry_count"], 0);
+        let unlocked = call(second, make_request(&context, "vault.unlock", json!({}))).unwrap();
+        assert_eq!(unlocked["unlocked"], true);
+        assert_eq!(unlocked["entry_count"], 1);
+        unsafe { amare_services_abi2_destroy(second) };
+    }
+
+    #[test]
     fn abi2_conflict_and_backup_flow() {
         let dir = tempdir().unwrap();
         let context = context(dir.path());
