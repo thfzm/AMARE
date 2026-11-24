@@ -386,11 +386,6 @@ internal static class Program
             Check("history_dialog", OpenAndCloseHistory);
             Check("bookmarks_menu", OpenAndCloseBookmarks);
             Check("downloads_menu", OpenAndCloseDownloads);
-            Check("vault_ui_initialize_lock_unlock", VaultInitializeLockUnlock);
-            Check("vault_ui_crud_reveal_backup", VaultCrudRevealBackup);
-            Check("vault_ui_profile_switch_isolation", VaultProfileSwitchIsolation);
-            Check("vault_ui_multiwindow_lock", VaultMultiwindowLock);
-            Check("vault_ui_idle_lock", VaultIdleLock);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("new_window_button", OpenAndCloseNewWindowButton);
@@ -404,6 +399,14 @@ internal static class Program
             Check("session_restore", RestartAndCheckSession);
             Check("session_restore_forced", RestartAfterForcedKill);
             Check("session_multiwindow_restore", SessionMultiwindowRestore);
+            // Vault lifetime tests open extra windows and switch profiles; run them
+            // after the existing window/session regression tests to avoid changing
+            // their focus and session-restore preconditions.
+            Check("vault_ui_initialize_lock_unlock", VaultInitializeLockUnlock);
+            Check("vault_ui_crud_reveal_backup", VaultCrudRevealBackup);
+            Check("vault_ui_profile_switch_isolation", VaultProfileSwitchIsolation);
+            Check("vault_ui_multiwindow_lock", VaultMultiwindowLock);
+            Check("vault_ui_idle_lock", VaultIdleLock);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
