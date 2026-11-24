@@ -3,7 +3,7 @@
 - 상태: **WinUI Vault UI PASS / 잔여 lock 경계 검증 PASS / Windows session lock·실기기 항목 UNVERIFIED**
 - Branch: `feature/phase-1-vault-ui`
 - 시작 HEAD: `4ca823e` (`feature/phase-1-vault-ffi`)
-- 최종 제품/테스트 HEAD: **`e645a3f`**
+- 최종 제품/테스트 HEAD: **`8076759`**
 - 문서 HEAD: 이 보고서를 포함한 문서 commit
 - 작성일: 2026-11-24
 - 범위: WinUI Vault UI, ABI 2 client 수명, lock 경계, clipboard, backup UI.
@@ -20,7 +20,7 @@
 | 시작 HEAD | `4ca823e` |
 | 작업 branch | **`feature/phase-1-vault-ui`** |
 | 1차 UI 제품/테스트 HEAD | `7e09d04` |
-| 잔여 lock 검증 제품/테스트 HEAD | **`e645a3f`** |
+| 잔여 lock 검증 제품/테스트 HEAD | **`8076759`** |
 | Working tree | clean (문서 commit 전) |
 | Stash | `stash@{0}` 보존 |
 | Phase 1.3A/1.3B | 보존 |
@@ -49,6 +49,7 @@ cfb4b4b Log vault status and profile isolation timeout details
 458ff68 Do not auto-create vault during profile isolation smoke
 94aae57 Report persisted vault state before unlock
 e645a3f Run vault lifetime smoke after window regression tests
+8076759 Cap vault idle override at the five minute maximum
 ```
 
 > `c12e52f`~`2bc2c96`은 실패 원인 진단을 위한 임시 계측이고,
@@ -158,6 +159,8 @@ Vault는 기존 AI/Reader와 같은 **콘텐츠 오버레이 패널**로 통합�
 ## 6. Idle / Session lock
 
 - 기본 idle timeout **5분** (`VaultIdlePolicy`, unit test PASS).
+- `AMARE_VAULT_IDLE_SECONDS` override는 테스트용으로 **단축만** 허용하며 5분을
+  넘길 수 없다.
 - `VaultIdleMonitor` 단일 timer (5초 tick), 모든 창이 공유.
 - 활동 감지: RootGrid pointer/key, Window Activated, Vault UI 조작.
 - **WebView2 페이지 내부 입력은 자동 감지 범위 밖** (문서화된 한계).
@@ -227,8 +230,8 @@ idle 만료 → native `vault.lock` → 목록/상세 제거 → 재unlock까지
 | Windows CI 최종 | **147 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** |
 | Linux CI | **SUCCESS** |
 
-Windows 최종: [45474184039](https://github.com/thfzm/AMARE/actions/runs/45474184039)
-Linux 최종: [45476359088](https://github.com/thfzm/AMARE/actions/runs/45476359088)
+Windows 최종: [45477499016](https://github.com/thfzm/AMARE/actions/runs/45477499016)
+Linux 최종: [45480021199](https://github.com/thfzm/AMARE/actions/runs/45480021199)
 
 Vault UI smoke:
 
@@ -252,7 +255,8 @@ PASS vault_ui_idle_lock
 
 - `artifacts/windows/phase1.3c/` — 1차 51/51 증거 (기존)
 - `artifacts/windows/phase1.3c/lock-verification/`
-  - `final-45474184039/` — 최종 54/54, Windows 147/0
+  - `final-45477499016/` — 최종 54/54, Windows 147/0
+  - `final-45474184039/` — idle cap 이전 동일 결과 (54/54)
   - `flake-45471640788/` — vault 5개 PASS, `tear_off_tab` 기존 flake 실패 로그
   - `first-failure-45445869450/` — 최초 profile status timeout + certificate flake
   - `root-cause-45457832491/` — New Tab `data:` 차단이 status를 덮어쓴 stack trace

@@ -66,7 +66,7 @@ T01–T35 상태 (이번 단계 범위 기준):
 | T26 hidden field | **UNVERIFIED** | WinUI 범위 밖 |
 | T27 username field | **UNVERIFIED** | WinUI 범위 밖 |
 | T28 clipboard | **UNVERIFIED** | WinUI 범위 밖 |
-| T29 idle lock | **PARTIAL** | 30s 단축 UI PASS; real 5-minute UNVERIFIED |
+| T29 idle lock | **PARTIAL** | 30s 단축 UI PASS, override는 단축만 허용; real 5-minute UNVERIFIED |
 | T30 session lock | **PARTIAL** | SystemEvents code; real session UNVERIFIED |
 | T31 multiwindow lock | **PASS** | 실제 2창 lock/unlock UI 검증 |
 | T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
@@ -158,8 +158,8 @@ PASS vault_abi2_platform_contract:
 | C# interop | 80/80 PASS |
 | Linux CI | SUCCESS |
 
-Windows: [45474184039](https://github.com/thfzm/AMARE/actions/runs/45474184039)
-Linux: [45476359088](https://github.com/thfzm/AMARE/actions/runs/45476359088)
+Windows: [45477499016](https://github.com/thfzm/AMARE/actions/runs/45477499016)
+Linux: [45480021199](https://github.com/thfzm/AMARE/actions/runs/45480021199)
 
 UI smoke scenario status:
 

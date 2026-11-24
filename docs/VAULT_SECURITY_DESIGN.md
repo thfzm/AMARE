@@ -96,7 +96,8 @@
   - explicit import confirmation, failed import preserves current vault
 - ABI2 client is created after ABI1 profile initialization; profile switch locks
   and disposes/recreates the handle.
-- `VaultIdleMonitor` (5-minute default), `VaultSessionMonitor`
+- `VaultIdleMonitor` (5-minute maximum; the smoke-only environment override can
+  only shorten it), `VaultSessionMonitor`
   (`SystemEvents.SessionSwitch`), `VaultWindowCoordinator` lock/unlock broadcasts.
 - `VaultClipboard`: explicit copy + best-effort 30-second cleanup.
 - `VaultService::status` checks the persisted vault secret when in-memory state

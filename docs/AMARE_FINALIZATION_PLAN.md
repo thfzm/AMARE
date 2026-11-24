@@ -80,10 +80,11 @@
 
 ### Phase 1.3C 진행 상태
 
-- **WinUI Vault UI + 잔여 lock 경계 검증 완료** (`e645a3f`)
+- **WinUI Vault UI + 잔여 lock 경계 검증 완료** (`8076759`)
 - Vault overlay: init/lock/unlock/list/detail/add/edit/delete/reveal/copy
 - backup export/validate/import, failed import 보존
-- idle 5분 policy + timer, session lock 코드, multiwindow lock broadcast
+- idle 5분 policy + timer(테스트 override는 단축만), session lock 코드,
+  multiwindow lock broadcast
 - UI smoke **54/54**: profile switch isolation, multiwindow lock/unlock,
   idle timeout(30s 단축) 실제 WinUI 검증
 - C# interop **80/80**, Windows **147/0**, Linux SUCCESS

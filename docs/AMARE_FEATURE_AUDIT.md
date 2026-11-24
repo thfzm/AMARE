@@ -325,8 +325,8 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   충족되지 않는다. 저장/관리 UI는 Phase 1.3C에서 구현했지만 자동완성은
   Phase 1.3D 범위다.
 - Phase 1.3C UI smoke 54/54, Windows 147/0을 유지한다. profile switch와
-  multiwindow lock은 실제 WinUI로 PASS했고, 실제 5분 idle과 session lock은
-  UNVERIFIED다.
+  multiwindow lock은 실제 WinUI로 PASS했고, idle override는 5분을 넘지 못한다.
+  실제 5분 idle과 session lock은 UNVERIFIED다.
 
 ---
 
