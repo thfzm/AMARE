@@ -71,7 +71,7 @@ pub enum VaultError {
     BackupUnsupported(u32),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VaultStatus {
     pub profile_id: String,
     pub initialized: bool,
@@ -82,7 +82,7 @@ pub struct VaultStatus {
     pub key_present: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VaultEntryView {
     pub id: u64,
     pub origin: String,
@@ -93,7 +93,7 @@ pub struct VaultEntryView {
     pub revision: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VaultBackupSummary {
     pub format: u32,
     pub generation: u64,
@@ -120,7 +120,7 @@ impl Drop for VaultEntry {
 }
 
 impl VaultEntry {
-    fn view(&self) -> VaultEntryView {
+    pub fn view(&self) -> VaultEntryView {
         VaultEntryView {
             id: self.id,
             origin: self.origin.clone(),

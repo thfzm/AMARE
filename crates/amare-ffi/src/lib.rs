@@ -15,6 +15,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod services;
+mod services_v2;
 
 pub const AMARE_OK: c_int = 0;
 pub const AMARE_ERR_INVALID_ARGUMENT: c_int = 1;

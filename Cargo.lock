@@ -51,8 +51,11 @@ name = "amare-ffi"
 version = "0.1.0"
 dependencies = [
  "amare-core",
+ "amare-platform",
+ "amare-security",
  "amare-services",
  "amare-store",
+ "hex",
  "serde_json",
  "tempfile",
 ]
