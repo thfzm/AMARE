@@ -1197,7 +1197,7 @@ internal static class Program
         SetValue(edit, "vault-smoke-profile");
         InvokeDialogButton("New profile", "Create");
         AssertCurrentProfile("vault-smoke-profile");
-        OpenVault();
+        OpenVault(autoPrimary: false);
         WaitVaultStatus("Not initialized");
         Require(CountVaultEntries() == 0, "new profile exposed old vault entries");
         Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
@@ -1207,7 +1207,7 @@ internal static class Program
         Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
         InvokeMenuContaining("Personal");
         AssertCurrentProfile("Personal");
-        OpenVault();
+        OpenVault(autoPrimary: false);
         WaitVaultStatus("Locked");
         Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
         WaitVaultStatus("Unlocked");
@@ -1310,7 +1310,7 @@ internal static class Program
         Invoke(item!);
     }
 
-    private static void OpenVault()
+    private static void OpenVault(bool autoPrimary = true)
     {
         var existing = FindById("VaultStatusText");
         if (existing is null || existing.Current.IsOffscreen)
@@ -1322,6 +1322,10 @@ internal static class Program
                 var status = FindById("VaultStatusText");
                 return status is not null && !status.Current.IsOffscreen;
             }, TimeSpan.FromSeconds(15), "vault panel");
+        }
+        if (!autoPrimary)
+        {
+            return;
         }
         var primary = FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing");
         var label = primary.Current.Name;
