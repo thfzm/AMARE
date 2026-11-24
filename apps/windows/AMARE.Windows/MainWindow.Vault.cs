@@ -159,6 +159,8 @@ public sealed partial class MainWindow
 
     private void ApplyVaultStatus(VaultStatusDto status)
     {
+        AppLog.Info($"Vault status applied initialized={status.Initialized} unlocked={status.Unlocked} " +
+                    $"entries={status.EntryCount} generation={status.Generation}");
         VaultErrorText.Visibility = Visibility.Collapsed;
         VaultLoadingRing.IsActive = false;
         VaultLoadingRing.Visibility = Visibility.Collapsed;
@@ -636,8 +638,10 @@ public sealed partial class MainWindow
 
     private void ShowVaultError(Exception exception)
     {
-        var message = exception is VaultException vault
-            ? VaultMessage(vault.Code)
+        var code = exception is VaultException vault ? vault.Code : VaultErrorCode.Unsupported;
+        AppLog.Warn($"Vault operation error code={code} type={exception.GetType().Name}");
+        var message = exception is VaultException vaultError
+            ? VaultMessage(vaultError.Code)
             : "The vault operation failed.";
         ShowVaultMessage(message, error: true);
     }

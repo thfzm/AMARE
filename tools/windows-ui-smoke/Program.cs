@@ -1366,8 +1366,20 @@ internal static class Program
 
     private static void WaitVaultStatus(string text)
     {
-        WaitFor(() => FindById("VaultStatusText")?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true,
-            TimeSpan.FromSeconds(15), $"vault status {text}");
+        try
+        {
+            WaitFor(() => FindById("VaultStatusText")?.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(15), $"vault status {text}");
+        }
+        catch (TimeoutException)
+        {
+            var status = FindById("VaultStatusText");
+            var error = FindById("VaultErrorText");
+            Console.WriteLine($"DIAG vault status {text}: status={(status is null ? "<missing>" : status.Current.Name)} " +
+                              $"offscreen={status?.Current.IsOffscreen} error={(error is null ? "<missing>" : error.Current.Name)} " +
+                              $"errorOffscreen={error?.Current.IsOffscreen}");
+            throw;
+        }
     }
 
     private static void WaitText(string id, string text)
