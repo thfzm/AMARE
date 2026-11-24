@@ -1196,7 +1196,7 @@ internal static class Program
             ?? throw new InvalidOperationException("new profile name field missing");
         SetValue(edit, "vault-smoke-profile");
         InvokeDialogButton("New profile", "Create");
-        WaitFor(() => StatusTextContains("Profile: profile-"), TimeSpan.FromSeconds(15), "profile switch");
+        WaitForStatus("Profile: profile-", "profile switch");
         OpenVault();
         WaitVaultStatus("Not initialized");
         Require(CountVaultEntries() == 0, "new profile exposed old vault entries");
@@ -1206,7 +1206,7 @@ internal static class Program
 
         Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
         InvokeMenuContaining("Personal");
-        WaitFor(() => StatusTextContains("Profile: default"), TimeSpan.FromSeconds(15), "default profile switch");
+        WaitForStatus("Profile: default", "default profile switch");
         OpenVault();
         WaitVaultStatus("Locked");
         Invoke(FindById("VaultPrimaryActionButton") ?? throw new InvalidOperationException("VaultPrimaryActionButton missing"));
@@ -1214,6 +1214,22 @@ internal static class Program
         Require(CountVaultEntries() == before, "default vault entries changed after profile switch");
         Invoke(FindById("VaultCloseButton") ?? throw new InvalidOperationException("VaultCloseButton missing"));
         return "profile switch isolation";
+    }
+
+    private static void WaitForStatus(string text, string description)
+    {
+        try
+        {
+            WaitFor(() => StatusTextContains(text), TimeSpan.FromSeconds(15), description);
+        }
+        catch (TimeoutException)
+        {
+            var status = FindById("StatusText");
+            Console.WriteLine($"DIAG {description}: status={(status is null ? "<missing>" : $"{status.Current.Name} offscreen={status.Current.IsOffscreen}")} mainTitle={_process?.MainWindowTitle}");
+            Console.WriteLine($"DIAG {description}: windows={WindowsForProcess(_process!.Id).Length}");
+            DumpTree();
+            throw;
+        }
     }
 
     private static string VaultMultiwindowLock()
