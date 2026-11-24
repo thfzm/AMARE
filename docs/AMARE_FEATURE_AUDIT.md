@@ -83,8 +83,8 @@ WinUI UI smoke 48개 항목:
 | 5 | 방문 기록 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 6 | 다운로드 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 7 | 세션 복원/충돌 복구 | `IMPLEMENTED_AND_VERIFIED` (멀티윈도우 P0 해결) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
-| 8 | 비밀번호 저장/자동완성 | **`NOT_IMPLEMENTED`** | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
-| 9 | Vault 보안 | `PARTIALLY_IMPLEMENTED` (백엔드만) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 8 | 비밀번호 저장/자동완성 | `PARTIALLY_IMPLEMENTED` (저장/UI, 자동완성 미구현) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 9 | Vault 보안 | `IMPLEMENTED_AND_VERIFIED` (관리 UI/CI) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 10 | AI Web Panel | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
@@ -299,7 +299,10 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   - ABI1 유지, ABI2 별도 symbol/handle
   - Windows CI 실제 Rust DLL + C# CRUD/backup/conflict PASS
   - Rust FFI 12/12, C# interop 79/79
-- 아직 없음: WinUI Vault UI, WebView2 자동완성, auto-lock, export/import UI.
+- Phase 1.3C에서 WinUI Vault UI(lifecycle, CRUD, reveal/edit, backup, idle/session
+  lock 코드, clipboard)를 구현했다. UI smoke **51/51**, Windows **147/0**.
+- 아직 없음: WebView2 자동완성/로그인 감지, 실제 5분 idle·session lock·
+  profile switch·multiwindow UI 검증.
 - 상세: `docs/VAULT_SECURITY_DESIGN.md`, `docs/VAULT_THREAT_MODEL.md`,
   `docs/VAULT_TEST_PLAN.md`, `docs/AMARE_PHASE1_VAULT_AUDIT.md`,
   `docs/AMARE_PHASE1_VAULT_CORE_REPORT.md`,
@@ -317,22 +320,27 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 **판정**
 
-- 개인용 완료 기준의 “비밀번호 저장과 자동완성의 보안 검증”을 충족하지 못한다.
-- Phase 1.2에서 설계는 완료했지만 **제품 구현/검증은 아직 시작하지 않았다.**
+- 개인용 완료 기준의 “비밀번호 저장과 자동완성의 보안 검증”은 아직 완전히
+  충족되지 않는다. 저장/관리 UI는 Phase 1.3C에서 구현했지만 자동완성은
+  Phase 1.3D 범위다.
+- Phase 1.3C UI smoke 51/51, Windows 147/0을 유지한다. 실제 idle/session lock/
+  profile switch/multiwindow UI는 UNVERIFIED다.
 
 ---
 
 ### 4.9 Vault 보안 — **P0**
 
-**WinUI — `PARTIALLY_IMPLEMENTED` (백엔드만) / 제품 Vault `NOT_IMPLEMENTED`**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (Vault 관리 UI/CI) / 자동완성 미구현**
 
 - Rust `amare-security`의 키 유도/암호화/서명과 `secrets` 테이블은 존재하고
   storage 테스트에서 PASS했다.
 - `KeyFile` + `WindowsDpapiKeyProtector`의 DPAPI user-scope 테스트가 Windows
   CI에서 PASS했다 (`platform_key_tests`).
-- 그러나 WinUI에는 Vault UI/잠금/복구/자동완성이 없다.
-- Phase 1.3A Rust `VaultService` + Phase 1.3B ABI2 `vault.*`/C# `AmareVaultClient`가
-  Windows CI에서 실제 DLL 호출로 PASS했다.
+- Phase 1.3A Rust `VaultService` + Phase 1.3B ABI2 `vault.*`/C# `AmareVaultClient` +
+  Phase 1.3C WinUI Vault UI가 Windows CI에서 PASS했다.
+- UI smoke 51/51: init/lock/unlock, CRUD, reveal/edit, backup export/import/validate.
+- 아직 없음: WebView2 자동완성, 실제 5분 idle/session lock/profile switch/
+  multiwindow UI 검증.
 - AI 키는 Windows Credential Manager에 저장된다.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
@@ -541,7 +549,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — Rust Core+ABI2/C# 완료 (1.3A/B)** | WinUI UI/자동완성/실기기 검증 필요 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — UI 구현, 자동완성/실기기 남음 (1.3C)** | WebView2 autofill과 Windows 11 상호작용 검증 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포

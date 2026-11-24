@@ -1,6 +1,6 @@
 # AMARE Vault Security Design — Phase 1.2
 
-- 상태: **설계 승인 / Rust Core + ABI2 + C# client 구현 완료 (WinUI UI 미구현)**
+- 상태: **WinUI Vault UI 구현 완료 / WebView2 autofill 미구현, 일부 Windows 시나리오 UNVERIFIED**
 - 작성일: 2026-11-23
 - 기준: WinUI 3 + WebView2 + C#, Rust `amare-security`/`amare-platform`/`amare-store`
 - 관련 문서: `VAULT_THREAT_MODEL.md`, `VAULT_TEST_PLAN.md`, `AMARE_PHASE1_VAULT_AUDIT.md`
@@ -87,6 +87,22 @@
 - C# `status/list`에는 password 없음. `get/get_for_fill`만 password 반환.
 - `VaultEntryDto.Password`는 immutable string이며 `ClearPassword()`는 best-effort.
 - **아직 없음**: WinUI UI, WebView2 autofill, auto-lock, export/import UI.
+
+### 1.3.2 WinUI Vault UI (Phase 1.3C)
+
+- `MainWindow.Vault.cs` + `VaultHost` overlay:
+  - initialize, unlock/lock, status, list, detail, add, edit, delete
+  - reveal/copy, encrypted backup export/validate/import
+  - explicit import confirmation, failed import preserves current vault
+- ABI2 client is created after ABI1 profile initialization; profile switch locks
+  and disposes/recreates the handle.
+- `VaultIdleMonitor` (5-minute default), `VaultSessionMonitor`
+  (`SystemEvents.SessionSwitch`), `VaultWindowCoordinator` lock/unlock broadcasts.
+- `VaultClipboard`: explicit copy + best-effort 30-second cleanup.
+- UI smoke: 51/51 PASS (Vault: initialize/lock/unlock, CRUD/reveal/edit/backup).
+- **UNVERIFIED**: real 5-minute idle, actual session lock, UI profile-switch
+  isolation, multiwindow UI lock consistency, real Windows 11 session.
+- **미구현**: WebView2 autofill/login capture/`get_for_fill`, Windows Hello.
 
 ### 1.4 GPUI Vault (참고, 복사 금지)
 
@@ -510,8 +526,8 @@ v1 최소안:
 |---|---|---:|
 | 1 | Rust VaultService (format, crypto, key file, CAS, profile path) | **DONE (Phase 1.3A)** |
 | 2 | FFI ABI 2 + C# Session/Vault client + error mapping | **DONE (Phase 1.3B)** |
-| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **다음 단계 (1.3C)** |
-| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **미구현** |
+| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **DONE (Phase 1.3C)** |
+| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **다음 단계 (1.3D)** |
 | 5 | Backup/export/recovery + clipboard + logs/memory hardening | **Rust export/import DONE; UI 미구현** |
 | 6 | Failure tests, security review, Windows 11 real-device | **Core PASS; 전체 미완료** |
 | **합계** | | **27–42 person-days** |

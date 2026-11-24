@@ -66,9 +66,9 @@ T01–T35 상태 (이번 단계 범위 기준):
 | T26 hidden field | **UNVERIFIED** | WinUI 범위 밖 |
 | T27 username field | **UNVERIFIED** | WinUI 범위 밖 |
 | T28 clipboard | **UNVERIFIED** | WinUI 범위 밖 |
-| T29 idle lock | **UNVERIFIED** | WinUI 범위 밖 |
-| T30 session lock | **UNVERIFIED** | WinUI 범위 밖 |
-| T31 multiwindow lock | **PARTIAL** | Vault Core lock만; UI 다중 창 미구현 |
+| T29 idle lock | **PARTIAL** | policy unit PASS; real 5-minute UI UNVERIFIED |
+| T30 session lock | **PARTIAL** | SystemEvents code; real session UNVERIFIED |
+| T31 multiwindow lock | **PARTIAL** | broadcast/native lock code; UI smoke UNVERIFIED |
 | T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
 | T33 crash dump | **UNVERIFIED** | 정책 미구현 |
 | T34 redaction | PASS (unit) | error Display 검사 |
@@ -137,6 +137,50 @@ PASS vault_abi2_platform_contract:
 3. Windows UI smoke `session_multiwindow_restore` stale UIA
    - **TEST_AUTOMATION_BUG / ENVIRONMENT_LIMITATION**
    - 동일 HEAD 재실행 49/49 PASS.
+
+---
+
+## 1.3 Phase 1.3C 실제 결과 (WinUI Vault UI)
+
+| 항목 | 결과 |
+|---|---|
+| WinUI UI smoke | **51/51 PASS** (기존 49 + Vault 2) |
+| Vault UI: init/lock/unlock | PASS |
+| Vault UI: add/list/detail/reveal/edit/delete | PASS |
+| Vault UI: export/validate/import | PASS |
+| Vault UI: wrong-password import failure | PASS (entries unchanged) |
+| Windows CI | **147 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** |
+| C# interop | 80/80 PASS |
+| Linux CI | SUCCESS |
+
+UI smoke scenario status:
+
+| # | 시나리오 | 결과 |
+|---:|---|---|
+| 1 | 최초 초기화 | PASS |
+| 2 | lock → unlock | PASS |
+| 3 | 계정 추가 | PASS |
+| 4 | 목록 | PASS |
+| 5 | 상세/reveal | PASS (state text; password not exposed) |
+| 6 | reveal 종료 | PASS |
+| 7 | 수정 | PASS |
+| 8 | 삭제 | PASS |
+| 9 | backup export | PASS |
+| 10 | 잘못된 backup import | PASS |
+| 11 | 정상 backup import | PASS |
+| 12 | idle timeout | **UNVERIFIED** (policy unit PASS only) |
+| 13 | Windows session lock | **UNVERIFIED** (code only) |
+| 14 | profile switch | **UNVERIFIED** (native/profile code; UI smoke 없음) |
+| 15 | 다중 창 lock 일관성 | **UNVERIFIED** (broadcast code only) |
+
+최초 실패:
+
+- `using Amare.Windows.Core` 누락 → build failure (PRODUCT_BUILD_DEFECT)
+- `ContentDialogButton.Cancel` 미존재 → build failure (PRODUCT_BUILD_DEFECT)
+- `VaultHost` Grid UIA 탐지 실패 → visible `VaultStatusText` 기준으로 변경
+- 두 번째 smoke에서 panel toggle로 닫힘 → panel open 상태 재사용
+- 최초 UI flake로 후속 `tear_off_tab`/`tab_churn`/multiwindow 실패
+  → panel 정리 후 동일 HEAD 재실행 51/51 PASS
 
 ---
 
