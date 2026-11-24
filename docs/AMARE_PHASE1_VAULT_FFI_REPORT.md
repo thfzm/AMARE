@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-vault-ffi`
 - 시작 HEAD: `02e7823` (`feature/phase-1-vault-core`의 문서 HEAD)
 - 제품/테스트 HEAD: **`7dd116b`**
-- 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 문서 HEAD: `193d46c` (`Document Phase 1.3B ABI 2 and C# vault client`)
 - 작성일: 2026-11-24
 - 범위: Rust FFI ABI 2 + C# client + integration tests.
 - 범위 밖: WinUI Vault UI, WebView2 autofill/로그인 감지, 실제 비밀번호 입력, Windows Hello, 패키지.
