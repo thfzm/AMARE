@@ -72,7 +72,7 @@ T01–T35 상태 (이번 단계 범위 기준):
 | T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
 | T33 crash dump | **UNVERIFIED** | 정책 미구현 |
 | T34 redaction | PASS (unit) | error Display 검사 |
-| T35 ABI mismatch | **N/A** | ABI 2 미구현, ABI 1 유지 |
+| T35 ABI mismatch | PASS | ABI1 1, ABI2 2 별도 symbol/version 확인 |
 
 최초 실패:
 
@@ -87,6 +87,56 @@ Conflict { expected: <db version>, actual: <newer db version> }
 Windows UI smoke 최초 실행 실패 (session_multiwindow_restore stale UIA,
 websocket NewTabButton missing)는 **TEST_AUTOMATION_BUG/ENVIRONMENT_LIMITATION**;
 동일 HEAD 재실행 49/49 PASS. 최초 실패는 보존한다.
+
+---
+
+## 1.2 Phase 1.3B 실제 결과 (ABI 2 / C#)
+
+| 항목 | 결과 |
+|---|---|
+| Rust ABI 1 | **7/7 PASS** |
+| Rust ABI 2 | **5/5 PASS** |
+| Rust FFI 총계 | **12/12 PASS** |
+| C# interop 전체 | **79/79 PASS** |
+| Windows CI 최종 | **146 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** |
+| WinUI UI smoke | **49/49 PASS** (최종 재실행) |
+| Linux CI | SUCCESS |
+
+ABI2 C# 실제 결과:
+
+```text
+PASS vault_abi2_version_is_2: abi=2
+PASS vault_abi2_error_mapping: ABI 2 codes mapped
+PASS vault_abi2_platform_contract:
+  ABI 2 Rust DLL + C# UTF-8/CRUD/backup/conflict PASS
+```
+
+추가 상태:
+
+| 항목 | 상태 |
+|---|---|
+| ABI1/ABI2 동시 로드 | PASS (별도 handle/symbol) |
+| null/invalid pointer/UTF-8 | PASS |
+| invalid JSON | PASS |
+| unknown method | PASS |
+| panic guard | PASS (기존 `guard`) |
+| string free | PASS (`amare_string_free`) |
+| output JSON free | PASS |
+| ABI1 회귀 | PASS 7/7 + C# 76 |
+| ABI2 profile/generation | PASS (초기 generation; profile switch 재생성 제약) |
+| 민감정보 error leak | PASS |
+| Windows 실제 C# interop | PASS |
+
+최초 실패:
+
+1. `vault_abi2_platform_contract` → `profile context is not active`
+   - ABI2가 별도 ProfileService를 열어 generation이 ABI1과 달랐다.
+   - **PRODUCT_DEFECT** → ABI2 ProfileService 초기화 + generation 검증으로 수정.
+2. ABI2 cache가 generation 검증 전에 반환될 수 있는 경로
+   - **PRODUCT_DEFECT (보안)** → 검증을 cache 조회보다 먼저 수행.
+3. Windows UI smoke `session_multiwindow_restore` stale UIA
+   - **TEST_AUTOMATION_BUG / ENVIRONMENT_LIMITATION**
+   - 동일 HEAD 재실행 49/49 PASS.
 
 ---
 

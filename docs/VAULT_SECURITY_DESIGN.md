@@ -1,6 +1,6 @@
 # AMARE Vault Security Design — Phase 1.2
 
-- 상태: **설계 승인 / Rust Vault Core 구현 완료 (FFI·UI 미구현)**
+- 상태: **설계 승인 / Rust Core + ABI2 + C# client 구현 완료 (WinUI UI 미구현)**
 - 작성일: 2026-11-23
 - 기준: WinUI 3 + WebView2 + C#, Rust `amare-security`/`amare-platform`/`amare-store`
 - 관련 문서: `VAULT_THREAT_MODEL.md`, `VAULT_TEST_PLAN.md`, `AMARE_PHASE1_VAULT_AUDIT.md`
@@ -73,8 +73,20 @@
   - `SecretRepository::set_with_aad_cas` (DB schema v5 유지)
   - Argon2id Master Password backup export/import
 - 테스트: Linux Vault 23/23, Windows 24/24 (`windows_dpapi_vault_roundtrip` 포함)
-- **아직 없음**: FFI ABI 2, C# client, WinUI UI, WebView2 자동완성, Master Password UI,
-  Windows Hello, 자동 잠금/session lock, key rotation.
+- **아직 없음**: WinUI UI, WebView2 자동완성, Master Password UI, Windows Hello,
+  자동 잠금/session lock, key rotation. (FFI ABI 2/C# client는 Phase 1.3B 완료)
+
+### 1.3.1 ABI 2 + C# client (Phase 1.3B)
+
+- ABI 1은 변경 없음, 별도 symbol:
+  `amare_services_abi2_create/destroy/call/version/last_error`.
+- `vault.*` API 전체 연결, JSON version 2, 오류 코드 20–31.
+- C# `AmareVaultClient`:
+  `VaultNativeMethods`, `VaultErrorCode`, `VaultException`, DTOs.
+- Windows CI에서 실제 Rust DLL + C# UTF-8/CRUD/backup/conflict PASS.
+- C# `status/list`에는 password 없음. `get/get_for_fill`만 password 반환.
+- `VaultEntryDto.Password`는 immutable string이며 `ClearPassword()`는 best-effort.
+- **아직 없음**: WinUI UI, WebView2 autofill, auto-lock, export/import UI.
 
 ### 1.4 GPUI Vault (참고, 복사 금지)
 
@@ -459,7 +471,18 @@ v1 최소안:
 
 ## 8. FFI / C# 경계
 
-권장:
+**구현 상태 (Phase 1.3B): ABI 2 + C# client 완료. WinUI UI는 다음 단계.**
+
+- ABI 1 유지, ABI 2 별도 symbol/handle.
+- `vault.*` method, JSON version 2, UTF-8, `amare_string_free`.
+- 오류 코드 20–31, C# `VaultErrorCode`.
+- `status/list` password 없음, `get/get_for_fill`만 password.
+- key material은 FFI로 반환하지 않음.
+- backup은 encrypted payload hex.
+- C# `AmareVaultClient`는 `IDisposable`, finalizer 없음.
+- profile switch는 ABI2 handle 재생성 필요 (shared context API는 다음 단계).
+
+설계:
 
 - Rust `VaultService`가 key/DPAPI/암호화/저장을 모두 소유.
 - C#에는 다음만 노출:
@@ -486,8 +509,8 @@ v1 최소안:
 | 단계 | 내용 | 예상 |
 |---|---|---:|
 | 1 | Rust VaultService (format, crypto, key file, CAS, profile path) | **DONE (Phase 1.3A)** |
-| 2 | FFI ABI 2 + C# Session/Vault client + error mapping | **다음 단계** |
-| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **미구현** |
+| 2 | FFI ABI 2 + C# Session/Vault client + error mapping | **DONE (Phase 1.3B)** |
+| 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **다음 단계 (1.3C)** |
 | 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **미구현** |
 | 5 | Backup/export/recovery + clipboard + logs/memory hardening | **Rust export/import DONE; UI 미구현** |
 | 6 | Failure tests, security review, Windows 11 real-device | **Core PASS; 전체 미완료** |
