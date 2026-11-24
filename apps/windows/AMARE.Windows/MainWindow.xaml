@@ -276,6 +276,99 @@
                 </Grid>
             </Border>
 
+            <!-- Password vault overlay -->
+            <Grid x:Name="VaultHost" AutomationProperties.AutomationId="VaultHost" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Padding="10,0,6,0" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <TextBlock Text="Password vault" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VaultStatusText" AutomationProperties.AutomationId="VaultStatusText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Text="Closed" />
+                    </StackPanel>
+                    <Button x:Name="VaultPrimaryActionButton" AutomationProperties.AutomationId="VaultPrimaryActionButton" Grid.Column="1" Content="Unlock" Click="VaultPrimaryAction_Click" Margin="4,0" />
+                    <Button x:Name="VaultAddButton" AutomationProperties.AutomationId="VaultAddButton" Grid.Column="2" Content="Add" Click="VaultAdd_Click" Margin="4,0" />
+                    <Button x:Name="VaultBackupButton" AutomationProperties.AutomationId="VaultBackupButton" Grid.Column="3" Content="Backup" Click="VaultBackup_Click" Margin="4,0" />
+                    <Button x:Name="VaultLockButton" AutomationProperties.AutomationId="VaultLockButton" Grid.Column="4" Content="Lock" Click="VaultLock_Click" Margin="4,0" />
+                    <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="VaultCloseButton" Click="VaultClose_Click" ToolTipService.ToolTip="Close vault">
+                        <FontIcon Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
+                <StackPanel Grid.Row="1" Padding="10,6" Spacing="4">
+                    <TextBlock x:Name="VaultErrorText" AutomationProperties.AutomationId="VaultErrorText" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <ProgressRing x:Name="VaultLoadingRing" AutomationProperties.AutomationId="VaultLoadingRing" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                </StackPanel>
+                <Grid Grid.Row="2" Margin="10,0,10,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="340" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Grid.Column="0" Margin="0,0,8,0">
+                        <ListView x:Name="VaultEntryList" AutomationProperties.AutomationId="VaultEntryList" SelectionChanged="VaultEntryList_SelectionChanged" IsItemClickEnabled="False">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Padding="4" Spacing="2">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Username}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Origin}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="VaultEmptyText" AutomationProperties.AutomationId="VaultEmptyText" HorizontalAlignment="Center" VerticalAlignment="Center" Text="No saved accounts" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+                    </Grid>
+                    <Grid Grid.Column="1" Padding="8,0">
+                        <StackPanel x:Name="VaultDetailPanel" AutomationProperties.AutomationId="VaultDetailPanel" Spacing="8" Visibility="Collapsed">
+                            <TextBlock x:Name="VaultDetailTitle" AutomationProperties.AutomationId="VaultDetailTitle" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="VaultDetailOrigin" AutomationProperties.AutomationId="VaultDetailOrigin" TextWrapping="Wrap" />
+                            <TextBlock x:Name="VaultDetailUsername" AutomationProperties.AutomationId="VaultDetailUsername" TextWrapping="Wrap" />
+                            <PasswordBox x:Name="VaultDetailPassword" AutomationProperties.AutomationId="VaultDetailPassword" IsEnabled="False" PasswordRevealMode="Hidden" />
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Button x:Name="VaultRevealButton" AutomationProperties.AutomationId="VaultRevealButton" Content="Reveal" Click="VaultReveal_Click" />
+                                <Button x:Name="VaultCopyButton" AutomationProperties.AutomationId="VaultCopyButton" Content="Copy" Click="VaultCopy_Click" />
+                                <Button x:Name="VaultEditButton" AutomationProperties.AutomationId="VaultEditButton" Content="Edit" Click="VaultEdit_Click" />
+                                <Button x:Name="VaultDeleteButton" AutomationProperties.AutomationId="VaultDeleteButton" Content="Delete" Click="VaultDelete_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="VaultRevealStateText" AutomationProperties.AutomationId="VaultRevealStateText" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Password hidden" />
+                            <Border x:Name="VaultEditorPanel" AutomationProperties.AutomationId="VaultEditorPanel" Visibility="Collapsed" Padding="10" Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
+                                <StackPanel Spacing="6">
+                                    <TextBlock x:Name="VaultEditorTitle" AutomationProperties.AutomationId="VaultEditorTitle" FontWeight="SemiBold" Text="Add account" />
+                                    <TextBlock Text="Site or service name" FontSize="12" />
+                                    <TextBox x:Name="VaultSiteBox" AutomationProperties.AutomationId="VaultSiteBox" PlaceholderText="Example" />
+                                    <TextBlock Text="Origin / URL" FontSize="12" />
+                                    <TextBox x:Name="VaultOriginBox" AutomationProperties.AutomationId="VaultOriginBox" PlaceholderText="https://example.com" />
+                                    <TextBlock Text="Username" FontSize="12" />
+                                    <TextBox x:Name="VaultUsernameBox" AutomationProperties.AutomationId="VaultUsernameBox" />
+                                    <TextBlock Text="Password" FontSize="12" />
+                                    <PasswordBox x:Name="VaultPasswordInput" AutomationProperties.AutomationId="VaultPasswordInput" PasswordRevealMode="Hidden" />
+                                    <CheckBox x:Name="VaultShowPasswordCheck" AutomationProperties.AutomationId="VaultShowPasswordCheck" Content="Show password" Checked="VaultShowPassword_Changed" Unchecked="VaultShowPassword_Changed" />
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Button x:Name="VaultSaveButton" AutomationProperties.AutomationId="VaultSaveButton" Content="Save" Click="VaultSave_Click" />
+                                        <Button x:Name="VaultCancelEditButton" AutomationProperties.AutomationId="VaultCancelEditButton" Content="Cancel" Click="VaultCancelEdit_Click" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel x:Name="VaultLockedPanel" AutomationProperties.AutomationId="VaultLockedPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                            <TextBlock x:Name="VaultLockedTitle" AutomationProperties.AutomationId="VaultLockedTitle" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Text="Vault is locked" />
+                            <TextBlock x:Name="VaultLockedDetail" AutomationProperties.AutomationId="VaultLockedDetail" TextAlignment="Center" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Unlock with Windows protection to view saved accounts." />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+                <TextBlock Grid.Row="3" Margin="10,0,10,8" FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Passwords are stored encrypted. Use Copy only when needed; clipboard cleanup is best-effort." />
+            </Grid>
+
             <!-- Reader overlay -->
             <Grid x:Name="ReaderHost" AutomationProperties.AutomationId="ReaderHost" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
                 <Grid.RowDefinitions>

@@ -160,6 +160,7 @@ public sealed partial class MainWindow : Window
         AppLog.Info("Keyboard shortcut router: " +
                     KeyboardShortcutRouter.Install(WindowNative.GetWindowHandle(this), this));
         Closed += MainWindow_Closed;
+        WireVaultLifetime();
     }
 
     private static void RegisterWindow(MainWindow window)
@@ -2221,6 +2222,7 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, "History", "", () => ShowHistoryAsync());
         AddMenu(menu, "Bookmarks", "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
         AddMenu(menu, "Downloads", "", () => Downloads_Click(DownloadsButton, new RoutedEventArgs()));
+        AddMenu(menu, "Passwords…", "", () => _ = OpenVaultPanelAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenu(menu, "Reader Mode", "", () => _ = OpenReaderAsync());
         AddMenu(menu, "Find in page", "Ctrl+F", OpenFind);
@@ -2954,12 +2956,15 @@ public sealed partial class MainWindow : Window
         }
         try
         {
+            await ResetVaultForProfileChangeAsync();
             await SaveSessionAsync(waitForInFlight: true);
             CloseAllTabs();
             _context = await _profiles.SwitchAsync(id);
             _profileId = id;
             _sessionId = null;
             _lastSessionFingerprint = null;
+            EnsureVaultClient();
+            VaultWindowCoordinator.NotifyProfileChanged(_windowId);
             await LoadSettingsAsync();
             await CreateEnvironmentAsync();
             await RestoreSessionOrNewTabAsync();
@@ -3090,6 +3095,7 @@ public sealed partial class MainWindow : Window
                 StatusText.Text = "The last profile cannot be deleted.";
                 return;
             }
+            await ResetVaultForProfileChangeAsync();
             CloseAllTabs();
             await _profiles.DeleteAsync(current.Id);
             var active = await _profiles.GetActiveAsync();
@@ -3097,6 +3103,8 @@ public sealed partial class MainWindow : Window
             _profileId = _context.ProfileId;
             _sessionId = null;
             _lastSessionFingerprint = null;
+            EnsureVaultClient();
+            VaultWindowCoordinator.NotifyProfileChanged(_windowId);
             await LoadSettingsAsync();
             await CreateEnvironmentAsync();
             await RestoreSessionOrNewTabAsync();
@@ -3362,6 +3370,8 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        UnwireVaultLifetime();
+        TryLockVaultForShutdown();
         bool hasOtherWindows;
         lock (WindowRegistryGate)
         {

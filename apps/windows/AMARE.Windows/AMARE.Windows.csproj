@@ -27,6 +27,7 @@
     <Content Include="Assets\AMARE_logo_256.png" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
   </ItemGroup>
 
   <Target Name="CopyAmareFfi" BeforeTargets="Build">
