@@ -4,7 +4,7 @@
 - Branch: `feature/phase-1-vault-core`
 - 시작 HEAD: `c4d8d17` (`feature/phase-1-vault-design`)
 - 제품/테스트 HEAD: **`22e3e51`**
-- 최종 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 최종 문서 HEAD: `6b783b1` (`Document Phase 1.3A Rust vault core results`)
 - 작성일: 2026-11-24
 - 범위: Rust Vault Core + 테스트. FFI ABI 2, WinUI UI, WebView2 자동완성, 패키지는 범위 밖.
 
