@@ -21,9 +21,12 @@ internal static class VaultIdleMonitor
                 return;
             }
             _started = true;
-            var seconds = 300;
+            var seconds = (int)DefaultTimeout.TotalSeconds;
+            // The environment override exists only so UI smoke tests can use a
+            // shorter timeout. It can never extend or disable the 5-minute cap.
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_VAULT_IDLE_SECONDS"), out var configured)
-                && configured > 0)
+                && configured > 0
+                && configured < seconds)
             {
                 seconds = configured;
             }
