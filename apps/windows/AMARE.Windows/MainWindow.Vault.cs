@@ -924,7 +924,7 @@ public sealed partial class MainWindow
             Content = stack,
             PrimaryButtonText = "Import",
             CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Cancel,
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
