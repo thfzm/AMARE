@@ -422,7 +422,7 @@ internal static class Program
             Check("vault_forged_message_rejected", VaultForgedMessageRejected);
             Check("vault_capture_locked_rejected", VaultCaptureLockedRejected);
             Check("vault_ui_idle_lock", VaultIdleLock);
-            Check("site_permissions_deny_once", SitePermissionsDenyOnce);
+            Check("site_permissions_one_time_decisions", SitePermissionsDenyOnce);
             Check("site_permissions_always_allow_and_settings", SitePermissionsAlwaysAllowAndSettings);
             Check("site_permissions_block_always", SitePermissionsBlockAlways);
             Check("site_permissions_iframe_denied", SitePermissionsIframeDenied);
@@ -3029,8 +3029,18 @@ internal static class Program
             OpenPermissionPage("permissions.html?auto=0");
             TriggerPermissionRequest();
             WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Allow once");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "allow-once closed");
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Count == 0, "allow-once stored a permission");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerPermissionRequest();
+            WaitPermissionRequestDialog();
             InvokeDialogButton("Permission request", "Not now");
-            return "permission request requires a decision and deny-once is not stored";
+            return "permission request requires a decision; deny-once and allow-once are not stored";
         }
         finally
         {
