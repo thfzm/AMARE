@@ -87,6 +87,7 @@ Vault는 기존 AI/Reader와 같은 **콘텐츠 오버레이 패널**로 통합�
 
 - `VaultHost` overlay
 - header: 상태, Create/Unlock/Refresh, Add, Backup, Lock, Close
+  (1.3D에서 Close는 Hide로 변경; 1.3D 보고서 참조)
 - account list (`VaultEntryList`) — title/username/origin만 표시, password 없음
 - detail: title/origin/username, masked PasswordBox, Reveal/Copy/Edit/Delete
 - editor: site, origin, username, password, reveal checkbox, Save/Cancel

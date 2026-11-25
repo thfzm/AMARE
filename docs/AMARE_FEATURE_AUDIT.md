@@ -332,7 +332,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ### 4.9 Vault 보안 — **P0**
 
-**WinUI — `IMPLEMENTED_AND_VERIFIED` (Vault 관리 UI/CI) / 자동완성 미구현**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (Vault UI + WebView2 capture/autofill, CI)**
 
 - Rust `amare-security`의 키 유도/암호화/서명과 `secrets` 테이블은 존재하고
   storage 테스트에서 PASS했다.
@@ -340,12 +340,19 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   CI에서 PASS했다 (`platform_key_tests`).
 - Phase 1.3A Rust `VaultService` + Phase 1.3B ABI2 `vault.*`/C# `AmareVaultClient` +
   Phase 1.3C WinUI Vault UI가 Windows CI에서 PASS했다.
-- 최종 UI smoke **54/54**: init/lock/unlock, CRUD, reveal/edit,
-  backup export/import/validate, **profile switch isolation**, **multiwindow
-  lock/unlock**, **idle timeout(30s 단축)**.
+- Phase 1.3D에서 WebView2 login-form metadata capture와 explicit autofill을
+  추가했다. Capture는 저장 승인 후에만 password를 읽고, fill은 사용자 menu
+  선택에서만 동작하며 자동 submit/Enter/click이 없다.
+- 최종 UI smoke **64/64**: init/lock/unlock, CRUD, reveal/edit,
+  backup export/import/validate, profile switch isolation, multiwindow
+  lock/unlock, idle timeout(30s 단축), capture approval/rejection,
+  explicit fill(no submit), forged/iframe message rejection, locked capture.
+- `webview2_autofill_policy` runtime probe PASS: 같은 profile의 두 WebView2에서
+  password autosave/general autofill read-back false.
 - `VaultService::status`가 영속 Vault를 감지하도록 수정해, background client
   재생성 후에도 기존 Vault를 `Locked`로 표시한다 (회귀 테스트 포함).
-- 아직 없음: WebView2 자동완성, 실제 5분 idle/session lock, 실기기(IME/DPI/접근성).
+- 아직 없음/UNVERIFIED: 실제 5분 idle, Windows session lock, Windows 11
+  실기기(IME/DPI/접근성), 기존 WebView2 저장 데이터 삭제 실행, 강제 종료 경합.
 - Phase 1.3C.1에서 New Tab의 `NavigateToString` `data:` navigation 결함을
   수정했다. 1회성·정확한 payload provenance로 내부 문서만 허용하고, 일반
   `data:`/`javascript:`/`file:` 차단은 그대로다. UI 60/60, Windows 151/0,
@@ -558,7 +565,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — 관리 UI/잠금 경계 완료, 자동완성/실기기 남음 (1.3C)** | WebView2 autofill과 Windows 11 상호작용 검증 필요 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — capture/autofill 구현·CI 검증, 실기기/5분 idle/session lock UNVERIFIED (1.3D)** | Windows 11 실기기와 실제 session lock 검증 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포

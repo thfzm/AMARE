@@ -58,18 +58,21 @@ T01–T35 상태 (이번 단계 범위 기준):
 | T18 key missing | PASS | 원본 보존 |
 | T19 vault missing + key | PASS | existing key 유지, empty vault 초기화 |
 | T20 export/import | PASS | wrong password/corrupt 원본 보존 |
-| T21 backup key absent | **UNVERIFIED** | UI/정책 미구현 |
-| T22 built-in autofill disable | **UNVERIFIED** | WinUI 범위 밖 |
-| T23 existing autofill clear | **UNVERIFIED** | WinUI 범위 밖 |
-| T24 HTTP/HTTPS | **UNVERIFIED** | WinUI 범위 밖 |
-| T25 form action | **UNVERIFIED** | WinUI 범위 밖 |
-| T26 hidden field | **UNVERIFIED** | WinUI 범위 밖 |
-| T27 username field | **UNVERIFIED** | WinUI 범위 밖 |
-| T28 clipboard | **UNVERIFIED** | WinUI 범위 밖 |
+| T21 backup key absent | **UNVERIFIED** | 기존 Vault 정책 유지 |
+| T22 built-in autofill disable | **PASS** | runtime probe, 2 instances |
+| T23 existing autofill clear | **UNVERIFIED** | consent UI/API, CI 미실행 |
+| T24 HTTP/HTTPS | **PASS** | HTTPS only; HTTP bridge 미초기화 |
+| T25 form action | **PASS** | exact origin, UI/Core |
+| T26 hidden field | **PASS (static)** / UI UNVERIFIED | script field checks |
+| T27 username field | **PASS** | optional value for fill; save requires value |
+| T28 clipboard | **PASS** | 1.3C policy 유지 |
 | T29 idle lock | **PARTIAL** | 30s 단축 UI PASS, override는 단축만 허용; real 5-minute UNVERIFIED |
 | T30 session lock | **PARTIAL** | SystemEvents code; real session UNVERIFIED |
 | T31 multiwindow lock | **PASS** | 실제 2창 lock/unlock UI 검증 |
 | T32 multiwindow edit | PASS (CAS) | concurrent writers 테스트 |
+| T36 capture approval | **PASS** | UI entry count + Core |
+| T37 explicit autofill | **PASS** | UI no-submit |
+| T38 iframe/forged message | **PASS** | UI no dialog/entry |
 | T33 crash dump | **UNVERIFIED** | 정책 미구현 |
 | T34 redaction | PASS (unit) | error Display 검사 |
 | T35 ABI mismatch | PASS | ABI1 1, ABI2 2 별도 symbol/version 확인 |
@@ -199,6 +202,28 @@ UI smoke scenario status:
 
 상세: `docs/AMARE_PHASE1_VAULT_UI_REPORT.md`,
 `artifacts/windows/phase1.3c/lock-verification/README.md`
+
+---
+
+## 1.4 Phase 1.3D 실제 결과 (WebView2 capture/autofill)
+
+| 항목 | 결과 |
+|---|---|
+| Capture 사용자 승인 / 거절 | **PASS** (UI, entry count) |
+| 정확한 origin 저장 / multiple accounts | **PASS** (UI) |
+| Explicit fill / no auto-submit | **PASS** (UI) |
+| Forged top-level / same-origin iframe / cross-origin iframe | **PASS** (UI, no dialog/no entry) |
+| Vault locked capture 차단 | **PASS** (UI) |
+| Built-in autofill disable | **PASS** (`webview2_autofill_policy`, 2 instances) |
+| WebMessage token/generation/schema/replay | **PASS** (Core 15 tests) |
+| WinUI UI smoke / interop / Windows | **64/64 / 99/99 / 167-0-8-8** |
+| Linux CI | **SUCCESS** |
+
+UNVERIFIED: 실제 5분 idle, Windows session lock, Windows 11 실기기,
+기존 WebView2 데이터 삭제 실행, 강제 종료/비동기 경합, UI 수준
+javascript/file 차단, hidden/disabled field 개별 UI fixture.
+
+상세: `docs/AMARE_PHASE1_VAULT_WEBVIEW_REPORT.md`
 
 ---
 

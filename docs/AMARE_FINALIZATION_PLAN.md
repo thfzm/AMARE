@@ -106,6 +106,19 @@
 - UNVERIFIED: 실기기 수동 확인, UI 수준 javascript/file 차단(unit only)
 - 상세: `docs/AMARE_PHASE1_NEW_TAB_NAVIGATION_FIX_REPORT.md`
 
+### Phase 1.3D 진행 상태
+
+- **WebView2 capture/autofill 구현 및 CI 검증 완료** (`1cb4780`)
+- top-level WebMessage + native per-document token/generation + exact
+  origin/document URL + strict schema + profile/WebView context
+- 사용자 승인 후에만 password read; explicit menu fill; no auto-submit/Enter/click
+- native `IsPasswordAutosaveEnabled`/`IsGeneralAutofillEnabled` disable + runtime
+  probe PASS
+- UI smoke **64/64**, C# interop **99/99**, Windows **167/0**, Linux SUCCESS
+- UNVERIFIED: 실제 5분 idle, Windows session lock, Windows 11 실기기,
+  기존 WebView2 데이터 삭제 실행, 강제 종료/비동기 경합
+- 상세: `docs/AMARE_PHASE1_VAULT_WEBVIEW_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약

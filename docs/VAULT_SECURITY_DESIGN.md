@@ -1,6 +1,6 @@
 # AMARE Vault Security Design — Phase 1.2
 
-- 상태: **WinUI Vault UI + 잔여 lock 경계 검증 완료 / WebView2 autofill 미구현, 실기기 항목 UNVERIFIED**
+- 상태: **WinUI Vault UI + WebView2 capture/autofill CI 완료 / 실기기·5분 idle·session lock UNVERIFIED**
 - 작성일: 2026-11-23
 - 기준: WinUI 3 + WebView2 + C#, Rust `amare-security`/`amare-platform`/`amare-store`
 - 관련 문서: `VAULT_THREAT_MODEL.md`, `VAULT_TEST_PLAN.md`, `AMARE_PHASE1_VAULT_AUDIT.md`
@@ -116,6 +116,28 @@
   NavigationStarting을 `NavigationPolicy`가 차단해 New Tab 페이지가 비고 status에
   전체 data URI가 기록된다. Phase 1.3C에서는 브라우저 영역을 변경하지 않았고,
   별도 승인 후 수정해야 한다 (`docs/AMARE_PHASE1_VAULT_UI_REPORT.md` 13절).
+
+### 1.3.3 WebView2 capture / autofill (Phase 1.3D)
+
+- `WebOrigin` exact HTTPS origin (IDN/punycode, port, no subdomain inheritance).
+- Per-WebView `WebViewVaultTabState`: native per-document 16-byte token,
+  generation, exact document URL/origin, profile/Vault context, WebView id,
+  strict JSON schema, msgId dedupe, one-use command opId.
+- `CoreWebView2.WebMessageReceived` top-level event only; frame
+  `WebMessageReceived` is not subscribed; content script has a top-level guard.
+- Login detection sends metadata only; password is read by a native command only
+  after the Save dialog. Form action must match the document origin exactly.
+- Fill is explicit from the menu, exact-origin entries only, visible/enabled/
+  non-readonly/form-associated field checks, input/change only, no
+  submit/Enter/click.
+- `IsPasswordAutosaveEnabled`/`IsGeneralAutofillEnabled` disabled on the profile
+  and each WebView (tabs, windows, AI, Reader). Existing WebView2 data is not
+  deleted without explicit consent.
+- Closing the Vault panel hides it without locking; manual lock, idle, session,
+  profile switch, and shutdown still lock. This is required for browsing-time
+  autofill.
+- UI 64/64, Windows 167/0, interop 99/99, Linux SUCCESS. Real 5-minute idle,
+  session lock, and Windows 11 hardware remain UNVERIFIED.
 
 ### 1.4 GPUI Vault (참고, 복사 금지)
 
@@ -540,7 +562,7 @@ v1 최소안:
 | 1 | Rust VaultService (format, crypto, key file, CAS, profile path) | **DONE (Phase 1.3A)** |
 | 2 | FFI ABI 2 + C# Session/Vault client + error mapping | **DONE (Phase 1.3B)** |
 | 3 | WinUI Vault UI (unlock/list/add/edit/delete/lock/auto-lock) | **DONE (Phase 1.3C)** |
-| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **다음 단계 (1.3D)** |
+| 4 | WebView2 autofill/capture + origin/frame validation + builtin disable | **DONE (Phase 1.3D, CI)** |
 | 5 | Backup/export/recovery + clipboard + logs/memory hardening | **Rust export/import DONE; UI 미구현** |
 | 6 | Failure tests, security review, Windows 11 real-device | **Core PASS; 전체 미완료** |
 | **합계** | | **27–42 person-days** |
