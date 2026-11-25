@@ -1105,6 +1105,8 @@ public sealed partial class MainWindow : Window
             {
                 CloseFind();
             }
+            AppLog.Info($"Navigation starting scheme={(Uri.TryCreate(args.Uri, UriKind.Absolute, out var startedUri) ? startedUri.Scheme : "invalid")} " +
+                        $"active={IsActive(host)} newTab={host.ShowingNewTab}");
             if (!host.ShowingNewTab)
             {
                 host.Model.IsNewTabPage = false;
@@ -1125,6 +1127,7 @@ public sealed partial class MainWindow : Window
         core.DocumentTitleChanged += (_, _) =>
         {
             var title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "New Tab" : core.DocumentTitle;
+            AppLog.Info($"Document title changed length={title.Length} active={IsActive(host)}");
             host.Model.Title = title;
             if (IsActive(host))
             {
@@ -1143,6 +1146,8 @@ public sealed partial class MainWindow : Window
         };
         core.NavigationCompleted += (webview, args) =>
         {
+            AppLog.Info($"Navigation completed success={args.IsSuccess} error={args.WebErrorStatus} " +
+                        $"active={IsActive(host)}");
             host.InternalDocument.Disarm();
             host.ShowingNewTab = false;
             host.Model.IsLoading = false;
