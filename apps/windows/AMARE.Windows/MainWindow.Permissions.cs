@@ -125,6 +125,7 @@ public sealed partial class MainWindow
             return CoreWebView2PermissionState.Deny;
         }
         var kind = PermissionKindName(args.PermissionKind);
+        AppLog.Info($"Site permission requested kind={args.PermissionKind} userInitiated={args.IsUserInitiated}");
         if (kind is null
             || !WebOrigin.TryParse(args.Uri, out var origin)
             || !WebOrigin.TryParse(core.Source, out var topLevel)

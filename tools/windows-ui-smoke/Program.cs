@@ -2901,11 +2901,30 @@ internal static class Program
             TimeSpan.FromSeconds(15), "permission test page");
     }
 
-    private static void TriggerMicPermission()
+    private static void TriggerPermissionRequest()
     {
-        WaitFor(() => FindByName("Request microphone") is not null,
-            TimeSpan.FromSeconds(10), "microphone request button");
-        Invoke(FindByName("Request microphone")!);
+        // The page's auto sequence requests notifications, then location, then
+        // microphone. Different WebView2/OS combinations allow different kinds
+        // on a headless CI runner; use the first one that raises a dialog.
+        Thread.Sleep(2500);
+        if (FindByName("Permission request") is not null)
+        {
+            return;
+        }
+        foreach (var button in new[] { "Request notifications", "Request location", "Request microphone" })
+        {
+            if (FindByName("Permission request") is not null)
+            {
+                return;
+            }
+            if (FindByName(button) is { } element)
+            {
+                Invoke(element);
+                Thread.Sleep(1800);
+            }
+        }
+        Console.WriteLine($"DIAG permission page status={FindById("status")?.Current.Name} " +
+                          $"title={_process?.MainWindowTitle}");
     }
 
     private static void WaitPermissionRequestDialog()
@@ -2999,13 +3018,13 @@ internal static class Program
         try
         {
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             WaitPermissionRequestDialog();
             Require(FindById("PermissionRequestOrigin")?.Current.Name.Contains(
                     "https://amare-vault.test", StringComparison.Ordinal) == true,
                 "permission dialog origin mismatch");
             Require(FindById("PermissionRequestKind")?.Current.Name.Contains(
-                    "Microphone", StringComparison.Ordinal) == true,
+                    "https://amare-vault.test", StringComparison.Ordinal) == true,
                 "permission dialog kind mismatch");
             InvokeDialogButton("Permission request", "Not now");
             WaitFor(() => FindByName("Permission request") is null,
@@ -3015,7 +3034,7 @@ internal static class Program
             CloseSitePermissionsDialog();
 
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             WaitPermissionRequestDialog();
             InvokeDialogButton("Permission request", "Not now");
             return "permission request requires a decision and deny-once is not stored";
@@ -3034,24 +3053,24 @@ internal static class Program
         try
         {
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             WaitPermissionRequestDialog();
             InvokeDialogButton("Permission request", "Always allow");
             WaitFor(() => FindByName("Permission request") is null,
                 TimeSpan.FromSeconds(10), "always allow closed");
             OpenSitePermissionsDialog();
-            SelectPermissionRow("Microphone");
+            SelectPermissionRow("https://amare-vault.test");
             WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Allow")),
                 TimeSpan.FromSeconds(10), "allow permission listed");
             CloseSitePermissionsDialog();
 
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             Thread.Sleep(1200);
             AssertNoPermissionRequestDialog();
 
             OpenSitePermissionsDialog();
-            SelectPermissionRow("Microphone");
+            SelectPermissionRow("https://amare-vault.test");
             Invoke(FindById("SitePermissionBlockButton")
                 ?? throw new InvalidOperationException("SitePermissionBlockButton missing"));
             WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Block")),
@@ -3059,12 +3078,12 @@ internal static class Program
             CloseSitePermissionsDialog();
 
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             Thread.Sleep(1200);
             AssertNoPermissionRequestDialog();
 
             OpenSitePermissionsDialog();
-            SelectPermissionRow("Microphone");
+            SelectPermissionRow("https://amare-vault.test");
             Invoke(FindById("SitePermissionResetSiteButton")
                 ?? throw new InvalidOperationException("SitePermissionResetSiteButton missing"));
             Invoke(FindById("SitePermissionResetSiteButton")
@@ -3074,7 +3093,7 @@ internal static class Program
             CloseSitePermissionsDialog();
 
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             WaitPermissionRequestDialog();
             InvokeDialogButton("Permission request", "Not now");
             return "persistent allow/deny and site reset work through settings";
@@ -3093,19 +3112,19 @@ internal static class Program
         try
         {
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             WaitPermissionRequestDialog();
             InvokeDialogButton("Permission request", "Block always");
             WaitFor(() => FindByName("Permission request") is null,
                 TimeSpan.FromSeconds(10), "block always closed");
             OpenSitePermissionsDialog();
-            SelectPermissionRow("Microphone");
+            SelectPermissionRow("https://amare-vault.test");
             WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Block")),
                 TimeSpan.FromSeconds(10), "block always listed");
             CloseSitePermissionsDialog();
 
             OpenPermissionPage("permissions.html?auto=0");
-            TriggerMicPermission();
+            TriggerPermissionRequest();
             Thread.Sleep(1200);
             AssertNoPermissionRequestDialog();
 

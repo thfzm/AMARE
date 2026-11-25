@@ -3,12 +3,28 @@
 <head><meta charset="utf-8"><title>AMARE Permissions</title></head>
 <body>
 <h1>AMARE Permissions</h1>
-<button id="mic" type="button">Request microphone</button>
+<button id="notify" type="button">Request notifications</button>
 <button id="geo" type="button">Request location</button>
+<button id="mic" type="button">Request microphone</button>
 <div id="status">waiting</div>
 <script>
 (() => {
   const status = document.getElementById('status');
+  const requestNotify = async () => {
+    status.textContent = 'requesting-notify';
+    try {
+      const result = await Notification.requestPermission();
+      status.textContent = 'notify-' + result;
+    } catch (error) {
+      status.textContent = 'notify-error';
+    }
+  };
+  const requestGeo = () => {
+    status.textContent = 'requesting-geo';
+    navigator.geolocation.getCurrentPosition(
+      () => { status.textContent = 'geo-allowed'; },
+      () => { status.textContent = 'geo-denied'; });
+  };
   const requestMic = async () => {
     status.textContent = 'requesting-mic';
     try {
@@ -19,16 +35,14 @@
       status.textContent = 'mic-denied';
     }
   };
+  document.getElementById('notify').addEventListener('click', requestNotify);
+  document.getElementById('geo').addEventListener('click', requestGeo);
   document.getElementById('mic').addEventListener('click', requestMic);
-  document.getElementById('geo').addEventListener('click', () => {
-    status.textContent = 'requesting-geo';
-    navigator.geolocation.getCurrentPosition(
-      () => { status.textContent = 'geo-allowed'; },
-      () => { status.textContent = 'geo-denied'; });
-  });
   const params = new URLSearchParams(location.search);
   if (params.get('auto') === '1') {
-    setTimeout(requestMic, 800);
+    setTimeout(requestNotify, 500);
+    setTimeout(requestGeo, 1200);
+    setTimeout(requestMic, 2000);
   }
 })();
 </script>
