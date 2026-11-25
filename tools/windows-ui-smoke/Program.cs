@@ -2533,17 +2533,21 @@ internal static class Program
         }
     }
 
+    private static bool PageTitleContains(string expected) =>
+        _process?.MainWindowTitle.Contains(expected, StringComparison.OrdinalIgnoreCase) == true
+        || FindById("TitleBarTitle")?.Current.Name.Contains(expected, StringComparison.OrdinalIgnoreCase) == true;
+
     private static void WaitForPageTitle(string expected, string description)
     {
         try
         {
-            WaitFor(() => _process?.MainWindowTitle.Contains(expected, StringComparison.OrdinalIgnoreCase) == true,
-                TimeSpan.FromSeconds(20), description);
+            WaitFor(() => PageTitleContains(expected), TimeSpan.FromSeconds(20), description);
         }
         catch (TimeoutException)
         {
-            Console.WriteLine($"DIAG {description}: title={_process?.MainWindowTitle} address={AddressText()} " +
-                              $"status={FindById("StatusText")?.Current.Name}");
+            Console.WriteLine($"DIAG {description}: title={_process?.MainWindowTitle} " +
+                              $"titleBar={FindById("TitleBarTitle")?.Current.Name} address={AddressText()} " +
+                              $"status={FindById("StatusText")?.Current.Name} tabs={CountTabs()}");
             throw;
         }
     }
@@ -2560,7 +2564,7 @@ internal static class Program
             WaitForRequest(server, "/data-navigation.html", "external data page request");
             WaitForPageTitle("Data Navigation Blocked", "external data test page");
             Thread.Sleep(2000);
-            Require(_process!.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase),
+            Require(PageTitleContains("Data Navigation Blocked"),
                 $"external page was replaced by a data document: {_process.MainWindowTitle}");
             var address = AddressText();
             Require(address.StartsWith(page, StringComparison.OrdinalIgnoreCase),
