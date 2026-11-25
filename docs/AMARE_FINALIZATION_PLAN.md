@@ -6,7 +6,7 @@
 - 기준: `feature/phase-2-site-permissions`, 제품/테스트 `f1d878d`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
-- 이번 Phase 0: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
+- Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
 
 ---
 
