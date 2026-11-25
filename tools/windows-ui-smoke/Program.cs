@@ -2507,16 +2507,32 @@ internal static class Program
         return "address search from New Tab resolved to DuckDuckGo";
     }
 
+    private static void WaitForPageTitle(string expected, string description)
+    {
+        try
+        {
+            WaitFor(() => _process?.MainWindowTitle.Contains(expected, StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(20), description);
+        }
+        catch (TimeoutException)
+        {
+            Console.WriteLine($"DIAG {description}: title={_process?.MainWindowTitle} address={AddressText()} " +
+                              $"status={FindById("StatusText")?.Current.Name}");
+            throw;
+        }
+    }
+
     private static string ExternalDataNavigationBlocked()
     {
         var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        var before = CountTabs();
         try
         {
+            OpenNewTabAndWait(before + 1);
             var page = server.BaseUrl + "/data-navigation.html";
             SetValue(FindAddressEdit(), page);
             Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
-            WaitFor(() => _process?.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase) == true,
-                TimeSpan.FromSeconds(20), "external data test page");
+            WaitForPageTitle("Data Navigation Blocked", "external data test page");
             Thread.Sleep(2000);
             Require(_process!.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase),
                 $"external page was replaced by a data document: {_process.MainWindowTitle}");
@@ -2528,6 +2544,7 @@ internal static class Program
             Require(!status.Contains("data:text/html", StringComparison.OrdinalIgnoreCase)
                     && !status.Contains("amare-data-payload", StringComparison.Ordinal),
                 "blocked data navigation leaked its payload into the status bar");
+            CloseActiveTabAndWait(before);
             NavigateToExample();
             return "external data navigation stays blocked without a URI leak";
         }
@@ -2540,13 +2557,13 @@ internal static class Program
     private static string ExternalBlankPopup()
     {
         var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        var before = CountTabs();
         try
         {
-            var before = CountTabs();
+            OpenNewTabAndWait(before + 1);
             SetValue(FindAddressEdit(), server.BaseUrl + "/page1.html");
             Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
-            WaitFor(() => _process?.MainWindowTitle.Contains("Page One", StringComparison.OrdinalIgnoreCase) == true,
-                TimeSpan.FromSeconds(20), "popup host page");
+            WaitForPageTitle("Page One", "popup host page");
             AutomationElement? popup = null;
             WaitFor(() =>
             {
@@ -2557,10 +2574,10 @@ internal static class Program
                 return popup is not null;
             }, TimeSpan.FromSeconds(10), "popup page button");
             Invoke(popup!);
-            WaitFor(() => CountTabs() == before + 1, TimeSpan.FromSeconds(10), "window.open tab");
-            WaitFor(() => _process!.MainWindowTitle.Contains("Popup", StringComparison.OrdinalIgnoreCase) == true,
-                TimeSpan.FromSeconds(10), "popup tab title");
+            WaitFor(() => CountTabs() == before + 2, TimeSpan.FromSeconds(10), "window.open tab");
+            WaitForPageTitle("Popup", "popup tab title");
             Require(server.Requested("/popup.html"), "popup request did not reach the local server");
+            CloseActiveTabAndWait(before + 1);
             CloseActiveTabAndWait(before);
             NavigateToExample();
             return "window.open/_blank still opens a tab and closes cleanly";
@@ -2574,13 +2591,15 @@ internal static class Program
     private static string IframeChildNavigation()
     {
         var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        var before = CountTabs();
         try
         {
+            OpenNewTabAndWait(before + 1);
             SetValue(FindAddressEdit(), server.BaseUrl + "/iframe-nested.html");
             Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
-            WaitFor(() => _process?.MainWindowTitle.Contains("Frame Parent", StringComparison.OrdinalIgnoreCase) == true,
-                TimeSpan.FromSeconds(20), "iframe parent page");
+            WaitForPageTitle("Frame Parent", "iframe parent page");
             WaitFor(() => server.Requested("/page2.html"), TimeSpan.FromSeconds(15), "iframe child request");
+            CloseActiveTabAndWait(before);
             NavigateToExample();
             return "same-origin iframe child still loads";
         }
