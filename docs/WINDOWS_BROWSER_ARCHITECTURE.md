@@ -16,13 +16,14 @@ AMARE.Windows (WinUI 3)
 AMARE.Windows.Core (net8.0, platform-independent C#)
   AmareNative, ProfileClient, SettingsClient, SearchClient,
   SessionClient, HistoryClient, TabManager, address bar,
-  profile path, navigation/download policy, new-tab HTML
+  profile path, navigation/download policy, new-tab HTML,
+  WebOrigin, SitePermissionCatalog, AmareVaultClient(permissions)
         │
-amare_ffi (C ABI, JSON service envelope)
+amare_ffi (C ABI, JSON service envelope; ABI 1 + ABI 2)
         │
-amare-services (ProfileService, SettingsService, SearchService)
+amare-services (ProfileService, SettingsService, SearchService, VaultService)
         │
-amare-store (SQLite repositories, FTS5, sessions, backup)
+amare-store (SQLite repositories, FTS5, sessions, site_permissions, backup)
 ```
 
 - `AMARE.Windows.Core`는 WinUI/WebView2 타입을 포함하지 않아 Linux에서 테스트합니다.
@@ -70,6 +71,14 @@ Request:
 - History: `history.top/list/record/clear`
 - Bookmarks: `bookmark.list/create/delete`
 
+ABI 2는 별도 symbol/handle을 사용하며 Vault와 사이트 권한을 제공한다.
+
+- Vault: `vault.status/initialize/unlock/lock/list/get/get_for_fill/create/update/delete/export/import`
+- Permissions: `permissions.list/get/set/delete/clear_origin/clear_all`
+
+ABI 2도 `ProfileContext`의 `profile_id`/`generation`을 검증하며, stale context는
+오류 코드로 거부한다. 사이트 권한 오류 코드는 40–44다.
+
 Error code는 `amare.h`에 정의되어 있으며 C# `NativeErrorMapper`가 동일하게 매핑합니다.
 문자열은 UTF-8이며 `amare_string_free`로 해제합니다. panic은 Rust FFI 경계에서 catch됩니다.
 `AmareServices`는 multi-thread 호출을 직렬화하지만, destroy와 call을 동시에 호출하면 안 됩니다.
@@ -100,7 +109,34 @@ Error code는 `amare.h`에 정의되어 있으며 C# `NativeErrorMapper`가 동�
 
 ---
 
-## 6. 확인 상태
+## 6. 사이트 권한 (Phase 2.1)
+
+- **event**: `CoreWebView2.PermissionRequested`와
+  `CoreWebView2Frame.PermissionRequested`를 사용한다. frame handler는
+  `Handled=true` + `State=Deny`로 즉시 거부하고, top-level handler는
+  `args.Uri`와 `core.Source`의 HTTPS origin을 exact 비교한다.
+- **persistence**: 모든 결정에 `SavesInProfile=false`를 설정한다. WebView2
+  profile 저장은 source of truth가 아니며, AMARE per-profile SQLite
+  `site_permissions`(schema v6)가 authoritative다.
+- **decision**: 저장된 allow/deny를 먼저 적용하고, 없으면 AMARE
+  `ContentDialog`에서 `Allow once`/`Always allow`/`Not now`/`Block always`를
+  받는다. once/Not now는 저장하지 않고, Always/Block만 revision CAS로
+  저장한다.
+- **origin**: HTTPS exact scheme/host/port, subdomain 비상속, IDN/punycode,
+  default port 정규화. HTTP/data/file/javascript/New Tab은 거부한다.
+- **isolation**: profile_id + generation, per-profile DB. iframe은 same/cross
+  origin 모두 deny, AI/Reader WebView는 deny-all, popup/new window는 자체
+  WebView/프로필 컨텍스트를 유지한다.
+- **async lifecycle**: deferral을 잡고 dialog를 띄운다. lookup 후와 dialog
+  후 epoch/tab/WebView/profile/generation/origin을 재검증하며, navigation/
+  tab close/profile switch/window close/dialog cancel은 deny로 끝난다.
+- **UI**: 메뉴 `Site permissions…`와 Settings의 `Manage site permissions…`.
+  목록/filter/Allow/Block/Remove/Reset site/Clear all. 저장 실패 시 오류를
+  표시하고 목록을 다시 읽으며 성공으로 표시하지 않는다.
+
+상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
+
+## 7. 확인 상태
 
 - Linux에서 Rust service/FFI, C# adapter/core logic, fake bridge, native service round-trip 테스트를 실행했습니다.
 - WinUI 3 XAML compiler와 WebView2 runtime은 Linux에서 실행할 수 없습니다.

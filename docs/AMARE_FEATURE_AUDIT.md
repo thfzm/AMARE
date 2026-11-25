@@ -1,10 +1,16 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 / 승인 대기**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1 사이트 권한 갱신**
 - 작성일: 2026-11-23
-- 기준: `master`, 제품/테스트 `49d4962`, 문서 `4ea8c82`
+- 최신 갱신: 2026-11-26 (Phase 2.1 Site Permissions)
+- 기준: `feature/phase-2-site-permissions`, 제품/테스트 `f1d878d`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
+
+> Phase 2.1 상세는
+> [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md)에
+> 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
+> 역사적 기록과 Phase 2.1 갱신을 함께 표시한다.
 
 ---
 
@@ -36,10 +42,16 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke | **49/49** (Phase 1.1) |
-| Windows 통합 검증 | **143 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (package 단계 skip) |
-| C#↔Rust interop | **76/76** (Phase 1.1) |
-| Linux CI | SUCCESS |
+| WinUI UI smoke (최신) | **71/71** (Phase 2.1, 기존 64 + site permissions 7) |
+| Windows 통합 검증 (최신) | **168 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (Phase 2.1, package 단계 skip) |
+| C#↔Rust interop (최신) | **100/100** (Phase 2.1) |
+| Rust site permissions | **5/5** (Phase 2.1) |
+| Rust `services` | **38/38** (Phase 2.1) |
+| Rust vault | **25/25 Windows**, **24/24 Linux** |
+| Linux CI | SUCCESS (Phase 2.1, `f1d878d`) |
+| WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
+| Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
+| C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
 | WebView2 local navigation | back/forward/reload/stop/new-window/download PASS |
 | WebView2 profile isolation | cookies/localStorage/IndexedDB 격리 PASS |
 | 30탭 메모리 | empty 1754MB / content 2074MB / close 후 0MB |
@@ -51,7 +63,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | GPUI A/B | A reload PASS, B load/reload/close/exit UNVERIFIED |
 | 패키지 | 0.92.0 WinUI ZIP/MSIX + GPUI ZIP 유지 |
 
-WinUI UI smoke 48개 항목:
+WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 
 `window_created`, `initial_ui`, `custom_title_bar`, `address_navigation`,
 `new_tab`, `tab_switch_shortcut`, `tab_close_shortcut`, `websocket_tab_close`,
@@ -89,7 +101,7 @@ WinUI UI smoke 48개 항목:
 | 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 13 | Find in Page | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
-| 14 | 사이트 권한 | **`NOT_IMPLEMENTED`** | `PARTIALLY_IMPLEMENTED` | P1 |
+| 14 | 사이트 권한 | **`IMPLEMENTED_AND_VERIFIED` (CI)** | `PARTIALLY_IMPLEMENTED` | P1 |
 | 15 | 설정 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 16 | 자동 업데이트 | `IMPLEMENTED_BUT_UNVERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 17 | 성능/진단 | `IMPLEMENTED_AND_VERIFIED` | `PARTIALLY_IMPLEMENTED` | P2 |
@@ -441,13 +453,36 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ---
 
-### 4.14 사이트 권한
+### 4.14 사이트 권한 — **Phase 2.1 구현/CI 검증**
 
-**WinUI — `NOT_IMPLEMENTED`**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (CI)**
 
-- `CoreWebView2.PermissionRequested` 처리 코드가 없다.
-- 카메라/마이크/위치/알림/클립보드에 대한 AMARE 자체 저장/조회/초기화 UI가 없다.
-- WebView2 기본 프롬프트가 그대로 노출될 수 있으나, 제품 기능으로 검증되지 않았다.
+- `CoreWebView2.PermissionRequested`와
+  `CoreWebView2Frame.PermissionRequested`를 사용한다.
+- WebView2 SDK `COREWEBVIEW2_PERMISSION_KIND`의 named kind **13개**를
+  지원하고, `UnknownPermission`은 dialog 없이 deny한다.
+- 모든 결정에 `SavesInProfile=false`를 설정해 WebView2 profile 저장을
+  source of truth로 쓰지 않는다.
+- 결정은 **프로필별 SQLite `site_permissions`**(schema v6)에 저장한다.
+  - exact HTTPS origin, kind, allow/deny, revision, timestamps
+  - profile_id + origin + kind PK, CAS revision
+  - session decision은 저장하지 않음
+- `Allow once`/`Not now`는 현재 요청에만 적용하고 저장하지 않는다.
+  `Always allow`/`Block always`만 영구 저장한다.
+- exact scheme/host/port, subdomain 비상속, IDN/punycode, lookalike 분리,
+  HTTP/`data:`/`file:`/`javascript:`/New Tab 차단.
+- iframe(same/cross-origin)은 frame handler에서 즉시 deny한다.
+  AI/Reader WebView는 deny-all, popup은 자체 WebView/프로필 컨텍스트를 쓴다.
+- navigation/tab close/profile switch/window close 시 epoch를 증가시키고
+  lookup/dialog 후 컨텍스트를 재검증한다. 저장 실패는 allow로 fallback하지
+  않는다.
+- 설정: 목록, kind filter, Allow/Block/Remove, Reset site, Clear all,
+  Settings의 `Manage site permissions…` 진입점. 실패 시 오류 표시 후 reload.
+- 검증: UI smoke **71/71**, interop **100/100**, site permission store
+  **5/5**, Windows **168/0/8/8**, Linux SUCCESS.
+- UNVERIFIED: 실제 Windows 11, notification toast 표시, 13개 kind 전체의
+  live request, UI 수준 비동기 cancel/store failure, 기존 WebView2
+  non-default permission setting의 startup audit/reset.
 
 **GPUI — `PARTIALLY_IMPLEMENTED`**
 
@@ -455,10 +490,12 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - 카메라/마이크는 WebView2 기본 프롬프트, 알림/위치는 UNVERIFIED로 표시한다.
 - 쿠키/사이트 데이터 삭제는 BLOCKED/read-only다.
 
-**Phase 2 조치**
+**Phase 2 조치 — DONE (Phase 2.1)**
 
 - origin별 decision 저장, 허용/차단/초기화 UI, 로그/상태 노출.
 - 절대 자동 허용하지 않는다.
+
+상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
 
 ---
 
@@ -572,7 +609,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 | ID | 항목 | 근거 | 조치 |
 |---|---|---|---|
-| P1-1 | 사이트 권한 UI 없음 | `PermissionRequested` 처리 없음 | Phase 2 구현 |
+| P1-1 | 사이트 권한 UI 없음 | Phase 2.1에서 WebView2 consent + per-profile store + 설정 UI 구현 | **RESOLVED (CI)**; 실기기/일부 race는 UNVERIFIED |
 | P1-2 | AI 패널 실제 서비스/세션 격리 미검증 | UI smoke는 패널 open만 확인 | 실제 서비스 로그인/쿠키/격리 확인 |
 | P1-3 | 업데이트 설치 end-to-end 없음 | installer flow UNVERIFIED, MSIX BLOCKED | Portable ZIP 업데이트 E2E |
 | P1-4 | WinUI/GPUI 데이터 루트 불일치 | `%LOCALAPPDATA%` vs `%APPDATA%` | 자동 공유 금지, 필요 시 import |
@@ -658,5 +695,10 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   2. 실제 Windows 11 실기기 입력/통합 검증
 - 멀티윈도우 세션 데이터 모델(P0-1)은 Phase 1.1에서 해결·검증했다.
   상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`.
+- 사이트 권한(P1-1)은 Phase 2.1에서 WebView2 consent, per-profile SQLite
+  store(schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책까지
+  구현하고 Windows/Linux CI로 검증했다. 실제 Windows 11과 일부 비동기
+  race, 기존 WebView2 profile permission audit은 UNVERIFIED로 남긴다.
+  상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.

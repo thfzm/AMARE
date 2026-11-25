@@ -1,8 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 / 승인 대기**
+- 문서 상태: **Phase 0 계획 + Phase 2.1 사이트 권한 갱신**
 - 작성일: 2026-11-23
-- 기준: `master`, 제품/테스트 `49d4962`, 문서 `4ea8c82`
+- 최신 갱신: 2026-11-26 (Phase 2.1 Site Permissions)
+- 기준: `feature/phase-2-site-permissions`, 제품/테스트 `f1d878d`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - 이번 Phase 0: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -119,6 +120,21 @@
   기존 WebView2 데이터 삭제 실행, 강제 종료/비동기 경합
 - 상세: `docs/AMARE_PHASE1_VAULT_WEBVIEW_REPORT.md`
 
+### Phase 2.1 진행 상태
+
+- **사이트 권한 구현 및 CI 검증 완료** (`f1d878d`)
+- `CoreWebView2.PermissionRequested` + `CoreWebView2Frame.PermissionRequested`
+- 13개 named kind 지원, Unknown deny, `SavesInProfile=false`
+- per-profile SQLite schema **v6** `site_permissions`, CAS revision
+- FFI ABI 2 `permissions.*`, C# client/DTO, WinUI consent/settings UI
+- exact HTTPS origin, subdomain 비상속, IDN/punycode, HTTP/data/file/New Tab 차단
+- iframe same/cross-origin deny, AI/Reader deny-all, popup 컨텍스트 유지
+- UI smoke **71/71**, interop **100/100**, Windows **168/0/8/8**, Linux SUCCESS
+- UNVERIFIED: 실제 Windows 11, notification toast 표시, 13개 kind 전체 live
+  request, UI 수준 비동기 cancel/store failure, 기존 WebView2 non-default
+  permission setting의 startup audit/reset
+- 상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -128,7 +144,11 @@
 - **이미 충분히 검증된 것**: 탭, 주소창/검색, navigation, 북마크, 히스토리,
   다운로드, AI 패널, AI API(모의), Reader, Find, 설정, 성능/진단.
 - **부분 구현**: Vault, 창 관리/Windows 통합. (세션 멀티윈도우 P0는 Phase 1.1에서 해결)
-- **미구현**: WinUI 비밀번호 관리자, WinUI 사이트 권한.
+- **Phase 2.1 완료(CI)**: WinUI 사이트 권한 — consent, per-profile store
+  (schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책. 실제 Windows 11과
+  일부 비동기 race는 UNVERIFIED.
+- **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
+  11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
   업데이트 설치 end-to-end, MSIX 설치.
 
@@ -174,7 +194,7 @@
 
 ### P1 — 개인용 핵심 기능/배포
 
-- 사이트 권한
+- ~~사이트 권한~~ — **RESOLVED (Phase 2.1, CI)**
 - AI 패널 실제 서비스/세션 격리
 - 업데이트 설치 end-to-end
 - WinUI/GPUI 데이터 루트 불일치
@@ -308,7 +328,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 
 | 작업 | 내용 | 예상 |
 |---|---|---:|
-| 2-1 사이트 권한 | `PermissionRequested`, origin별 저장, 허용/차단/초기화 | 3–4일 |
+| 2-1 사이트 권한 | `PermissionRequested`, per-profile store, 허용/차단/초기화 | **DONE (Phase 2.1, CI)** |
 | 2-2 AI 패널/API | 실제 서비스 로그인/격리, 실제 API 1회, 키 삭제 | 2–4일 |
 | 2-3 설정/한국어 | 다운로드/홈/개인정보/권한/언어, 리소스 문자열 | 2–4일 |
 | 2-4 업데이터 E2E | Portable ZIP 적용/롤백/health marker/데이터 보존 | 3–5일 |
@@ -418,7 +438,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
 | 8 | 비밀번호 저장/자동완성 보안 | unit + 실기기 |
 | 9 | AI Web Panel 정상 | 실제 서비스 |
 | 10 | Reader/Find 정상 | UI smoke + 실기기 |
-| 11 | 사이트 권한 설정 가능 | feature test |
+| 11 | 사이트 권한 설정 가능 | UI smoke 71/71 + Store/FFI (Phase 2.1); 실제 Windows 11은 UNVERIFIED |
 | 12 | 설정/데이터 보존 | 업데이트 전후 비교 |
 | 13 | 업데이트/실패 복구 | ZIP apply/rollback |
 | 14 | 장시간 사용 중 치명적 크래시 없음 | 8시간 soak |
@@ -470,7 +490,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
     - 코드와 문서 분리 commit
     - 패키지는 만들지 않음
 12. **승인 후 Phase 2 진입**
-    - 사이트 권한 → AI → 설정 → 업데이터 → 백업
+    - ~~사이트 권한~~ **DONE (Phase 2.1)** → AI → 설정 → 업데이터 → 백업
 
 각 단계는 “제품 결함”과 “테스트 자동화 결함”을 분리해 기록한다.
 

@@ -273,7 +273,57 @@ External-content FTS5 테이블과 INSERT/UPDATE/DELETE trigger:
 
 ---
 
-## 7. 마이그레이션 이력
+## 7. 프로필 DB v4–v6
+
+### v4 — downloads
+
+`downloads(id, filename, url, path, mime_type, total_bytes, received_bytes,
+state, error, created_at_ms, updated_at_ms)`와
+`idx_downloads_created(created_at_ms DESC, id DESC)`.
+
+### v5 — session windows / secrets
+
+- `sessions`/`session_tabs`에 창 단위 session을 추가한다.
+- `session_windows`와 `session_tabs.window_id`로 창별 복원을 지원한다.
+- Vault ciphertext용 `secrets` 테이블을 사용한다.
+
+### v6 — site_permissions
+
+```sql
+CREATE TABLE site_permissions (
+    profile_id       TEXT NOT NULL,
+    origin           TEXT NOT NULL,
+    permission_kind  TEXT NOT NULL CHECK (permission_kind IN (
+        'microphone','camera','geolocation','notifications',
+        'other_sensors','clipboard_read','multiple_automatic_downloads',
+        'file_read_write','autoplay','local_fonts',
+        'midi_system_exclusive_messages','window_management',
+        'persistent_storage')),
+    decision         TEXT NOT NULL CHECK (decision IN ('allow','deny')),
+    scope            TEXT NOT NULL CHECK (scope IN ('persistent')),
+    revision         INTEGER NOT NULL CHECK (revision > 0),
+    created_at_ms    INTEGER NOT NULL,
+    updated_at_ms    INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, origin, permission_kind)
+);
+```
+
+인덱스:
+
+- `idx_site_permissions_profile_updated(profile_id, updated_at_ms DESC, origin, permission_kind)`
+- `idx_site_permissions_origin(profile_id, origin, permission_kind)`
+
+`origin`은 HTTPS exact origin만 저장한다. session-only decision은 저장하지
+않으며 `scope='session'`은 repository가 거부한다. `revision`은 CAS
+(compare-and-swap) update/delete에 사용한다.
+
+v6 migration은 additive이며 기존 v5 데이터를 변경하지 않는다. 실패 시
+transaction rollback으로 v5를 유지한다. 상세:
+[`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
+
+---
+
+## 8. 마이그레이션 이력
 
 | DB | version | 내용 |
 |---|---:|---|
@@ -282,16 +332,20 @@ External-content FTS5 테이블과 INSERT/UPDATE/DELETE trigger:
 | profile | 1 | settings, bookmark_folders, bookmarks, history_visits |
 | profile | 2 | sessions, session_tabs, secrets |
 | profile | 3 | Library, tags/collections/sources, conversations/messages, workspaces/tasks/memories, FTS5 |
+| profile | 4 | downloads |
+| profile | 5 | session_windows, session_tabs.window_id |
+| profile | 6 | site_permissions |
 
 - `schema_migrations`에 적용 시각을 기록.
 - `PRAGMA user_version` 동기화.
 - 실패 시 트랜잭션 롤백, 이전 버전 유지.
-- 이전 v1/v2 profile DB는 v3로 자동 업그레이드.
+- 이전 v1~v5 profile DB는 최신 v6으로 자동 업그레이드한다.
+- v5→v6은 `site_permissions`만 추가하며 기존 row를 변경하지 않는다.
 - 이전 v1 root DB는 v2로 자동 업그레이드(icon=NULL).
 
 ---
 
-## 8. 쿼리/인덱스 원칙
+## 9. 쿼리/인덱스 원칙
 
 - 모든 값은 prepared statement parameter binding.
 - 일반 LIKE 검색은 `%`/`_`를 escape하고 `ESCAPE '\'` 사용.
@@ -302,7 +356,7 @@ External-content FTS5 테이블과 INSERT/UPDATE/DELETE trigger:
 
 ---
 
-## 9. 백업 시 주의
+## 10. 백업 시 주의
 
 프로필 DB를 복사할 때 다음을 함께 고려합니다.
 

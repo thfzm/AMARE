@@ -48,7 +48,23 @@ WebView2가 실제로 보고한 `CanGoBack`/`CanGoForward`를 사용하며, UI�
 - WebView2 기본 sandbox/site isolation 설정을 변경하지 않습니다.
 - 새 탭 HTML은 외부 리소스/서버에 의존하지 않습니다.
 
-## 5. 오류 처리
+## 5. 사이트 권한 (Phase 2.1)
+
+- top-level은 `CoreWebView2.PermissionRequested`, iframe은
+  `CoreWebView2Frame.PermissionRequested`를 사용한다.
+- 모든 결정에 `SavesInProfile=false`를 설정하고, AMARE per-profile SQLite
+  store(schema v6 `site_permissions`)를 source of truth로 사용한다.
+- iframe은 `Handled=true` + `State=Deny`로 즉시 거부한다. top-level은
+  `args.Uri`와 `core.Source`의 exact HTTPS origin이 일치할 때만 처리한다.
+- dialog는 deferral로 비동기 처리하며, lookup/dialog 후 epoch/tab/WebView/
+  profile/generation/origin을 재검증한다. cancel/navigation/tab close/profile
+  switch/window close는 deny로 끝난다.
+- AI/Reader WebView는 deny-all, popup/new window는 자체 WebView/프로필
+  컨텍스트를 유지한다.
+
+상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
+
+## 6. 오류 처리
 
 - `NavigationCompleted.IsSuccess == false`이고 `OperationCanceled`가 아니면 상태 표시줄에 오류를 표시합니다.
 - WebView2 환경 생성 실패는 시작 오류 dialog로 표시합니다.
