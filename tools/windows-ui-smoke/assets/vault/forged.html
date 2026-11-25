@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Forged Message</title></head>
+<body>
+<h1>AMARE Forged Message</h1>
+<div id="status">waiting</div>
+<script>
+setTimeout(() => {
+  try {
+    chrome.webview.postMessage({
+      type: 'amare_login_candidate', version: 1, generation: 1,
+      token: 'ffffffffffffffffffffffffffffffff',
+      msgId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      origin: 'https://amare-vault.test',
+      actionOrigin: 'https://amare-vault.test',
+      formToken: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      username: 'forged-user',
+      ambiguous: false
+    });
+    document.getElementById('status').textContent = 'posted';
+  } catch (e) {
+    document.getElementById('status').textContent = 'post-error';
+  }
+}, 500);
+</script>
+</body>
+</html>

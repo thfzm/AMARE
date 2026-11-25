@@ -87,6 +87,9 @@ public sealed partial class MainWindow : Window
         public required WebView2 View { get; init; }
         public required string NewTabNonce { get; init; }
         public InternalDocumentNavigation InternalDocument { get; } = new();
+        public WebViewVaultTabState VaultState { get; } = new();
+        public string WebViewId { get; } = Guid.NewGuid().ToString("N");
+        public bool VaultBridgeReady { get; set; }
         public bool ShowingNewTab { get; set; }
         public bool Closed { get; set; }
     }
@@ -1006,6 +1009,7 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("WebView2 environment is not ready.");
             }
             await webView.EnsureCoreWebView2Async(_environment);
+            await ConfigureWebViewVaultAsync(host);
             AttachWebViewEvents(host);
             if (url.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(url))
             {
@@ -1072,6 +1076,7 @@ public sealed partial class MainWindow : Window
             var hadInternalDocument = host.InternalDocument.HasPending;
             if (host.InternalDocument.TryAccept(args.Uri))
             {
+                InvalidateVaultForNavigation(host);
                 return;
             }
             if (hadInternalDocument)
@@ -1094,6 +1099,7 @@ public sealed partial class MainWindow : Window
                 StatusText.Text = DescribeBlockedNavigation(args.Uri);
                 return;
             }
+            InvalidateVaultForNavigation(host);
             if (args.Uri.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase))
             {
                 args.Cancel = true;
@@ -1113,8 +1119,12 @@ public sealed partial class MainWindow : Window
                 UpdateToolbar();
             }
         };
-        core.SourceChanged += (_, _) =>
+        core.SourceChanged += (_, args) =>
         {
+            if (!args.IsNewDocument && host.View.Source is not null)
+            {
+                host.VaultState.OnSameDocumentUrl(core.Source);
+            }
             if (!host.ShowingNewTab && !host.Model.IsNewTabPage && host.View.Source is not null)
             {
                 host.Model.Url = host.View.Source.AbsoluteUri;
@@ -1145,6 +1155,15 @@ public sealed partial class MainWindow : Window
             host.InternalDocument.Disarm();
             host.ShowingNewTab = false;
             host.Model.IsLoading = false;
+            if (args.IsSuccess)
+            {
+                BeginVaultDocument(host, core);
+            }
+            else if (args.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
+            {
+                host.VaultState.OnDocumentFailed();
+                host.VaultBridgeReady = false;
+            }
             UpdateNavigationState(host);
             if (!args.IsSuccess && args.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
             {
@@ -1227,35 +1246,12 @@ public sealed partial class MainWindow : Window
         };
         core.WebMessageReceived += async (_, args) =>
         {
-            if (!host.ShowingNewTab)
+            if (host.Model.IsNewTabPage)
             {
+                await HandleNewTabMessageAsync(host, args);
                 return;
             }
-            try
-            {
-                var json = args.TryGetWebMessageAsString();
-                using var document = JsonDocument.Parse(json);
-                var root = document.RootElement;
-                if (root.GetProperty("token").GetString() != host.NewTabNonce)
-                {
-                    return;
-                }
-                if (root.GetProperty("type").GetString() != "search")
-                {
-                    return;
-                }
-                var query = root.GetProperty("query").GetString() ?? "";
-                var resolution = AddressBarResolver.Resolve(query, _engineId);
-                if (resolution.IsNavigation)
-                {
-                    Navigate(host, resolution.Target);
-                }
-            }
-            catch (Exception exception)
-            {
-                StatusText.Text = $"New tab action failed: {exception.Message}";
-            }
-            await Task.CompletedTask;
+            await HandleVaultWebMessageAsync(host, core, args);
         };
     }
 
@@ -1406,6 +1402,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         host.Closed = true;
+        OnWebViewVaultTabClosed(host);
         host.InternalDocument.Disarm();
         try
         {
@@ -2021,6 +2018,7 @@ public sealed partial class MainWindow : Window
         await ReaderWebView.EnsureCoreWebView2Async(_environment);
         if (ReaderWebView.CoreWebView2 is { } readerCore)
         {
+            ApplyBuiltInAutofillPolicy(readerCore);
             readerCore.NavigationStarting += (_, args) =>
             {
                 if (args.Uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
@@ -2147,6 +2145,7 @@ public sealed partial class MainWindow : Window
             await AiWebView.EnsureCoreWebView2Async(_aiEnvironment);
             if (AiWebView.CoreWebView2 is { } core)
             {
+                ApplyBuiltInAutofillPolicy(core);
                 core.NewWindowRequested += (_, args) =>
                 {
                     args.Handled = true;
@@ -2268,6 +2267,8 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, "Bookmarks", "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
         AddMenu(menu, "Downloads", "", () => Downloads_Click(DownloadsButton, new RoutedEventArgs()));
         AddMenu(menu, "Passwords…", "", () => _ = OpenVaultPanelAsync());
+        AddMenu(menu, "Fill password for this site…", "", () => _ = ShowVaultFillDialogAsync());
+        AddMenu(menu, "Clear WebView saved passwords…", "", () => _ = ShowClearWebViewDataDialogAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenu(menu, "Reader Mode", "", () => _ = OpenReaderAsync());
         AddMenu(menu, "Find in page", "Ctrl+F", OpenFind);

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Frame Child</title></head>
+<body>
+<h1>AMARE Frame Child</h1>
+<script>
+setTimeout(() => {
+  try {
+    chrome.webview.postMessage({
+      type: 'amare_login_candidate', version: 1, generation: 1,
+      token: 'ffffffffffffffffffffffffffffffff',
+      msgId: 'cccccccccccccccccccccccccccccccc',
+      origin: 'https://amare-vault.test',
+      actionOrigin: 'https://amare-vault.test',
+      formToken: 'dddddddddddddddddddddddddddddddd',
+      username: 'frame-user',
+      ambiguous: false
+    });
+  } catch (e) {
+    try { parent.postMessage('child-error', '*'); } catch (ignore) { }
+  }
+}, 400);
+</script>
+</body>
+</html>

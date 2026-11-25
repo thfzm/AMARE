@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="..\windows-verify\LocalHttpServer.cs" Link="LocalHttpServer.cs" />
+    <Content Include="assets\vault\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

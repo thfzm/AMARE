@@ -318,6 +318,11 @@ internal static class Program
         }
         var exe = Path.GetFullPath(args[0]);
         _exePath = exe;
+        var vaultAssets = Path.Combine(AppContext.BaseDirectory, "assets", "vault");
+        if (Directory.Exists(vaultAssets))
+        {
+            Environment.SetEnvironmentVariable("AMARE_TEST_VAULT_ROOT", vaultAssets);
+        }
         try
         {
             Launch(exe);
@@ -412,6 +417,10 @@ internal static class Program
             Check("vault_ui_crud_reveal_backup", VaultCrudRevealBackup);
             Check("vault_ui_profile_switch_isolation", VaultProfileSwitchIsolation);
             Check("vault_ui_multiwindow_lock", VaultMultiwindowLock);
+            Check("vault_capture_requires_approval", VaultCaptureRequiresApproval);
+            Check("vault_fill_explicit_and_no_submit", VaultFillExplicit);
+            Check("vault_forged_message_rejected", VaultForgedMessageRejected);
+            Check("vault_capture_locked_rejected", VaultCaptureLockedRejected);
             Check("vault_ui_idle_lock", VaultIdleLock);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
@@ -2670,6 +2679,188 @@ internal static class Program
         finally
         {
             server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static void EnsureVaultUnlockedForBrowsing()
+    {
+        OpenVault();
+        var primary = FindById("VaultPrimaryActionButton")
+            ?? throw new InvalidOperationException("VaultPrimaryActionButton missing");
+        if (primary.Current.Name.Contains("Unlock", StringComparison.OrdinalIgnoreCase))
+        {
+            Invoke(primary);
+        }
+        WaitVaultStatus("Unlocked");
+        if (FindById("VaultCloseButton") is { } close)
+        {
+            Invoke(close);
+        }
+        WaitFor(() => FindById("VaultStatusText")?.Current.IsOffscreen != false,
+            TimeSpan.FromSeconds(10), "vault panel hidden");
+    }
+
+    private static int VaultEntryCountForTest()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        var count = CountVaultEntries();
+        if (FindById("VaultCloseButton") is { } close)
+        {
+            Invoke(close);
+        }
+        WaitFor(() => FindById("VaultStatusText")?.Current.IsOffscreen != false,
+            TimeSpan.FromSeconds(10), "vault panel hidden");
+        return count;
+    }
+
+    private static void SubmitVaultTestUrl(string relative)
+    {
+        SubmitAddress("https://amare-vault.test/" + relative);
+    }
+
+    private static void SelectFillEntry(AutomationElement dialog, string username)
+    {
+        var item = dialog.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>()
+            .FirstOrDefault(candidate => candidate.Current.Name.Contains(username, StringComparison.Ordinal));
+        item ??= dialog.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+        Require(item is not null, "fill entry missing");
+        if (item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern))
+        {
+            ((SelectionItemPattern)pattern).Select();
+        }
+        else
+        {
+            Invoke(item);
+        }
+        Thread.Sleep(300);
+    }
+
+    private static string VaultCaptureRequiresApproval()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=1&user=vault-user");
+            WaitFor(() => FindByName("Save password?") is not null,
+                TimeSpan.FromSeconds(20), "save password dialog");
+            Require(FindByName("Site: https://amare-vault.test") is not null,
+                "save dialog did not show the exact origin");
+            Require(FindByName("Username: vault-user") is not null,
+                "save dialog did not show the username");
+            InvokeDialogButton("Save password?", "Not now");
+            WaitFor(() => FindByName("Save password?") is null,
+                TimeSpan.FromSeconds(10), "save dialog rejected");
+            Require(VaultEntryCountForTest() == before, "rejected password was saved");
+
+            SubmitVaultTestUrl("login.html?auto=1&user=vault-user");
+            WaitFor(() => FindByName("Save password?") is not null,
+                TimeSpan.FromSeconds(20), "second save password dialog");
+            InvokeDialogButton("Save password?", "Save");
+            WaitFor(() => StatusTextContains("Password saved to Vault."),
+                TimeSpan.FromSeconds(15), "password saved");
+            Require(VaultEntryCountForTest() == before + 1, "approved password was not saved");
+            return "capture requires explicit approval and saves the exact origin";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultFillExplicit()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = CountTabs();
+        OpenNewTabAndWait(before + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=0");
+            AssertPageContains("AMARE Vault Login");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Fill password for this site…");
+            WaitFor(() => FindByName("Fill password") is not null,
+                TimeSpan.FromSeconds(10), "fill password dialog");
+            var dialog = FindByName("Fill password")!;
+            SelectFillEntry(dialog, "vault-user");
+            InvokeDialogButton("Fill password", "Fill");
+            AssertPageContains("filled:vault-user");
+            AssertPageDoesNotContain("submitted");
+            Require(AddressText().Contains("login.html?auto=0", StringComparison.OrdinalIgnoreCase),
+                $"fill navigated away: {AddressText()}");
+            return "explicit fill uses the exact-origin entry and never submits";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(before);
+        }
+    }
+
+    private static string VaultForgedMessageRejected()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("forged.html");
+            AssertPageContains("AMARE Forged Message");
+            Thread.Sleep(1500);
+            Require(FindByName("Save password?") is null,
+                "forged top-level token was accepted");
+
+            SubmitVaultTestUrl("iframe-forge.html");
+            AssertPageContains("AMARE Frame Forge");
+            Thread.Sleep(1500);
+            Require(FindByName("Save password?") is null,
+                "iframe message was accepted");
+            Require(VaultEntryCountForTest() == before, "forged message changed the Vault");
+            return "forged top-level and iframe messages are rejected";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultCaptureLockedRejected()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        Invoke(FindById("VaultLockButton")
+            ?? throw new InvalidOperationException("VaultLockButton missing"));
+        WaitVaultStatus("Locked");
+        if (FindById("VaultCloseButton") is { } close)
+        {
+            Invoke(close);
+        }
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=1&user=locked-user");
+            WaitFor(() => FindByName("Save password?") is not null,
+                TimeSpan.FromSeconds(6), "locked save dialog");
+            throw new InvalidOperationException("save dialog appeared while the Vault was locked");
+        }
+        catch (TimeoutException)
+        {
+            var status = FindById("StatusText")?.Current.Name ?? "";
+            Require(status.Contains("Unlock the Vault", StringComparison.OrdinalIgnoreCase),
+                $"locked capture status missing: {status}");
+            return "capture is rejected while the Vault is locked";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+            EnsureVaultUnlockedForBrowsing();
         }
     }
 

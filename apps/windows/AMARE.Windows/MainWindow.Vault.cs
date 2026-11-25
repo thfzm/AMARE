@@ -91,6 +91,7 @@ public sealed partial class MainWindow
 
     private void DisposeVaultClient()
     {
+        InvalidateWebViewVaultOperations();
         _vaultClient?.Dispose();
         _vaultClient = null;
         _vaultClientProfile = null;
@@ -512,10 +513,18 @@ public sealed partial class MainWindow
         {
             return;
         }
+        // Hiding the panel must not lock the native vault: password capture and
+        // explicit fill happen while the user browses. Idle/session/manual lock,
+        // profile switch and app shutdown still lock it.
         _vaultOpen = false;
         VaultHost.Visibility = Visibility.Collapsed;
         WebViewHost.Visibility = Visibility.Visible;
-        await LockVaultAsync(broadcast: true, reason: "Vault panel closed.");
+        VaultEditorPanel.Visibility = Visibility.Collapsed;
+        VaultDetailPassword.Password = "";
+        VaultPasswordInput.Password = "";
+        VaultIdleMonitor.Touch();
+        ClearVaultSecret();
+        await Task.CompletedTask;
     }
 
     private async Task LockVaultAsync(bool broadcast, string reason)
@@ -562,6 +571,7 @@ public sealed partial class MainWindow
         {
             await _vaultClipboard.ClearIfOwnedAsync();
         }
+        InvalidateWebViewVaultOperations();
         if (broadcast)
         {
             VaultWindowCoordinator.RequestLock(_windowId);

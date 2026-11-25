@@ -98,6 +98,7 @@ internal sealed class VerifyForm : Form
             await Add("local_ca_chain_simulation", () => Phase21Probes.LocalCaChainSimulationAsync());
             await Add("webview2_tab_lifecycle_10", () => Phase21Probes.TabLifecycleAsync(this, _root));
             await Add("profile_isolation", () => Probes.ProfileIsolationAsync(this, _root));
+            await Add("webview2_autofill_policy", () => Probes.AutofillPolicyAsync(this, _root));
             await Add("cdp_dom_click_input_scroll", () => Probes.CdpInteractionAsync(this, _root));
 
             if (Environment.GetEnvironmentVariable("AMARE_VERIFY_MANUAL") == "0")

@@ -9,6 +9,61 @@ internal static class Probes
     private static ProbeResult Result(string name, string status, bool executed, string detail, object? data = null) =>
         new(name, status, executed, detail, DateTimeOffset.UtcNow, data);
 
+    public static async Task<ProbeResult> AutofillPolicyAsync(Control host, string root)
+    {
+        var folder = Path.Combine(root, "autofill-policy");
+        var (env, first) = await WebViewHelpers.CreateViewAsync(host, folder);
+        var second = await WebViewHelpers.CreateViewWithEnvironmentAsync(host, env);
+        try
+        {
+            var core = first.CoreWebView2;
+            core.Settings.IsPasswordAutosaveEnabled = false;
+            core.Settings.IsGeneralAutofillEnabled = false;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.Profile.IsPasswordAutosaveEnabled = false;
+            core.Profile.IsGeneralAutofillEnabled = false;
+
+            var secondCore = second.CoreWebView2;
+            var passed = !core.Settings.IsPasswordAutosaveEnabled
+                         && !core.Settings.IsGeneralAutofillEnabled
+                         && !core.Profile.IsPasswordAutosaveEnabled
+                         && !core.Profile.IsGeneralAutofillEnabled
+                         && !secondCore.Settings.IsPasswordAutosaveEnabled
+                         && !secondCore.Settings.IsGeneralAutofillEnabled
+                         && !secondCore.Profile.IsPasswordAutosaveEnabled
+                         && !secondCore.Profile.IsGeneralAutofillEnabled
+                         && !secondCore.Settings.AreHostObjectsAllowed;
+            return Result(
+                "webview2_autofill_policy",
+                passed ? ProbeStatus.Pass : ProbeStatus.Fail,
+                true,
+                passed
+                    ? "password autosave and general autofill are disabled for the profile"
+                    : "one or more autofill settings remained enabled",
+                new
+                {
+                    firstPasswordAutosave = core.Settings.IsPasswordAutosaveEnabled,
+                    firstGeneralAutofill = core.Settings.IsGeneralAutofillEnabled,
+                    secondPasswordAutosave = secondCore.Settings.IsPasswordAutosaveEnabled,
+                    secondGeneralAutofill = secondCore.Settings.IsGeneralAutofillEnabled,
+                    hostObjectsAllowed = secondCore.Settings.AreHostObjectsAllowed
+                });
+        }
+        catch (Exception exception)
+        {
+            return Result(
+                "webview2_autofill_policy",
+                ProbeStatus.Fail,
+                true,
+                $"autofill policy probe failed: {exception.GetType().Name}");
+        }
+        finally
+        {
+            WebViewHelpers.DisposeView(host, second);
+            WebViewHelpers.DisposeView(host, first);
+        }
+    }
+
     public static async Task<ProbeResult> ProfileIsolationAsync(Control host, string root)
     {
         var www = Path.Combine(root, "www");

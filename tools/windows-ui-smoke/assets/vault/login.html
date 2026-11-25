@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AMARE Vault Login</title>
+<style>
+body { font: 16px "Segoe UI", system-ui, sans-serif; margin: 40px; }
+form { display: grid; gap: 10px; max-width: 320px; }
+input, button { padding: 8px; font: inherit; }
+</style>
+</head>
+<body>
+<h1>AMARE Vault Login</h1>
+<div id="status">waiting</div>
+<form id="login" action="login.html" method="post"
+      onsubmit="event.preventDefault(); document.getElementById('status').textContent = 'submitted';">
+  <label>Username <input id="username" name="username" type="text" autocomplete="username"></label>
+  <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+  <button id="loginButton" type="submit">Sign in</button>
+</form>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const user = params.get('user') || 'vault-user';
+  const auto = params.get('auto') === '1';
+  const username = document.getElementById('username');
+  const password = document.getElementById('password');
+  const status = document.getElementById('status');
+  if (auto) {
+    username.value = user;
+    password.value = 'Vault-Test-Password-1';
+  }
+  const markFilled = () => {
+    if (!username.value) return;
+    status.textContent = 'filled:' + username.value;
+    document.title = 'AMARE Vault Login Filled';
+  };
+  username.addEventListener('input', markFilled);
+  password.addEventListener('input', markFilled);
+  if (auto) {
+    setTimeout(() => {
+      const form = document.getElementById('login');
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    }, 1200);
+  }
+})();
+</script>
+</body>
+</html>
