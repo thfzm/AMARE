@@ -93,7 +93,7 @@ public sealed partial class MainWindow
         {
             host.VaultState.SetContext(
                 _profileId,
-                _context?.Generation ?? 0,
+                _context is null ? 0 : (long)_context.Generation,
                 host.WebViewId);
             if (!ApplyBuiltInAutofillPolicy(core))
             {
@@ -173,7 +173,7 @@ public sealed partial class MainWindow
             || host.ShowingNewTab
             || host.Model.IsNewTabPage
             || !ReferenceEquals(host.View.CoreWebView2, core)
-            || !host.VaultState.IsContextCurrent(_profileId, _context.Generation)
+            || !host.VaultState.IsContextCurrent(_profileId, (long)_context.Generation)
             || !WebOrigin.TryParse(core.Source, out var origin)
             || !host.VaultState.TryBeginDocument(origin, core.Source, out var token))
         {
@@ -206,7 +206,7 @@ public sealed partial class MainWindow
         if (host.Closed
             || !ReferenceEquals(host.View.CoreWebView2, core)
             || _context is null
-            || !host.VaultState.IsContextCurrent(_profileId, _context.Generation))
+            || !host.VaultState.IsContextCurrent(_profileId, (long)_context.Generation))
         {
             return;
         }
@@ -289,7 +289,7 @@ public sealed partial class MainWindow
         }
         var context = _context;
         var profileId = _profileId;
-        if (!host.VaultState.IsContextCurrent(profileId, context.Generation))
+        if (!host.VaultState.IsContextCurrent(profileId, (long)context.Generation))
         {
             return;
         }
@@ -462,7 +462,7 @@ public sealed partial class MainWindow
         var context = _context;
         var profileId = _profileId;
         if (!host.VaultBridgeReady
-            || !host.VaultState.IsContextCurrent(profileId, context.Generation)
+            || !host.VaultState.IsContextCurrent(profileId, (long)context.Generation)
             || !WebOrigin.TryParse(core.Source, out var origin))
         {
             StatusText.Text = "Password Vault is unavailable for this page.";
@@ -653,7 +653,7 @@ public sealed partial class MainWindow
                && ReferenceEquals(_vaultClient, vault)
                && _context == context
                && _profileId == profileId
-               && host.VaultState.IsContextCurrent(profileId, context.Generation)
+               && host.VaultState.IsContextCurrent(profileId, (long)context.Generation)
                && host.VaultState.IsCurrent(generation, origin, documentUrl);
     }
 
@@ -690,7 +690,7 @@ public sealed partial class MainWindow
         IReadOnlyDictionary<string, object?>? extra = null)
     {
         if (_context is null
-            || !host.VaultState.IsContextCurrent(_profileId, _context.Generation))
+            || !host.VaultState.IsContextCurrent(_profileId, (long)_context.Generation))
         {
             return false;
         }
