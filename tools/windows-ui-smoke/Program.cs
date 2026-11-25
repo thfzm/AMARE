@@ -427,6 +427,7 @@ internal static class Program
             Check("site_permissions_block_always", SitePermissionsBlockAlways);
             Check("site_permissions_iframe_denied", SitePermissionsIframeDenied);
             Check("site_permissions_popup", SitePermissionsPopup);
+            Check("site_permissions_settings_entry", SitePermissionsSettingsEntry);
             Check("site_permissions_profile_isolation", SitePermissionsProfileIsolation);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
@@ -2935,6 +2936,17 @@ internal static class Program
             TimeSpan.FromSeconds(10), "site permissions dialog");
     }
 
+    private static void OpenSitePermissionsFromSettings()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Settings");
+        WaitFor(() => FindByName("Settings") is not null,
+            TimeSpan.FromSeconds(5), "Settings dialog for permissions");
+        InvokeDialogButton("Settings", "Manage site permissions…");
+        WaitFor(() => FindByName("Site permissions") is not null,
+            TimeSpan.FromSeconds(10), "site permissions dialog from settings");
+    }
+
     private static void CloseSitePermissionsDialog()
     {
         if (FindByName("Site permissions") is null)
@@ -3160,6 +3172,15 @@ internal static class Program
         {
             CloseActiveTabAndWait(beforeTabs);
         }
+    }
+
+    private static string SitePermissionsSettingsEntry()
+    {
+        ClearAllSitePermissions();
+        OpenSitePermissionsFromSettings();
+        Require(PermissionRows().Count == 0, "settings entry showed unexpected permissions");
+        CloseSitePermissionsDialog();
+        return "Settings opens the site permission list";
     }
 
     private static string SitePermissionsProfileIsolation()
