@@ -40,9 +40,7 @@
   document.getElementById('mic').addEventListener('click', requestMic);
   const params = new URLSearchParams(location.search);
   if (params.get('auto') === '1') {
-    setTimeout(requestNotify, 500);
-    setTimeout(requestGeo, 1200);
-    setTimeout(requestMic, 2000);
+    setTimeout(requestNotify, 700);
   }
 })();
 </script>

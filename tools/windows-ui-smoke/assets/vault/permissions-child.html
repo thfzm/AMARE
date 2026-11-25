@@ -7,13 +7,12 @@
 <script>
 setTimeout(async () => {
   const status = document.getElementById('status');
-  status.textContent = 'requesting-mic';
+  status.textContent = 'requesting-notify';
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    status.textContent = 'mic-allowed';
-    for (const track of stream.getTracks()) track.stop();
+    const result = await Notification.requestPermission();
+    status.textContent = 'notify-' + result;
   } catch (error) {
-    status.textContent = 'mic-denied';
+    status.textContent = 'notify-error';
   }
 }, 1000);
 </script>

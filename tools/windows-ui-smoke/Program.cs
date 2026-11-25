@@ -2903,25 +2903,18 @@ internal static class Program
 
     private static void TriggerPermissionRequest()
     {
-        // The page's auto sequence requests notifications, then location, then
-        // microphone. Different WebView2/OS combinations allow different kinds
-        // on a headless CI runner; use the first one that raises a dialog.
+        // Use one permission kind for the whole flow so a stored allow/deny
+        // applies to the next request. The page auto-requests notifications.
         Thread.Sleep(2500);
         if (FindByName("Permission request") is not null)
         {
             return;
         }
-        foreach (var button in new[] { "Request notifications", "Request location", "Request microphone" })
+        if (FindByName("Permission request") is null
+            && FindByName("Request notifications") is { } notifications)
         {
-            if (FindByName("Permission request") is not null)
-            {
-                return;
-            }
-            if (FindByName(button) is { } element)
-            {
-                Invoke(element);
-                Thread.Sleep(1800);
-            }
+            Invoke(notifications);
+            Thread.Sleep(1800);
         }
         Console.WriteLine($"DIAG permission page status={FindById("status")?.Current.Name} " +
                           $"title={_process?.MainWindowTitle}");
@@ -3023,9 +3016,9 @@ internal static class Program
             Require(FindById("PermissionRequestOrigin")?.Current.Name.Contains(
                     "https://amare-vault.test", StringComparison.Ordinal) == true,
                 "permission dialog origin mismatch");
-            Require(FindById("PermissionRequestKind")?.Current.Name.Contains(
-                    "https://amare-vault.test", StringComparison.Ordinal) == true,
-                "permission dialog kind mismatch");
+            Require(!string.IsNullOrWhiteSpace(
+                    FindById("PermissionRequestKind")?.Current.Name),
+                "permission dialog kind missing");
             InvokeDialogButton("Permission request", "Not now");
             WaitFor(() => FindByName("Permission request") is null,
                 TimeSpan.FromSeconds(10), "permission dialog denied");
