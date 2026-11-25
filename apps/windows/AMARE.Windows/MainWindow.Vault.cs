@@ -682,6 +682,8 @@ public sealed partial class MainWindow
 
     private async Task ResetVaultForProfileChangeAsync(bool broadcast = true)
     {
+        CancelPendingPermissionRequest();
+        CancelSitePermissionsDialog();
         if (_vaultClient is not null && _context is not null)
         {
             try

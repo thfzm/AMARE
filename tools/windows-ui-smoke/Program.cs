@@ -422,6 +422,11 @@ internal static class Program
             Check("vault_forged_message_rejected", VaultForgedMessageRejected);
             Check("vault_capture_locked_rejected", VaultCaptureLockedRejected);
             Check("vault_ui_idle_lock", VaultIdleLock);
+            Check("site_permissions_deny_once", SitePermissionsDenyOnce);
+            Check("site_permissions_always_allow_and_settings", SitePermissionsAlwaysAllowAndSettings);
+            Check("site_permissions_block_always", SitePermissionsBlockAlways);
+            Check("site_permissions_iframe_denied", SitePermissionsIframeDenied);
+            Check("site_permissions_popup", SitePermissionsPopup);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -2884,6 +2889,281 @@ internal static class Program
         {
             CloseActiveTabAndWait(beforeTabs);
             EnsureVaultUnlockedForBrowsing();
+        }
+    }
+
+    private static void OpenPermissionPage(string relative)
+    {
+        SubmitVaultTestUrl(relative);
+        WaitFor(() => FindByName("AMARE Permissions") is not null
+                     || FindByName("AMARE Frame Permissions") is not null
+                     || FindByName("AMARE Popup Permissions") is not null,
+            TimeSpan.FromSeconds(15), "permission test page");
+    }
+
+    private static void TriggerMicPermission()
+    {
+        WaitFor(() => FindByName("Request microphone") is not null,
+            TimeSpan.FromSeconds(10), "microphone request button");
+        Invoke(FindByName("Request microphone")!);
+    }
+
+    private static void WaitPermissionRequestDialog()
+    {
+        WaitFor(() => FindByName("Permission request") is not null,
+            TimeSpan.FromSeconds(15), "permission request dialog");
+    }
+
+    private static void OpenSitePermissionsDialog()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Site permissions…");
+        WaitFor(() => FindByName("Site permissions") is not null,
+            TimeSpan.FromSeconds(10), "site permissions dialog");
+    }
+
+    private static void CloseSitePermissionsDialog()
+    {
+        if (FindByName("Site permissions") is null)
+        {
+            return;
+        }
+        InvokeDialogButton("Site permissions", "Close");
+        WaitFor(() => FindByName("Site permissions") is null,
+            TimeSpan.FromSeconds(10), "site permissions dialog close");
+    }
+
+    private static bool PermissionRowContains(AutomationElement row, string text) =>
+        row.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
+        || row.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+            .Cast<AutomationElement>()
+            .Any(candidate => candidate.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase));
+
+    private static IReadOnlyList<AutomationElement> PermissionRows()
+    {
+        var list = FindById("SitePermissionsList");
+        if (list is null)
+        {
+            return [];
+        }
+        return list.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>()
+            .ToList();
+    }
+
+    private static void SelectPermissionRow(string contains)
+    {
+        WaitFor(() => PermissionRows().Any(row =>
+                PermissionRowContains(row, contains)),
+            TimeSpan.FromSeconds(10), $"permission row {contains}");
+        var row = PermissionRows().First(candidate => PermissionRowContains(candidate, contains));
+        if (row.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern))
+        {
+            ((SelectionItemPattern)pattern).Select();
+        }
+        else
+        {
+            Invoke(row);
+        }
+        Thread.Sleep(300);
+    }
+
+    private static void ClearAllSitePermissions()
+    {
+        OpenSitePermissionsDialog();
+        if (PermissionRows().Count > 0)
+        {
+            Invoke(FindById("SitePermissionClearAllButton")
+                ?? throw new InvalidOperationException("SitePermissionClearAllButton missing"));
+            Invoke(FindById("SitePermissionClearAllButton")
+                ?? throw new InvalidOperationException("SitePermissionClearAllButton missing"));
+            WaitFor(() => PermissionRows().Count == 0,
+                TimeSpan.FromSeconds(10), "site permissions cleared");
+        }
+        CloseSitePermissionsDialog();
+    }
+
+    private static void AssertNoPermissionRequestDialog()
+    {
+        Require(FindByName("Permission request") is null,
+            "permission request dialog appeared unexpectedly");
+    }
+
+    private static string SitePermissionsDenyOnce()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            WaitPermissionRequestDialog();
+            Require(FindById("PermissionRequestOrigin")?.Current.Name.Contains(
+                    "https://amare-vault.test", StringComparison.Ordinal) == true,
+                "permission dialog origin mismatch");
+            Require(FindById("PermissionRequestKind")?.Current.Name.Contains(
+                    "Microphone", StringComparison.Ordinal) == true,
+                "permission dialog kind mismatch");
+            InvokeDialogButton("Permission request", "Not now");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "permission dialog denied");
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Count == 0, "deny-once stored a permission");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Not now");
+            return "permission request requires a decision and deny-once is not stored";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string SitePermissionsAlwaysAllowAndSettings()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Always allow");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "always allow closed");
+            OpenSitePermissionsDialog();
+            SelectPermissionRow("Microphone");
+            WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Allow")),
+                TimeSpan.FromSeconds(10), "allow permission listed");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            Thread.Sleep(1200);
+            AssertNoPermissionRequestDialog();
+
+            OpenSitePermissionsDialog();
+            SelectPermissionRow("Microphone");
+            Invoke(FindById("SitePermissionBlockButton")
+                ?? throw new InvalidOperationException("SitePermissionBlockButton missing"));
+            WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Block")),
+                TimeSpan.FromSeconds(10), "block permission listed");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            Thread.Sleep(1200);
+            AssertNoPermissionRequestDialog();
+
+            OpenSitePermissionsDialog();
+            SelectPermissionRow("Microphone");
+            Invoke(FindById("SitePermissionResetSiteButton")
+                ?? throw new InvalidOperationException("SitePermissionResetSiteButton missing"));
+            Invoke(FindById("SitePermissionResetSiteButton")
+                ?? throw new InvalidOperationException("SitePermissionResetSiteButton missing"));
+            WaitFor(() => PermissionRows().Count == 0,
+                TimeSpan.FromSeconds(10), "site permission reset");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Not now");
+            return "persistent allow/deny and site reset work through settings";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string SitePermissionsBlockAlways()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Block always");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "block always closed");
+            OpenSitePermissionsDialog();
+            SelectPermissionRow("Microphone");
+            WaitFor(() => PermissionRows().Any(row => PermissionRowContains(row, "Block")),
+                TimeSpan.FromSeconds(10), "block always listed");
+            CloseSitePermissionsDialog();
+
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerMicPermission();
+            Thread.Sleep(1200);
+            AssertNoPermissionRequestDialog();
+
+            ClearAllSitePermissions();
+            return "block always is persisted and clear all removes it";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string SitePermissionsIframeDenied()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions-frame.html");
+            Thread.Sleep(2500);
+            AssertNoPermissionRequestDialog();
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Count == 0, "iframe permission was stored");
+            CloseSitePermissionsDialog();
+            return "iframe permission requests are denied";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string SitePermissionsPopup()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions-popup.html");
+            Invoke(FindByName("Open permission popup")
+                ?? throw new InvalidOperationException("Open permission popup missing"));
+            WaitFor(() => CountTabs() == beforeTabs + 2,
+                TimeSpan.FromSeconds(10), "permission popup tab");
+            WaitPermissionRequestDialog();
+            Require(FindById("PermissionRequestOrigin")?.Current.Name.Contains(
+                    "https://amare-vault.test", StringComparison.Ordinal) == true,
+                "popup permission origin mismatch");
+            InvokeDialogButton("Permission request", "Not now");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "popup permission denied");
+            CloseActiveTabAndWait(beforeTabs + 1);
+            return "popup permission request keeps its own tab context";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
         }
     }
 

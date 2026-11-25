@@ -46,6 +46,11 @@ public enum VaultErrorCode
     Profile = 29,
     NotFound = 30,
     OriginMismatch = 31,
+    PermissionInvalid = 40,
+    PermissionConflict = 41,
+    PermissionNotFound = 42,
+    PermissionProfile = 43,
+    PermissionInternal = 44,
     Unknown = 99
 }
 
@@ -67,6 +72,11 @@ public static class VaultErrorMapper
         29 => VaultErrorCode.Profile,
         30 => VaultErrorCode.NotFound,
         31 => VaultErrorCode.OriginMismatch,
+        40 => VaultErrorCode.PermissionInvalid,
+        41 => VaultErrorCode.PermissionConflict,
+        42 => VaultErrorCode.PermissionNotFound,
+        43 => VaultErrorCode.PermissionProfile,
+        44 => VaultErrorCode.PermissionInternal,
         _ => VaultErrorCode.Unknown
     };
 }

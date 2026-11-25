@@ -367,7 +367,7 @@ fn v4_single_window_migrates_to_main_window_without_data_loss() {
     let path = dir.path().join("legacy.db");
     create_v4_database(&path);
     let profile = ProfileStore::open_at(&path, ProfileId::new("p1")).unwrap();
-    assert_eq!(profile.schema_version().unwrap(), 5);
+    assert_eq!(profile.schema_version().unwrap(), 6);
     let latest = profile.sessions().latest_windows().unwrap().unwrap();
     assert_eq!(latest.session.id, 7);
     assert_eq!(latest.windows.len(), 1);
@@ -401,7 +401,7 @@ fn migration_dry_run_preserves_original_and_copy_integrity() {
 
     {
         let profile = ProfileStore::open_at(&copy, ProfileId::new("p1")).unwrap();
-        assert_eq!(profile.schema_version().unwrap(), 5);
+        assert_eq!(profile.schema_version().unwrap(), 6);
         let latest = profile.sessions().latest_windows().unwrap().unwrap();
         assert_eq!(latest.windows[0].tabs.len(), 2);
         let check: String = profile

@@ -41,6 +41,7 @@ use repositories::profiles::ProfileRepository;
 use repositories::secrets::SecretRepository;
 use repositories::sessions::SessionRepository;
 use repositories::settings::SettingsRepository;
+pub use repositories::site_permissions::{SitePermissionRepository, normalize_site_origin};
 use repositories::workspaces::{TaskMemoryRepository, TaskRepository, WorkspaceRepository};
 use rusqlite::Connection;
 use std::fs;
@@ -228,6 +229,7 @@ impl ProfileStore {
              DELETE FROM history_visits;
              DELETE FROM bookmarks;
              DELETE FROM bookmark_folders;
+             DELETE FROM site_permissions;
              DELETE FROM secrets;
              DELETE FROM settings;",
         )?;
@@ -257,6 +259,10 @@ impl ProfileStore {
 
     pub fn secrets(&self) -> SecretRepository<'_> {
         SecretRepository::new(&self.conn)
+    }
+
+    pub fn site_permissions(&self) -> SitePermissionRepository<'_> {
+        SitePermissionRepository::new(&self.conn, &self.profile_id)
     }
 
     pub fn library(&self) -> LibraryRepository<'_> {

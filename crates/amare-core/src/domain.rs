@@ -529,3 +529,128 @@ pub struct SearchHit {
     #[serde(default)]
     pub updated_at_ms: Option<TimestampMs>,
 }
+
+/// WebView2 permission kinds that AMARE can manage. Unknown SDK values are
+/// never persisted; the UI denies them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SitePermissionKind {
+    Microphone,
+    Camera,
+    Geolocation,
+    Notifications,
+    OtherSensors,
+    ClipboardRead,
+    MultipleAutomaticDownloads,
+    FileReadWrite,
+    Autoplay,
+    LocalFonts,
+    MidiSystemExclusiveMessages,
+    WindowManagement,
+    PersistentStorage,
+}
+
+impl SitePermissionKind {
+    pub const ALL: &'static [Self] = &[
+        Self::Microphone,
+        Self::Camera,
+        Self::Geolocation,
+        Self::Notifications,
+        Self::OtherSensors,
+        Self::ClipboardRead,
+        Self::MultipleAutomaticDownloads,
+        Self::FileReadWrite,
+        Self::Autoplay,
+        Self::LocalFonts,
+        Self::MidiSystemExclusiveMessages,
+        Self::WindowManagement,
+        Self::PersistentStorage,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Microphone => "microphone",
+            Self::Camera => "camera",
+            Self::Geolocation => "geolocation",
+            Self::Notifications => "notifications",
+            Self::OtherSensors => "other_sensors",
+            Self::ClipboardRead => "clipboard_read",
+            Self::MultipleAutomaticDownloads => "multiple_automatic_downloads",
+            Self::FileReadWrite => "file_read_write",
+            Self::Autoplay => "autoplay",
+            Self::LocalFonts => "local_fonts",
+            Self::MidiSystemExclusiveMessages => "midi_system_exclusive_messages",
+            Self::WindowManagement => "window_management",
+            Self::PersistentStorage => "persistent_storage",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|kind| kind.as_str() == value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SitePermissionDecision {
+    Allow,
+    Deny,
+}
+
+impl SitePermissionDecision {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::Deny => "deny",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "allow" => Some(Self::Allow),
+            "deny" => Some(Self::Deny),
+            _ => None,
+        }
+    }
+}
+
+/// Session decisions are kept only in WinUI memory. Persistent rows are stored
+/// in the per-profile database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SitePermissionScope {
+    Session,
+    Persistent,
+}
+
+impl SitePermissionScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Persistent => "persistent",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "session" => Some(Self::Session),
+            "persistent" => Some(Self::Persistent),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SitePermission {
+    pub profile_id: ProfileId,
+    pub origin: String,
+    pub kind: SitePermissionKind,
+    pub decision: SitePermissionDecision,
+    pub scope: SitePermissionScope,
+    pub revision: i64,
+    pub created_at_ms: TimestampMs,
+    pub updated_at_ms: TimestampMs,
+}

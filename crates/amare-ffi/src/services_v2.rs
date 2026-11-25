@@ -5,7 +5,7 @@
 //! convention is UTF-8 C strings and `amare_string_free`.
 
 use crate::{AMARE_OK, clear_last_error, guard, read_cstr, set_last_error};
-use amare_core::ProfileId;
+use amare_core::{ProfileId, SitePermissionDecision, SitePermissionKind, SitePermissionScope};
 use amare_security::KeyProtector;
 use amare_services::vault::{VaultError, VaultService};
 use amare_services::{ProfileContext, ProfileService, ServiceError};
@@ -28,6 +28,11 @@ pub const AMARE_ERR_VAULT_INVALID_ARGUMENT: i32 = 28;
 pub const AMARE_ERR_VAULT_PROFILE: i32 = 29;
 pub const AMARE_ERR_VAULT_NOT_FOUND: i32 = 30;
 pub const AMARE_ERR_VAULT_ORIGIN_MISMATCH: i32 = 31;
+pub const AMARE_ERR_PERMISSION_INVALID: i32 = 40;
+pub const AMARE_ERR_PERMISSION_CONFLICT: i32 = 41;
+pub const AMARE_ERR_PERMISSION_NOT_FOUND: i32 = 42;
+pub const AMARE_ERR_PERMISSION_PROFILE: i32 = 43;
+pub const AMARE_ERR_PERMISSION_INTERNAL: i32 = 44;
 
 const MAX_ABI2_REQUEST: usize = 32 * 1024 * 1024;
 
@@ -79,6 +84,9 @@ impl AmareVaultServices {
             .ok_or_else(|| VaultFailure::invalid("missing method"))?;
         let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
         let context = required_context(&params)?;
+        if method.starts_with("permissions.") {
+            return self.dispatch_permissions(&context, method, &params);
+        }
         let vault = self.vault_for(&context)?;
 
         match method {
@@ -164,6 +172,69 @@ impl AmareVaultServices {
             _ => Err(VaultFailure::new(
                 AMARE_ERR_VAULT_UNSUPPORTED,
                 "unknown vault method",
+            )),
+        }
+    }
+
+    fn dispatch_permissions(
+        &self,
+        context: &ProfileContext,
+        method: &str,
+        params: &Value,
+    ) -> Result<Value, VaultFailure> {
+        let store = {
+            let profiles = self.profiles.lock().map_err(|_| {
+                VaultFailure::new(AMARE_ERR_PERMISSION_PROFILE, "profile service poisoned")
+            })?;
+            profiles
+                .profile_store(context)
+                .map_err(permission_service_failure)?
+        };
+        let permissions = store.site_permissions();
+        let failure = |error: amare_store::StoreError| permission_store_failure(error);
+        match method {
+            "permissions.list" => {
+                let items = permissions.list().map_err(failure)?;
+                Ok(json!({ "permissions": items }))
+            }
+            "permissions.get" => {
+                let origin = required_str(params, "origin")?;
+                let kind = required_permission_kind(params)?;
+                let permission = permissions.get(&origin, kind).map_err(failure)?;
+                Ok(json!({ "permission": permission }))
+            }
+            "permissions.set" => {
+                let origin = required_str(params, "origin")?;
+                let kind = required_permission_kind(params)?;
+                let decision = required_permission_decision(params)?;
+                let scope = required_permission_scope(params)?;
+                let expected_revision = required_i64(params, "expected_revision")?;
+                let permission = permissions
+                    .set(&origin, kind, decision, scope, expected_revision)
+                    .map_err(failure)?;
+                Ok(json!({ "permission": permission }))
+            }
+            "permissions.delete" => {
+                let origin = required_str(params, "origin")?;
+                let kind = required_permission_kind(params)?;
+                let expected_revision = required_i64(params, "expected_revision")?;
+                permissions
+                    .delete(&origin, kind, expected_revision)
+                    .map_err(failure)?;
+                Ok(json!({ "deleted": true }))
+            }
+            "permissions.clear_origin" => {
+                let origin = required_str(params, "origin")?;
+                let removed = permissions.clear_origin(&origin).map_err(failure)?;
+                Ok(json!({ "removed": removed }))
+            }
+            "permissions.clear_all" => {
+                let removed = permissions.clear_all().map_err(failure)?;
+                Ok(json!({ "removed": removed }))
+            }
+            _ => Err(VaultFailure::new(
+                AMARE_ERR_PERMISSION_INVALID,
+                "unknown permission method",
             )),
         }
     }
@@ -328,6 +399,66 @@ fn error_message(error: &VaultError) -> String {
         VaultError::InvalidInput(_) => "invalid vault input".into(),
         VaultError::Store(_) => "vault storage error".into(),
     }
+}
+
+fn required_permission_kind(params: &Value) -> Result<SitePermissionKind, VaultFailure> {
+    let value = required_str(params, "kind")?;
+    SitePermissionKind::parse(&value)
+        .ok_or_else(|| VaultFailure::new(AMARE_ERR_PERMISSION_INVALID, "invalid permission kind"))
+}
+
+fn required_permission_decision(params: &Value) -> Result<SitePermissionDecision, VaultFailure> {
+    let value = required_str(params, "decision")?;
+    SitePermissionDecision::parse(&value).ok_or_else(|| {
+        VaultFailure::new(AMARE_ERR_PERMISSION_INVALID, "invalid permission decision")
+    })
+}
+
+fn required_permission_scope(params: &Value) -> Result<SitePermissionScope, VaultFailure> {
+    let value = required_str(params, "scope")?;
+    SitePermissionScope::parse(&value)
+        .ok_or_else(|| VaultFailure::new(AMARE_ERR_PERMISSION_INVALID, "invalid permission scope"))
+}
+
+fn required_i64(params: &Value, name: &str) -> Result<i64, VaultFailure> {
+    params
+        .get(name)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| VaultFailure::invalid(format!("missing integer field: {name}")))
+}
+
+fn permission_service_failure(error: ServiceError) -> VaultFailure {
+    match error {
+        ServiceError::Store(error) => permission_store_failure(error),
+        ServiceError::ProfileSwitched | ServiceError::NoActiveProfile => VaultFailure::new(
+            AMARE_ERR_PERMISSION_PROFILE,
+            "profile context is not active",
+        ),
+        ServiceError::InvalidInput(_) => {
+            VaultFailure::new(AMARE_ERR_PERMISSION_INVALID, "invalid permission input")
+        }
+        _ => VaultFailure::new(AMARE_ERR_PERMISSION_INTERNAL, "permission service error"),
+    }
+}
+
+fn permission_store_failure(error: amare_store::StoreError) -> VaultFailure {
+    let (code, message) = match &error {
+        amare_store::StoreError::InvalidInput(_) => {
+            (AMARE_ERR_PERMISSION_INVALID, "invalid site permission")
+        }
+        amare_store::StoreError::Conflict { .. } => {
+            (AMARE_ERR_PERMISSION_CONFLICT, "site permission was changed")
+        }
+        amare_store::StoreError::NotFound(_) => {
+            (AMARE_ERR_PERMISSION_NOT_FOUND, "site permission not found")
+        }
+        amare_store::StoreError::ProfileNotFound(_)
+        | amare_store::StoreError::ProfileDeleting(_) => {
+            (AMARE_ERR_PERMISSION_PROFILE, "profile is not available")
+        }
+        _ => (AMARE_ERR_PERMISSION_INTERNAL, "permission storage error"),
+    };
+    VaultFailure::new(code, message)
 }
 
 fn default_protector() -> Result<Arc<dyn KeyProtector>, VaultFailure> {
@@ -680,6 +811,176 @@ mod tests {
         });
         let error = call(service, wrong_context).unwrap_err();
         assert_eq!(error.0, AMARE_ERR_VAULT_PROFILE);
+        unsafe { amare_services_abi2_destroy(service) };
+    }
+
+    #[test]
+    fn abi2_permissions_crud_conflict_and_validation() {
+        let dir = tempdir().unwrap();
+        let context = context(dir.path());
+        let service = create_handle(dir.path());
+        let empty = call(
+            service,
+            make_request(&context, "permissions.list", json!({})),
+        )
+        .unwrap();
+        assert!(empty["permissions"].as_array().unwrap().is_empty());
+
+        let created = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "https://EXAMPLE.com:443/path",
+                    "kind": "camera",
+                    "decision": "allow",
+                    "scope": "persistent",
+                    "expected_revision": 0
+                }),
+            ),
+        )
+        .unwrap();
+        assert_eq!(created["permission"]["origin"], "https://example.com");
+        assert_eq!(created["permission"]["revision"], 1);
+        assert_eq!(created["permission"]["decision"], "allow");
+
+        let found = call(
+            service,
+            make_request(
+                &context,
+                "permissions.get",
+                json!({"origin": "https://example.com", "kind": "camera"}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(found["permission"]["kind"], "camera");
+
+        let updated = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "https://example.com",
+                    "kind": "camera",
+                    "decision": "deny",
+                    "scope": "persistent",
+                    "expected_revision": 1
+                }),
+            ),
+        )
+        .unwrap();
+        assert_eq!(updated["permission"]["revision"], 2);
+        assert_eq!(updated["permission"]["decision"], "deny");
+
+        let stale = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "https://example.com",
+                    "kind": "camera",
+                    "decision": "allow",
+                    "scope": "persistent",
+                    "expected_revision": 1
+                }),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(stale.0, AMARE_ERR_PERMISSION_CONFLICT);
+
+        let invalid_origin = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "http://example.com",
+                    "kind": "camera",
+                    "decision": "allow",
+                    "scope": "persistent",
+                    "expected_revision": 0
+                }),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(invalid_origin.0, AMARE_ERR_PERMISSION_INVALID);
+
+        let invalid_kind = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "https://example.com",
+                    "kind": "unknown_permission",
+                    "decision": "allow",
+                    "scope": "persistent",
+                    "expected_revision": 0
+                }),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(invalid_kind.0, AMARE_ERR_PERMISSION_INVALID);
+
+        let session_scope = call(
+            service,
+            make_request(
+                &context,
+                "permissions.set",
+                json!({
+                    "origin": "https://example.com",
+                    "kind": "microphone",
+                    "decision": "allow",
+                    "scope": "session",
+                    "expected_revision": 0
+                }),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(session_scope.0, AMARE_ERR_PERMISSION_INVALID);
+
+        let stale_context = call(
+            service,
+            json!({
+                "version": 2,
+                "method": "permissions.list",
+                "params": {"context": {"profile_id": context.profile_id.as_str(), "generation": 999}}
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(stale_context.0, AMARE_ERR_PERMISSION_PROFILE);
+
+        let wrong_delete = call(
+            service,
+            make_request(
+                &context,
+                "permissions.delete",
+                json!({"origin": "https://example.com", "kind": "camera", "expected_revision": 1}),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(wrong_delete.0, AMARE_ERR_PERMISSION_CONFLICT);
+
+        let deleted = call(
+            service,
+            make_request(
+                &context,
+                "permissions.delete",
+                json!({"origin": "https://example.com", "kind": "camera", "expected_revision": 2}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(deleted["deleted"], true);
+
+        let after = call(
+            service,
+            make_request(&context, "permissions.list", json!({})),
+        )
+        .unwrap();
+        assert!(after["permissions"].as_array().unwrap().is_empty());
         unsafe { amare_services_abi2_destroy(service) };
     }
 

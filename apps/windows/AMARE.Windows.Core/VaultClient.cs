@@ -170,6 +170,77 @@ public sealed class AmareVaultClient : IDisposable
             new { context, payload_hex = payloadHex, password },
             cancellationToken);
 
+    public async Task<IReadOnlyList<SitePermissionDto>> ListPermissionsAsync(
+        ProfileContextDto context,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await CallAsync<SitePermissionListDto>(
+            "permissions.list", new { context }, cancellationToken).ConfigureAwait(false);
+        return response.Permissions;
+    }
+
+    public async Task<SitePermissionDto?> GetPermissionAsync(
+        ProfileContextDto context,
+        string origin,
+        string kind,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await CallAsync<SitePermissionResponseDto>(
+            "permissions.get", new { context, origin, kind }, cancellationToken)
+            .ConfigureAwait(false);
+        return response.Permission;
+    }
+
+    public async Task<SitePermissionDto> SetPermissionAsync(
+        ProfileContextDto context,
+        string origin,
+        string kind,
+        string decision,
+        string scope,
+        long expectedRevision,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await CallAsync<SitePermissionResponseDto>(
+            "permissions.set",
+            new
+            {
+                context,
+                origin,
+                kind,
+                decision,
+                scope,
+                expected_revision = expectedRevision
+            },
+            cancellationToken).ConfigureAwait(false);
+        return response.Permission
+               ?? throw new VaultException(VaultErrorCode.InvalidJson,
+                   "permission response was empty", "permissions.set");
+    }
+
+    public Task<SitePermissionDeleteDto> DeletePermissionAsync(
+        ProfileContextDto context,
+        string origin,
+        string kind,
+        long expectedRevision,
+        CancellationToken cancellationToken = default) =>
+        CallAsync<SitePermissionDeleteDto>(
+            "permissions.delete",
+            new { context, origin, kind, expected_revision = expectedRevision },
+            cancellationToken);
+
+    public Task<SitePermissionCountDto> ClearOriginPermissionsAsync(
+        ProfileContextDto context,
+        string origin,
+        CancellationToken cancellationToken = default) =>
+        CallAsync<SitePermissionCountDto>(
+            "permissions.clear_origin", new { context, origin }, cancellationToken);
+
+    public Task<SitePermissionCountDto> ClearAllPermissionsAsync(
+        ProfileContextDto context,
+        CancellationToken cancellationToken = default) =>
+        CallAsync<SitePermissionCountDto>(
+            "permissions.clear_all", new { context }, cancellationToken);
+
     private async Task<T> CallAsync<T>(
         string method,
         object parameters,

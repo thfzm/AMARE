@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Permissions</title></head>
+<body>
+<h1>AMARE Permissions</h1>
+<button id="mic" type="button">Request microphone</button>
+<button id="geo" type="button">Request location</button>
+<div id="status">waiting</div>
+<script>
+(() => {
+  const status = document.getElementById('status');
+  const requestMic = async () => {
+    status.textContent = 'requesting-mic';
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      status.textContent = 'mic-allowed';
+      for (const track of stream.getTracks()) track.stop();
+    } catch (error) {
+      status.textContent = 'mic-denied';
+    }
+  };
+  document.getElementById('mic').addEventListener('click', requestMic);
+  document.getElementById('geo').addEventListener('click', () => {
+    status.textContent = 'requesting-geo';
+    navigator.geolocation.getCurrentPosition(
+      () => { status.textContent = 'geo-allowed'; },
+      () => { status.textContent = 'geo-denied'; });
+  });
+  const params = new URLSearchParams(location.search);
+  if (params.get('auto') === '1') {
+    setTimeout(requestMic, 800);
+  }
+})();
+</script>
+</body>
+</html>

@@ -84,7 +84,7 @@ fn initialize_creates_key_and_empty_vault_without_schema_change() {
 
     let store = Store::open(&root).unwrap();
     let profile_store = store.open_profile(&profile).unwrap();
-    assert_eq!(profile_store.schema_version().unwrap(), 5);
+    assert_eq!(profile_store.schema_version().unwrap(), 6);
     let conn = Connection::open(db_path(&root, &profile)).unwrap();
     let vault_tables: u32 = conn
         .query_row(

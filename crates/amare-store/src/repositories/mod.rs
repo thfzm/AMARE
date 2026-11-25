@@ -7,4 +7,5 @@ pub mod profiles;
 pub mod secrets;
 pub mod sessions;
 pub mod settings;
+pub mod site_permissions;
 pub mod workspaces;

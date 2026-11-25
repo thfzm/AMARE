@@ -1066,10 +1066,12 @@ public sealed partial class MainWindow : Window
     private void AttachWebViewEvents(BrowserTab host)
     {
         var core = host.View.CoreWebView2;
+        AttachPermissionPolicy(host, core);
         core.Find.MatchCountChanged += (_, _) => UpdateFindCount(host);
         core.Find.ActiveMatchIndexChanged += (_, _) => UpdateFindCount(host);
         core.NavigationStarting += (sender, args) =>
         {
+            CancelPendingPermissionRequest();
             // Consume the one-shot New Tab provenance before the general policy.
             // The exception is scoped to this WebView and only accepts the exact
             // document AMARE generated; every other data: navigation stays blocked.
@@ -1402,6 +1404,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         host.Closed = true;
+        CancelPendingPermissionRequest();
         OnWebViewVaultTabClosed(host);
         host.InternalDocument.Disarm();
         try
@@ -2019,6 +2022,7 @@ public sealed partial class MainWindow : Window
         if (ReaderWebView.CoreWebView2 is { } readerCore)
         {
             ApplyBuiltInAutofillPolicy(readerCore);
+            AttachDenyAllPermissions(readerCore);
             readerCore.NavigationStarting += (_, args) =>
             {
                 if (args.Uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
@@ -2146,6 +2150,7 @@ public sealed partial class MainWindow : Window
             if (AiWebView.CoreWebView2 is { } core)
             {
                 ApplyBuiltInAutofillPolicy(core);
+                AttachDenyAllPermissions(core);
                 core.NewWindowRequested += (_, args) =>
                 {
                     args.Handled = true;
@@ -2267,6 +2272,7 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, "Bookmarks", "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
         AddMenu(menu, "Downloads", "", () => Downloads_Click(DownloadsButton, new RoutedEventArgs()));
         AddMenu(menu, "Passwords…", "", () => _ = OpenVaultPanelAsync());
+        AddMenu(menu, "Site permissions…", "", () => _ = ShowSitePermissionsAsync());
         AddMenu(menu, "Fill password for this site…", "", () => _ = ShowVaultFillDialogAsync());
         AddMenu(menu, "Clear WebView saved passwords…", "", () => _ = ShowClearWebViewDataDialogAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -2908,6 +2914,19 @@ public sealed partial class MainWindow : Window
         };
         var restoreBox = new CheckBox { Content = "Restore previous tabs on startup", IsChecked = _restoreSession };
         var updateBox = new CheckBox { Content = "Check GitHub Releases for updates on startup", IsChecked = _updatePreferences.CheckOnStartup };
+        var managePermissions = false;
+        var permissionsButton = new Button
+        {
+            Content = "Manage site permissions…",
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        AutomationProperties.SetAutomationId(permissionsButton, "ManageSitePermissionsButton");
+        ContentDialog? settingsDialog = null;
+        permissionsButton.Click += (_, _) =>
+        {
+            managePermissions = true;
+            settingsDialog?.Hide();
+        };
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(new TextBlock { Text = "Appearance theme" });
         stack.Children.Add(themeBox);
@@ -2915,7 +2934,9 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(engineBox);
         stack.Children.Add(restoreBox);
         stack.Children.Add(updateBox);
-        var dialog = new ContentDialog
+        stack.Children.Add(new TextBlock { Text = "Site permissions", Margin = new Thickness(0, 8, 0, 0) });
+        stack.Children.Add(permissionsButton);
+        settingsDialog = new ContentDialog
         {
             Title = "Settings",
             Content = stack,
@@ -2924,7 +2945,13 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = RootGrid.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        var settingsResult = await settingsDialog.ShowAsync();
+        if (managePermissions)
+        {
+            await ShowSitePermissionsAsync();
+            return;
+        }
+        if (settingsResult != ContentDialogResult.Primary)
         {
             return;
         }
@@ -3416,6 +3443,8 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        CancelPendingPermissionRequest();
+        CancelSitePermissionsDialog();
         UnwireVaultLifetime();
         TryLockVaultForShutdown();
         bool hasOtherWindows;

@@ -59,7 +59,7 @@ pub(crate) fn run_migrations(
 }
 
 pub(crate) const ROOT_SCHEMA_VERSION: u32 = 2;
-pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 5;
+pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 6;
 
 pub(crate) const ROOT_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -552,6 +552,31 @@ pub(crate) const PROFILE_MIGRATIONS: &[Migration] = &[
             );
         "#,
     },
+    Migration {
+        version: 6,
+        sql: r#"
+            CREATE TABLE site_permissions (
+                profile_id       TEXT NOT NULL,
+                origin           TEXT NOT NULL,
+                permission_kind  TEXT NOT NULL CHECK (permission_kind IN (
+                    'microphone','camera','geolocation','notifications',
+                    'other_sensors','clipboard_read','multiple_automatic_downloads',
+                    'file_read_write','autoplay','local_fonts',
+                    'midi_system_exclusive_messages','window_management',
+                    'persistent_storage')),
+                decision         TEXT NOT NULL CHECK (decision IN ('allow','deny')),
+                scope            TEXT NOT NULL CHECK (scope IN ('persistent')),
+                revision         INTEGER NOT NULL CHECK (revision > 0),
+                created_at_ms    INTEGER NOT NULL,
+                updated_at_ms    INTEGER NOT NULL,
+                PRIMARY KEY (profile_id, origin, permission_kind)
+            );
+            CREATE INDEX idx_site_permissions_profile_updated
+                ON site_permissions(profile_id, updated_at_ms DESC, origin, permission_kind);
+            CREATE INDEX idx_site_permissions_origin
+                ON site_permissions(profile_id, origin, permission_kind);
+        "#,
+    },
 ];
 
 #[cfg(test)]
@@ -562,22 +587,22 @@ mod tests {
     fn applies_and_reapplies_migrations_idempotently() {
         let conn = Connection::open_in_memory().unwrap();
         let version = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         let again = run_migrations(&conn, PROFILE_MIGRATIONS).unwrap();
-        assert_eq!(again, 5);
+        assert_eq!(again, 6);
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 6);
     }
 
     #[test]
-    fn upgrades_a_v1_database_to_v3() {
+    fn upgrades_a_v1_database_to_current() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..1]).unwrap(), 1);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 5);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 6);
         for table in ["sessions", "library_items", "conversations", "workspaces"] {
             let count: u32 = conn
                 .query_row(
@@ -591,10 +616,10 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_a_v2_database_to_v3() {
+    fn upgrades_a_v2_database_to_current() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..2]).unwrap(), 2);
-        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 5);
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 6);
         let fts: u32 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='library_fts'",
@@ -603,6 +628,35 @@ mod tests {
             )
             .unwrap();
         assert_eq!(fts, 1);
+    }
+
+    #[test]
+    fn upgrades_v5_database_to_v6_preserves_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert_eq!(run_migrations(&conn, &PROFILE_MIGRATIONS[..5]).unwrap(), 5);
+        conn.execute(
+            "INSERT INTO settings(key, group_name, value_type, value_text, updated_at_ms)
+             VALUES ('theme', 'appearance', 'text', 'dark', 1)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(run_migrations(&conn, PROFILE_MIGRATIONS).unwrap(), 6);
+        let permissions_table: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='site_permissions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(permissions_table, 1);
+        let setting: String = conn
+            .query_row(
+                "SELECT value_text FROM settings WHERE key = 'theme'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(setting, "dark");
     }
 
     #[test]

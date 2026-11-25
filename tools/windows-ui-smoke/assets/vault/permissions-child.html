@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Frame Permission Child</title></head>
+<body>
+<h1>AMARE Frame Permission Child</h1>
+<div id="status">waiting</div>
+<script>
+setTimeout(async () => {
+  const status = document.getElementById('status');
+  status.textContent = 'requesting-mic';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    status.textContent = 'mic-allowed';
+    for (const track of stream.getTracks()) track.stop();
+  } catch (error) {
+    status.textContent = 'mic-denied';
+  }
+}, 1000);
+</script>
+</body>
+</html>
