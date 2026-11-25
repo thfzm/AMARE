@@ -386,6 +386,11 @@ internal static class Program
             Check("history_dialog", OpenAndCloseHistory);
             Check("bookmarks_menu", OpenAndCloseBookmarks);
             Check("downloads_menu", OpenAndCloseDownloads);
+            Check("new_tab_internal_page", NewTabInternalPage);
+            Check("new_tab_address_search", NewTabAddressSearch);
+            Check("external_data_navigation_blocked", ExternalDataNavigationBlocked);
+            Check("external_blank_popup", ExternalBlankPopup);
+            Check("iframe_child_navigation", IframeChildNavigation);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("new_window_button", OpenAndCloseNewWindowButton);
@@ -2403,6 +2408,187 @@ internal static class Program
     }
 
     private static int CountTabs() => CountTabs(_window!);
+
+    private static string AddressText()
+    {
+        var edit = FindAddressEdit();
+        if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+        {
+            return ((ValuePattern)pattern).Current.Value ?? "";
+        }
+        return edit.Current.Name ?? "";
+    }
+
+    private static void AssertNewTabStatusClean(string stage)
+    {
+        var status = FindById("StatusText")?.Current.Name ?? "";
+        Require(status.Length < 500, $"{stage}: status is unexpectedly long ({status.Length})");
+        Require(!status.Contains("data:", StringComparison.OrdinalIgnoreCase),
+            $"{stage}: status exposed a data URI");
+        Require(!status.Contains("text/html", StringComparison.OrdinalIgnoreCase),
+            $"{stage}: status exposed internal HTML");
+    }
+
+    private static void AssertPageContains(string text)
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Find in page");
+        var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
+        SetValue(box, text);
+        Invoke(WaitFindById("FindGoButton", TimeSpan.FromSeconds(5)));
+        WaitFor(() =>
+        {
+            var count = FindById("FindCount")?.Current.Name ?? "";
+            return System.Text.RegularExpressions.Regex.IsMatch(count, "^[1-9][0-9]*/[1-9][0-9]*$");
+        }, TimeSpan.FromSeconds(10), $"find {text}");
+        CloseFind();
+        Thread.Sleep(200);
+    }
+
+    private static void OpenNewTabAndWait(int expectedTabs)
+    {
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        Invoke(WaitFindById("NewTabButton", TimeSpan.FromSeconds(8)));
+        WaitFor(() => CountTabs() == expectedTabs, TimeSpan.FromSeconds(10), "new tab count");
+        WaitFor(() => AddressText().Length == 0, TimeSpan.FromSeconds(15), "new tab address empty");
+    }
+
+    private static void CloseActiveTabAndWait(int expectedTabs)
+    {
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        SendKeys.SendWait("^w");
+        WaitFor(() => CountTabs() == expectedTabs, TimeSpan.FromSeconds(10), "active tab closed");
+    }
+
+    private static string NewTabInternalPage()
+    {
+        if (_process is null) throw new InvalidOperationException("process missing");
+        var beforeTabs = CountTabs();
+        var beforeAddress = AddressText();
+        var beforeTitle = _process.MainWindowTitle;
+        for (var round = 0; round < 2; round++)
+        {
+            OpenNewTabAndWait(beforeTabs + 1);
+            AssertNewTabStatusClean($"new tab round {round + 1}");
+            AssertPageContains("Frequently visited");
+            Require(AddressText().Length == 0, "internal New Tab exposed a URL in the address bar");
+            CloseActiveTabAndWait(beforeTabs);
+        }
+
+        OpenNewTabAndWait(beforeTabs + 1);
+        SetValue(FindAddressEdit(), "https://example.com/");
+        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+        WaitFor(() => _process.MainWindowTitle.Contains("Example Domain", StringComparison.OrdinalIgnoreCase) == true,
+            TimeSpan.FromSeconds(20), "new tab address navigation");
+        WaitFor(() => AddressText().Contains("example.com", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(10), "address after new tab navigation");
+        CloseActiveTabAndWait(beforeTabs);
+        WaitFor(() => _process.MainWindowTitle == beforeTitle, TimeSpan.FromSeconds(10), "original tab restored");
+        Require(AddressText() == beforeAddress, "original tab address changed");
+        return "internal New Tab renders repeatedly, hides its URI, and address input works";
+    }
+
+    private static string NewTabAddressSearch()
+    {
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        SetValue(FindAddressEdit(), "amare new tab search");
+        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+        WaitFor(() =>
+        {
+            var address = AddressText();
+            return address.Contains("duckduckgo.com", StringComparison.OrdinalIgnoreCase)
+                   && address.Contains("q=", StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(20), "new tab search navigation");
+        var address = AddressText();
+        Require(address.StartsWith("https://duckduckgo.com/", StringComparison.OrdinalIgnoreCase),
+            $"unexpected search address: {address}");
+        CloseActiveTabAndWait(beforeTabs);
+        return "address search from New Tab resolved to DuckDuckGo";
+    }
+
+    private static string ExternalDataNavigationBlocked()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            var page = server.BaseUrl + "/data-navigation.html";
+            SetValue(FindAddressEdit(), page);
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            WaitFor(() => _process?.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(20), "external data test page");
+            Thread.Sleep(2000);
+            Require(_process!.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase),
+                $"external page was replaced by a data document: {_process.MainWindowTitle}");
+            var address = AddressText();
+            Require(address.StartsWith(page, StringComparison.OrdinalIgnoreCase),
+                $"external data navigation changed the address: {address}");
+            var status = FindById("StatusText")?.Current.Name ?? "";
+            Require(status.Length < 500, $"blocked status is unexpectedly long ({status.Length})");
+            Require(!status.Contains("data:text/html", StringComparison.OrdinalIgnoreCase)
+                    && !status.Contains("amare-data-payload", StringComparison.Ordinal),
+                "blocked data navigation leaked its payload into the status bar");
+            NavigateToExample();
+            return "external data navigation stays blocked without a URI leak";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static string ExternalBlankPopup()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            var before = CountTabs();
+            SetValue(FindAddressEdit(), server.BaseUrl + "/page1.html");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            WaitFor(() => _process?.MainWindowTitle.Contains("Page One", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(20), "popup host page");
+            AutomationElement? popup = null;
+            WaitFor(() =>
+            {
+                popup = AutomationElement.RootElement.FindFirst(TreeScope.Descendants,
+                    new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                        new PropertyCondition(AutomationElement.NameProperty, "popup")));
+                return popup is not null;
+            }, TimeSpan.FromSeconds(10), "popup page button");
+            Invoke(popup!);
+            WaitFor(() => CountTabs() == before + 1, TimeSpan.FromSeconds(10), "window.open tab");
+            WaitFor(() => _process!.MainWindowTitle.Contains("Popup", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(10), "popup tab title");
+            Require(server.Requested("/popup.html"), "popup request did not reach the local server");
+            CloseActiveTabAndWait(before);
+            NavigateToExample();
+            return "window.open/_blank still opens a tab and closes cleanly";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static string IframeChildNavigation()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            SetValue(FindAddressEdit(), server.BaseUrl + "/iframe-nested.html");
+            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            WaitFor(() => _process?.MainWindowTitle.Contains("Frame Parent", StringComparison.OrdinalIgnoreCase) == true,
+                TimeSpan.FromSeconds(20), "iframe parent page");
+            WaitFor(() => server.Requested("/page2.html"), TimeSpan.FromSeconds(15), "iframe child request");
+            NavigateToExample();
+            return "same-origin iframe child still loads";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
 
     private static void WaitFor(Func<bool> condition, TimeSpan timeout, string description)
     {

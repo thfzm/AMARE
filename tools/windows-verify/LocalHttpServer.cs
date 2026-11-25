@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -25,6 +26,9 @@ internal sealed class LocalHttpServer : IAsyncDisposable
     public string BaseUrl => $"http://127.0.0.1:{Port}";
     public int ActiveWebSockets => Volatile.Read(ref _activeWebSockets);
     private int _activeWebSockets;
+    private readonly ConcurrentQueue<string> _requests = new();
+
+    public bool Requested(string path) => _requests.Contains(path);
 
     public static Task<LocalHttpServer> StartAsync()
     {
@@ -76,6 +80,7 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                 } while (!string.IsNullOrEmpty(line));
 
                 var path = requestLine?.Split(' ').ElementAtOrDefault(1) ?? "/";
+                _requests.Enqueue(path);
                 if (path == "/ws"
                     && headers.TryGetValue("Upgrade", out var upgrade)
                     && upgrade.Contains("websocket", StringComparison.OrdinalIgnoreCase))
@@ -178,6 +183,23 @@ internal sealed class LocalHttpServer : IAsyncDisposable
                 """,
             "/slow.html" => """
                 <!doctype html><html><head><title>Slow</title></head><body><h1>Slow</h1></body></html>
+                """,
+            "/data-navigation.html" => """
+                <!doctype html><html><head><title>Data Navigation Blocked</title></head><body>
+                <h1>Data Navigation Blocked</h1>
+                <a id="data-link" href="data:text/html,<h1>amare-data-payload</h1>">data link</a>
+                <script>
+                setTimeout(function () {
+                  location.href = 'data:text/html,<h1>amare-data-payload</h1>';
+                }, 500);
+                </script>
+                </body></html>
+                """,
+            "/iframe-nested.html" => """
+                <!doctype html><html><head><title>Frame Parent</title></head><body>
+                <h1>Frame Parent</h1>
+                <iframe title="frame-child" src="/page2.html"></iframe>
+                </body></html>
                 """,
             "/download.txt" => "AMARE download probe",
             "/redirect" => "",

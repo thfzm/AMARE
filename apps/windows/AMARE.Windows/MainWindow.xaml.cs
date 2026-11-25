@@ -86,6 +86,7 @@ public sealed partial class MainWindow : Window
         public required BrowserTabModel Model { get; init; }
         public required WebView2 View { get; init; }
         public required string NewTabNonce { get; init; }
+        public InternalDocumentNavigation InternalDocument { get; } = new();
         public bool ShowingNewTab { get; set; }
         public bool Closed { get; set; }
     }
@@ -1065,6 +1066,22 @@ public sealed partial class MainWindow : Window
         core.Find.ActiveMatchIndexChanged += (_, _) => UpdateFindCount(host);
         core.NavigationStarting += (sender, args) =>
         {
+            // Consume the one-shot New Tab provenance before the general policy.
+            // The exception is scoped to this WebView and only accepts the exact
+            // document AMARE generated; every other data: navigation stays blocked.
+            var hadInternalDocument = host.InternalDocument.HasPending;
+            if (host.InternalDocument.TryAccept(args.Uri))
+            {
+                AppLog.Info("Internal New Tab document accepted");
+                return;
+            }
+            if (hadInternalDocument)
+            {
+                var rejectedScheme = Uri.TryCreate(args.Uri, UriKind.Absolute, out var rejectedUri)
+                    ? rejectedUri.Scheme
+                    : "invalid";
+                AppLog.Warn($"Internal New Tab document rejected scheme={rejectedScheme} length={args.Uri.Length}");
+            }
             var decision = NavigationPolicy.Decide(args.Uri);
             if (decision == NavigationDecision.External)
             {
@@ -1075,7 +1092,7 @@ public sealed partial class MainWindow : Window
             if (decision == NavigationDecision.Block)
             {
                 args.Cancel = true;
-                StatusText.Text = $"Blocked navigation: {args.Uri}";
+                StatusText.Text = DescribeBlockedNavigation(args.Uri);
                 return;
             }
             if (args.Uri.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase))
@@ -1126,6 +1143,7 @@ public sealed partial class MainWindow : Window
         };
         core.NavigationCompleted += (webview, args) =>
         {
+            host.InternalDocument.Disarm();
             host.ShowingNewTab = false;
             host.Model.IsLoading = false;
             UpdateNavigationState(host);
@@ -1244,6 +1262,7 @@ public sealed partial class MainWindow : Window
 
     private void Navigate(BrowserTab host, string url)
     {
+        host.InternalDocument.Disarm();
         host.ShowingNewTab = false;
         host.Model.IsNewTabPage = false;
         host.Model.IsLoading = true;
@@ -1256,6 +1275,7 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowNewTabPageAsync(BrowserTab host)
     {
+        host.InternalDocument.Disarm();
         host.ShowingNewTab = true;
         host.Model.IsNewTabPage = true;
         host.Model.IsLoading = true;
@@ -1279,7 +1299,16 @@ public sealed partial class MainWindow : Window
         }
         var html = NewTabPageBuilder.Build(
             topSites, SearchEngineCatalog.Resolve(_engineId).Name, host.NewTabNonce);
-        host.View.NavigateToString(html);
+        host.InternalDocument.Arm(html);
+        try
+        {
+            host.View.NavigateToString(html);
+        }
+        catch
+        {
+            host.InternalDocument.Disarm();
+            throw;
+        }
         host.Model.IsLoading = false;
         if (IsActive(host))
         {
@@ -1378,6 +1407,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         host.Closed = true;
+        host.InternalDocument.Disarm();
         try
         {
             host.View.CoreWebView2?.Stop();
@@ -1633,6 +1663,22 @@ public sealed partial class MainWindow : Window
         {
         }
         return DescribeWebError(status);
+    }
+
+    private static string DescribeBlockedNavigation(string? uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+        {
+            return "Blocked navigation";
+        }
+        return parsed.Scheme.ToLowerInvariant() switch
+        {
+            "data" => "Blocked navigation: data URL",
+            "javascript" => "Blocked navigation: javascript URL",
+            "vbscript" => "Blocked navigation: vbscript URL",
+            "file" => "Blocked navigation: file URL",
+            _ => "Blocked navigation"
+        };
     }
 
     private static string DescribeWebError(CoreWebView2WebErrorStatus status) => status switch
