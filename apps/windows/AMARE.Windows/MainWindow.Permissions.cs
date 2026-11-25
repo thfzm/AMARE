@@ -58,7 +58,7 @@ public sealed partial class MainWindow
 
     private void AttachPermissionPolicy(BrowserTab host, CoreWebView2 core)
     {
-        core.PermissionRequested += (_, args) =>
+        core.PermissionRequested += (sender, args) =>
         {
             // Never let WebView2 persist its own permission decision. AMARE's
             // per-profile store is the source of truth and the UI must match.
@@ -74,25 +74,9 @@ public sealed partial class MainWindow
         CoreWebView2PermissionRequestedEventArgs args)
     {
         args.SavesInProfile = false;
-        CoreWebView2Deferral? deferral = null;
         try
         {
-            deferral = args.GetDeferral();
-        }
-        catch
-        {
-            try
-            {
-                args.State = CoreWebView2PermissionState.Deny;
-            }
-            catch
-            {
-                // Nothing else can be done.
-            }
-            return;
-        }
-        try
-        {
+            using var deferral = args.GetDeferral();
             var state = CoreWebView2PermissionState.Deny;
             try
             {
@@ -112,9 +96,16 @@ public sealed partial class MainWindow
                 // The request may have been invalidated by navigation/tab close.
             }
         }
-        finally
+        catch
         {
-            deferral.Dispose();
+            try
+            {
+                args.State = CoreWebView2PermissionState.Deny;
+            }
+            catch
+            {
+                // Nothing else can be done.
+            }
         }
     }
 
