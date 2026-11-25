@@ -2419,6 +2419,18 @@ internal static class Program
         return edit.Current.Name ?? "";
     }
 
+    private static void SubmitAddress(string url)
+    {
+        SetForegroundWindow(_process?.MainWindowHandle ?? IntPtr.Zero);
+        var edit = FindAddressEdit();
+        edit.SetFocus();
+        SendKeys.SendWait("^a");
+        SendKeys.SendWait(url);
+        SendKeys.SendWait("{ENTER}");
+        WaitFor(() => AddressText().StartsWith(url, StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(5), "address text committed");
+    }
+
     private static void AssertNewTabStatusClean(string stage)
     {
         var status = FindById("StatusText")?.Current.Name ?? "";
@@ -2530,8 +2542,7 @@ internal static class Program
         {
             OpenNewTabAndWait(before + 1);
             var page = server.BaseUrl + "/data-navigation.html";
-            SetValue(FindAddressEdit(), page);
-            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            SubmitAddress(page);
             WaitForPageTitle("Data Navigation Blocked", "external data test page");
             Thread.Sleep(2000);
             Require(_process!.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase),
@@ -2561,8 +2572,7 @@ internal static class Program
         try
         {
             OpenNewTabAndWait(before + 1);
-            SetValue(FindAddressEdit(), server.BaseUrl + "/page1.html");
-            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            SubmitAddress(server.BaseUrl + "/page1.html");
             WaitForPageTitle("Page One", "popup host page");
             AutomationElement? popup = null;
             WaitFor(() =>
@@ -2595,8 +2605,7 @@ internal static class Program
         try
         {
             OpenNewTabAndWait(before + 1);
-            SetValue(FindAddressEdit(), server.BaseUrl + "/iframe-nested.html");
-            Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
+            SubmitAddress(server.BaseUrl + "/iframe-nested.html");
             WaitForPageTitle("Frame Parent", "iframe parent page");
             WaitFor(() => server.Requested("/page2.html"), TimeSpan.FromSeconds(15), "iframe child request");
             CloseActiveTabAndWait(before);
