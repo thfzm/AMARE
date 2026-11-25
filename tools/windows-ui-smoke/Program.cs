@@ -2426,9 +2426,9 @@ internal static class Program
         edit.SetFocus();
         SendKeys.SendWait("^a");
         SendKeys.SendWait(url);
-        SendKeys.SendWait("{ENTER}");
         WaitFor(() => AddressText().StartsWith(url, StringComparison.OrdinalIgnoreCase),
-            TimeSpan.FromSeconds(5), "address text committed");
+            TimeSpan.FromSeconds(5), "typed address text");
+        Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
     }
 
     private static void AssertNewTabStatusClean(string stage)
@@ -2519,6 +2519,20 @@ internal static class Program
         return "address search from New Tab resolved to DuckDuckGo";
     }
 
+    private static void WaitForRequest(LocalHttpServer server, string path, string description)
+    {
+        try
+        {
+            WaitFor(() => server.Requested(path), TimeSpan.FromSeconds(15), description);
+        }
+        catch (TimeoutException)
+        {
+            Console.WriteLine($"DIAG {description}: request={path} title={_process?.MainWindowTitle} " +
+                              $"address={AddressText()} status={FindById("StatusText")?.Current.Name}");
+            throw;
+        }
+    }
+
     private static void WaitForPageTitle(string expected, string description)
     {
         try
@@ -2543,6 +2557,7 @@ internal static class Program
             OpenNewTabAndWait(before + 1);
             var page = server.BaseUrl + "/data-navigation.html";
             SubmitAddress(page);
+            WaitForRequest(server, "/data-navigation.html", "external data page request");
             WaitForPageTitle("Data Navigation Blocked", "external data test page");
             Thread.Sleep(2000);
             Require(_process!.MainWindowTitle.Contains("Data Navigation Blocked", StringComparison.OrdinalIgnoreCase),
@@ -2573,6 +2588,7 @@ internal static class Program
         {
             OpenNewTabAndWait(before + 1);
             SubmitAddress(server.BaseUrl + "/page1.html");
+            WaitForRequest(server, "/page1.html", "popup host page request");
             WaitForPageTitle("Page One", "popup host page");
             AutomationElement? popup = null;
             WaitFor(() =>
@@ -2606,6 +2622,7 @@ internal static class Program
         {
             OpenNewTabAndWait(before + 1);
             SubmitAddress(server.BaseUrl + "/iframe-nested.html");
+            WaitForRequest(server, "/iframe-nested.html", "iframe parent request");
             WaitForPageTitle("Frame Parent", "iframe parent page");
             WaitFor(() => server.Requested("/page2.html"), TimeSpan.FromSeconds(15), "iframe child request");
             CloseActiveTabAndWait(before);
