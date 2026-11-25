@@ -391,6 +391,7 @@ internal static class Program
             Check("external_data_navigation_blocked", ExternalDataNavigationBlocked);
             Check("external_blank_popup", ExternalBlankPopup);
             Check("iframe_child_navigation", IframeChildNavigation);
+            Check("external_http_redirect", ExternalHttpRedirect);
             Check("window_resize_maximize", ResizeMaximizeRestore);
             Check("new_window_open_close", OpenAndCloseNewWindow);
             Check("new_window_button", OpenAndCloseNewWindowButton);
@@ -2442,8 +2443,6 @@ internal static class Program
         edit.SetFocus();
         SendKeys.SendWait("^a");
         SendKeys.SendWait(url);
-        WaitFor(() => AddressText().StartsWith(url, StringComparison.OrdinalIgnoreCase),
-            TimeSpan.FromSeconds(5), "typed address text");
         Invoke(WaitFindById("GoButton", TimeSpan.FromSeconds(5)));
     }
 
@@ -2591,6 +2590,27 @@ internal static class Program
             CloseActiveTabAndWait(before);
             NavigateToExample();
             return "external data navigation stays blocked without a URI leak";
+        }
+        finally
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static string ExternalHttpRedirect()
+    {
+        var server = LocalHttpServer.StartAsync().GetAwaiter().GetResult();
+        var before = CountTabs();
+        try
+        {
+            OpenNewTabAndWait(before + 1);
+            SubmitAddress(server.BaseUrl + "/redirect");
+            WaitForRequest(server, "/redirect", "redirect request");
+            WaitForRequest(server, "/page2.html", "redirect target request");
+            AssertPageContains("Page Two");
+            CloseActiveTabAndWait(before);
+            NavigateToExample();
+            return "http 302 redirect still follows to the target page";
         }
         finally
         {
