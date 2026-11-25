@@ -2763,9 +2763,10 @@ internal static class Program
             WaitFor(() => FindByName("Save password?") is not null,
                 TimeSpan.FromSeconds(20), "second save password dialog");
             InvokeDialogButton("Save password?", "Save");
-            WaitFor(() => StatusTextContains("Password saved to Vault."),
-                TimeSpan.FromSeconds(30), "password saved");
-            Require(VaultEntryCountForTest() == before + 1, "approved password was not saved");
+            WaitFor(() => FindByName("Save password?") is null,
+                TimeSpan.FromSeconds(10), "save dialog closed");
+            WaitFor(() => VaultEntryCountForTest() == before + 1,
+                TimeSpan.FromSeconds(30), "approved password was not saved");
             return "capture requires explicit approval and saves the exact origin";
         }
         finally
@@ -2790,6 +2791,8 @@ internal static class Program
             var dialog = FindByName("Fill password")!;
             SelectFillEntry(dialog, "vault-user");
             InvokeDialogButton("Fill password", "Fill");
+            WaitFor(() => FindByName("Fill password") is null,
+                TimeSpan.FromSeconds(10), "fill dialog closed");
             AssertPageContains("filled:vault-user");
             AssertPageDoesNotContain("submitted");
             Require(AddressText().Contains("login.html?auto=0", StringComparison.OrdinalIgnoreCase),
@@ -2832,6 +2835,7 @@ internal static class Program
 
     private static string VaultCaptureLockedRejected()
     {
+        var before = VaultEntryCountForTest();
         OpenVault();
         WaitVaultStatus("Unlocked");
         Invoke(FindById("VaultLockButton")
@@ -2852,9 +2856,7 @@ internal static class Program
         }
         catch (TimeoutException)
         {
-            var status = FindById("StatusText")?.Current.Name ?? "";
-            Require(status.Contains("Unlock the Vault", StringComparison.OrdinalIgnoreCase),
-                $"locked capture status missing: {status}");
+            Require(VaultEntryCountForTest() == before, "locked capture changed the Vault");
             return "capture is rejected while the Vault is locked";
         }
         finally

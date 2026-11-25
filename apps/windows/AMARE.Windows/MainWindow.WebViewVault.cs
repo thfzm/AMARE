@@ -250,6 +250,10 @@ public sealed partial class MainWindow
                 {
                     CompleteVaultCommand(operationId, descriptor);
                 }
+                else
+                {
+                    AppLog.Warn("WebView detect result rejected");
+                }
                 return;
             case "amare_secret":
                 if (operationId is not null
@@ -258,6 +262,10 @@ public sealed partial class MainWindow
                 {
                     CompleteVaultCommand(operationId, secret);
                 }
+                else
+                {
+                    AppLog.Warn("WebView secret result rejected");
+                }
                 return;
             case "amare_fill_result":
                 if (operationId is not null
@@ -265,6 +273,10 @@ public sealed partial class MainWindow
                         json, args.Source, operationId, out var ok))
                 {
                     CompleteVaultCommand(operationId, ok);
+                }
+                else
+                {
+                    AppLog.Warn("WebView fill result rejected");
                 }
                 return;
             case "amare_login_candidate":
@@ -314,8 +326,10 @@ public sealed partial class MainWindow
         }
         if (!host.VaultState.TryAcceptLoginCandidate(json, source, out var candidate))
         {
+            AppLog.Info("WebView login candidate rejected by document trust state");
             return;
         }
+        AppLog.Info("WebView login candidate accepted");
 
         _webVaultDialogOpen = true;
         try
@@ -358,6 +372,7 @@ public sealed partial class MainWindow
             if (!VaultContextStillValid(host, core, vault, context, profileId, candidate.Generation,
                     candidate.Origin, candidate.DocumentUrl))
             {
+                AppLog.Info("WebView save rejected: context changed before approval");
                 StatusText.Text = "The page changed before the password was saved. Nothing was saved.";
                 return;
             }
@@ -377,12 +392,15 @@ public sealed partial class MainWindow
                     }))
             {
                 CancelVaultCommand(host);
+                AppLog.Info("WebView save rejected: read command unavailable");
                 StatusText.Text = "The login form is not ready for capture. Nothing was saved.";
                 return;
             }
+            AppLog.Info("WebView read secret requested");
             var result = await AwaitVaultCommandAsync(host, completion);
             if (result is not WebViewVaultSecret secret)
             {
+                AppLog.Info("WebView save rejected: secret result missing");
                 StatusText.Text = "The login form changed before the password could be read. Nothing was saved.";
                 return;
             }
@@ -398,6 +416,7 @@ public sealed partial class MainWindow
                     || secret.Password.Length > WebViewVaultTabState.MaxPasswordLength
                     || secret.Password.Contains('\0'))
                 {
+                    AppLog.Info("WebView save rejected: secret fields or context invalid");
                     StatusText.Text = "The login form changed before the password was saved. Nothing was saved.";
                     return;
                 }
@@ -409,6 +428,7 @@ public sealed partial class MainWindow
                     && string.Equals(entry.Username, secret.Username, StringComparison.Ordinal));
                 if (duplicate)
                 {
+                    AppLog.Info("WebView save rejected: duplicate account");
                     StatusText.Text = "This account is already saved. Existing credentials were not overwritten.";
                     return;
                 }
@@ -419,6 +439,7 @@ public sealed partial class MainWindow
                     secret.Username,
                     secret.Password,
                     candidate.Origin.Value);
+                AppLog.Info("WebView password save completed");
                 StatusText.Text = "Password saved to Vault.";
                 if (_vaultOpen)
                 {
