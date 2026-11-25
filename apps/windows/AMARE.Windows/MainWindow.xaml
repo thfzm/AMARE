@@ -301,7 +301,7 @@
                     <Button x:Name="VaultAddButton" AutomationProperties.AutomationId="VaultAddButton" Grid.Column="2" Content="Add" Click="VaultAdd_Click" Margin="4,0" />
                     <Button x:Name="VaultBackupButton" AutomationProperties.AutomationId="VaultBackupButton" Grid.Column="3" Content="Backup" Click="VaultBackup_Click" Margin="4,0" />
                     <Button x:Name="VaultLockButton" AutomationProperties.AutomationId="VaultLockButton" Grid.Column="4" Content="Lock" Click="VaultLock_Click" Margin="4,0" />
-                    <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="VaultCloseButton" Click="VaultClose_Click" ToolTipService.ToolTip="Close vault">
+                    <Button Grid.Column="5" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.AutomationId="VaultCloseButton" Click="VaultClose_Click" ToolTipService.ToolTip="Hide vault">
                         <FontIcon Glyph="&#xE711;" />
                     </Button>
                 </Grid>
