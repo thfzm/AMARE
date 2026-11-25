@@ -2721,12 +2721,24 @@ internal static class Program
 
     private static void SelectFillEntry(AutomationElement dialog, string username)
     {
-        var item = dialog.FindAll(TreeScope.Descendants,
+        var items = dialog.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>()
-            .FirstOrDefault(candidate => candidate.Current.Name.Contains(username, StringComparison.Ordinal));
-        item ??= dialog.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+            .ToList();
+        AutomationElement? item = null;
+        foreach (var candidate in items)
+        {
+            if (candidate.Current.Name.Contains(username, StringComparison.Ordinal)
+                || candidate.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                    .Cast<AutomationElement>()
+                    .Any(text => text.Current.Name.Contains(username, StringComparison.Ordinal)))
+            {
+                item = candidate;
+                break;
+            }
+        }
+        item ??= items.FirstOrDefault();
         Require(item is not null, "fill entry missing");
         if (item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern))
         {
@@ -2767,6 +2779,15 @@ internal static class Program
                 TimeSpan.FromSeconds(10), "save dialog closed");
             WaitFor(() => VaultEntryCountForTest() == before + 1,
                 TimeSpan.FromSeconds(30), "approved password was not saved");
+
+            SubmitVaultTestUrl("login.html?auto=1&user=second-user");
+            WaitFor(() => FindByName("Save password?") is not null,
+                TimeSpan.FromSeconds(20), "second account save dialog");
+            InvokeDialogButton("Save password?", "Save");
+            WaitFor(() => FindByName("Save password?") is null,
+                TimeSpan.FromSeconds(10), "second account dialog closed");
+            WaitFor(() => VaultEntryCountForTest() == before + 2,
+                TimeSpan.FromSeconds(30), "second account was not saved");
             return "capture requires explicit approval and saves the exact origin";
         }
         finally

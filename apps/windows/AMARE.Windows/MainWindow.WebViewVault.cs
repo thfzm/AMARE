@@ -10,6 +10,7 @@ namespace Amare.Windows;
 public sealed partial class MainWindow
 {
     private const string TestVaultHost = "amare-vault.test";
+    private const string TestVaultAltHost = "amare-vault-alt.test";
     private const string TestVaultRootEnv = "AMARE_TEST_VAULT_ROOT";
 
     private bool _webVaultDialogOpen;
@@ -148,6 +149,10 @@ public sealed partial class MainWindow
             // sites from reading the assets; the top-level navigation still works.
             core.SetVirtualHostNameToFolderMapping(
                 TestVaultHost,
+                root,
+                CoreWebView2HostResourceAccessKind.Deny);
+            core.SetVirtualHostNameToFolderMapping(
+                TestVaultAltHost,
                 root,
                 CoreWebView2HostResourceAccessKind.Deny);
         }
