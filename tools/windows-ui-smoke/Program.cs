@@ -427,6 +427,7 @@ internal static class Program
             Check("site_permissions_block_always", SitePermissionsBlockAlways);
             Check("site_permissions_iframe_denied", SitePermissionsIframeDenied);
             Check("site_permissions_popup", SitePermissionsPopup);
+            Check("site_permissions_profile_isolation", SitePermissionsProfileIsolation);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -3158,6 +3159,65 @@ internal static class Program
         finally
         {
             CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string SitePermissionsProfileIsolation()
+    {
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerPermissionRequest();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Always allow");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "profile isolation allow saved");
+            CloseActiveTabAndWait(beforeTabs);
+
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Any(row => PermissionRowContains(row, "https://amare-vault.test")
+                                                && PermissionRowContains(row, "Allow")),
+                "default profile permission missing before switch");
+            CloseSitePermissionsDialog();
+
+            Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
+            InvokeMenu("New profile…");
+            WaitFor(() => FindByName("New profile") is not null,
+                TimeSpan.FromSeconds(5), "new profile dialog for permissions");
+            var dialog = FindByName("New profile")!;
+            var edit = dialog.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
+                ?? throw new InvalidOperationException("new profile name field missing");
+            SetValue(edit, "perm-smoke-profile");
+            InvokeDialogButton("New profile", "Create");
+            AssertCurrentProfile("perm-smoke-profile");
+
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Count == 0,
+                "new profile exposed another profile's site permissions");
+            CloseSitePermissionsDialog();
+
+            Invoke(FindById("ProfileButton") ?? throw new InvalidOperationException("ProfileButton missing"));
+            InvokeMenuContaining("Personal");
+            AssertCurrentProfile("Personal");
+            OpenSitePermissionsDialog();
+            Require(PermissionRows().Any(row => PermissionRowContains(row, "https://amare-vault.test")
+                                                && PermissionRowContains(row, "Allow")),
+                "default profile permission lost after switching back");
+            CloseSitePermissionsDialog();
+
+            ClearAllSitePermissions();
+            return "site permissions are isolated per profile in the settings UI";
+        }
+        finally
+        {
+            if (CountTabs() > beforeTabs)
+            {
+                CloseActiveTabAndWait(beforeTabs);
+            }
         }
     }
 

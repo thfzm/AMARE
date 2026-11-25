@@ -157,39 +157,37 @@ public sealed partial class MainWindow
                 AppLog.Warn($"Site permission lookup failed: {exception.GetType().Name}");
                 return CoreWebView2PermissionState.Deny;
             }
+            if (!PermissionRequestIsCurrent(
+                    host, core, context, profileId, client, documentGeneration, epoch, origin))
+            {
+                return CoreWebView2PermissionState.Deny;
+            }
             if (stored is not null)
             {
                 return string.Equals(stored.Decision, "allow", StringComparison.Ordinal)
                     ? CoreWebView2PermissionState.Allow
                     : CoreWebView2PermissionState.Deny;
             }
-            if (_permissionDialogOpen || _permissionRequestEpoch != epoch)
+            if (_permissionDialogOpen)
             {
                 return CoreWebView2PermissionState.Deny;
             }
 
             var (result, blockAlways) = await ShowPermissionRequestDialogAsync(origin, kind);
-            if (_permissionRequestEpoch != epoch
-                || host.Closed
-                || !ReferenceEquals(host.View.CoreWebView2, core)
-                || _context != context
-                || _profileId != profileId
-                || !ReferenceEquals(_vaultClient, client)
-                || host.VaultState.Generation != documentGeneration
-                || host.Model.IsNewTabPage
-                || !WebOrigin.TryParse(core.Source, out var currentTop)
-                || currentTop != origin)
+            if (!PermissionRequestIsCurrent(
+                    host, core, context, profileId, client, documentGeneration, epoch, origin))
             {
                 return CoreWebView2PermissionState.Deny;
             }
 
             if (blockAlways)
             {
-                var effective = await PersistPermissionDecisionAsync(
-                    client, context, origin, kind, "deny");
-                return effective == true
-                    ? CoreWebView2PermissionState.Allow
-                    : CoreWebView2PermissionState.Deny;
+                // The user explicitly blocked this request. Even if another
+                // window changed the stored row during the dialog, this request
+                // must not become an allow. Persist the block on a best-effort
+                // basis, then deny the current request unconditionally.
+                await PersistPermissionDecisionAsync(client, context, origin, kind, "deny");
+                return CoreWebView2PermissionState.Deny;
             }
             return result switch
             {
@@ -205,6 +203,34 @@ public sealed partial class MainWindow
         {
             _permissionRequestActive = false;
         }
+    }
+
+    /// <summary>
+    /// Revalidates every asynchronous boundary of a permission request. A
+    /// navigation, tab close, profile switch, dialog cancellation or WebView
+    /// replacement invalidates the decision and forces a deny.
+    /// </summary>
+    private bool PermissionRequestIsCurrent(
+        BrowserTab host,
+        CoreWebView2 core,
+        ProfileContextDto context,
+        string profileId,
+        AmareVaultClient client,
+        long documentGeneration,
+        long epoch,
+        WebOrigin origin)
+    {
+        return _permissionRequestEpoch == epoch
+            && !host.Closed
+            && ReferenceEquals(host.View.CoreWebView2, core)
+            && ReferenceEquals(_context, context)
+            && _profileId == profileId
+            && ReferenceEquals(_vaultClient, client)
+            && host.VaultState.Generation == documentGeneration
+            && !host.Model.IsNewTabPage
+            && !host.ShowingNewTab
+            && WebOrigin.TryParse(core.Source, out var currentTop)
+            && currentTop == origin;
     }
 
     private async Task<bool?> PersistPermissionDecisionAsync(
