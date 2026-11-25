@@ -91,9 +91,20 @@
 - `VaultService::status`가 영속 Vault를 감지하도록 수정 (새 client가 기존
   Vault를 Locked로 표시)
 - UNVERIFIED: 실제 5분 idle, 실제 Windows session lock, Windows 11 실기기
-- 기존 결함: New Tab `data:` navigation 차단 (범위 밖, 별도 승인 필요)
 - 다음: Phase 1.3D WebView2 autofill/login capture
 - 상세: `docs/AMARE_PHASE1_VAULT_UI_REPORT.md`
+
+### Phase 1.3C.1 진행 상태
+
+- **New Tab internal navigation 결함 수정 완료** (`7f6a1d8`)
+- `NavigateToString`의 `data:text/html` NavigationStarting을 1회성·정확한
+  payload provenance로만 허용 (URL prefix 신뢰 없음, fail closed)
+- 일반 `data:`/`javascript:`/`file:` 차단과 http(s)/redirect/iframe/_blank
+  정책은 변경 없음
+- 차단 상태 메시지에서 긴 URI 제거 (scheme만 표시)
+- UI smoke **60/60**, C# interop **84/84**, Windows **151/0**, Linux SUCCESS
+- UNVERIFIED: 실기기 수동 확인, UI 수준 javascript/file 차단(unit only)
+- 상세: `docs/AMARE_PHASE1_NEW_TAB_NAVIGATION_FIX_REPORT.md`
 
 ---
 

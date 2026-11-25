@@ -346,8 +346,10 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - `VaultService::status`가 영속 Vault를 감지하도록 수정해, background client
   재생성 후에도 기존 Vault를 `Locked`로 표시한다 (회귀 테스트 포함).
 - 아직 없음: WebView2 자동완성, 실제 5분 idle/session lock, 실기기(IME/DPI/접근성).
-- 기존 결함: New Tab의 `NavigateToString` `data:` navigation이 차단되어 페이지가
-  비고 status가 data URI로 덮인다. Phase 1.3C 범위 밖이며 별도 수정이 필요하다.
+- Phase 1.3C.1에서 New Tab의 `NavigateToString` `data:` navigation 결함을
+  수정했다. 1회성·정확한 payload provenance로 내부 문서만 허용하고, 일반
+  `data:`/`javascript:`/`file:` 차단은 그대로다. UI 60/60, Windows 151/0,
+  interop 84/84.
 - AI 키는 Windows Credential Manager에 저장된다.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
