@@ -1318,8 +1318,24 @@ internal static class Program
         Invoke(item!);
     }
 
+    private static void EnsureCurrentWindow()
+    {
+        if (_process is null || FindById("MenuButton") is not null)
+        {
+            return;
+        }
+        var windows = WindowsForProcess(_process.Id);
+        var candidate = windows.FirstOrDefault(window =>
+            window.Current.NativeWindowHandle == _process.MainWindowHandle.ToInt64()) ?? windows.FirstOrDefault();
+        if (candidate is not null)
+        {
+            _window = candidate;
+        }
+    }
+
     private static void OpenVault(bool autoPrimary = true)
     {
+        EnsureCurrentWindow();
         var existing = FindById("VaultStatusText");
         if (existing is null || existing.Current.IsOffscreen)
         {
@@ -2546,7 +2562,8 @@ internal static class Program
         var count = FindById("FindCount")?.Current.Name ?? "";
         CloseFind();
         Thread.Sleep(200);
-        Require(count == "0/0", $"page unexpectedly contains '{text}' ({count})");
+        var empty = count == "0/0" || count.Contains("No results", StringComparison.OrdinalIgnoreCase);
+        Require(empty, $"page unexpectedly contains '{text}' ({count})");
     }
 
     private static string ExternalDataNavigationBlocked()
