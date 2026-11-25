@@ -2441,16 +2441,22 @@ internal static class Program
             $"{stage}: status exposed internal HTML");
     }
 
-    private static void AssertPageContains(string text)
+    private static void StartFind(string text)
     {
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("Find in page");
         var box = WaitFindById("FindBox", TimeSpan.FromSeconds(5));
         SetValue(box, text);
         Invoke(WaitFindById("FindGoButton", TimeSpan.FromSeconds(5)));
+    }
+
+    private static void AssertPageContains(string text)
+    {
+        StartFind(text);
+        string count = "";
         WaitFor(() =>
         {
-            var count = FindById("FindCount")?.Current.Name ?? "";
+            count = FindById("FindCount")?.Current.Name ?? "";
             return System.Text.RegularExpressions.Regex.IsMatch(count, "^[1-9][0-9]*/[1-9][0-9]*$");
         }, TimeSpan.FromSeconds(10), $"find {text}");
         CloseFind();
@@ -2533,23 +2539,14 @@ internal static class Program
         }
     }
 
-    private static bool PageTitleContains(string expected) =>
-        _process?.MainWindowTitle.Contains(expected, StringComparison.OrdinalIgnoreCase) == true
-        || FindById("TitleBarTitle")?.Current.Name.Contains(expected, StringComparison.OrdinalIgnoreCase) == true;
-
-    private static void WaitForPageTitle(string expected, string description)
+    private static void AssertPageDoesNotContain(string text)
     {
-        try
-        {
-            WaitFor(() => PageTitleContains(expected), TimeSpan.FromSeconds(20), description);
-        }
-        catch (TimeoutException)
-        {
-            Console.WriteLine($"DIAG {description}: title={_process?.MainWindowTitle} " +
-                              $"titleBar={FindById("TitleBarTitle")?.Current.Name} address={AddressText()} " +
-                              $"status={FindById("StatusText")?.Current.Name} tabs={CountTabs()}");
-            throw;
-        }
+        StartFind(text);
+        Thread.Sleep(750);
+        var count = FindById("FindCount")?.Current.Name ?? "";
+        CloseFind();
+        Thread.Sleep(200);
+        Require(count == "0/0", $"page unexpectedly contains '{text}' ({count})");
     }
 
     private static string ExternalDataNavigationBlocked()
@@ -2562,10 +2559,10 @@ internal static class Program
             var page = server.BaseUrl + "/data-navigation.html";
             SubmitAddress(page);
             WaitForRequest(server, "/data-navigation.html", "external data page request");
-            WaitForPageTitle("Data Navigation Blocked", "external data test page");
-            Thread.Sleep(2000);
-            Require(PageTitleContains("Data Navigation Blocked"),
-                $"external page was replaced by a data document: {_process.MainWindowTitle}");
+            Thread.Sleep(1500);
+            AssertPageContains("Data Navigation Blocked");
+            Thread.Sleep(1000);
+            AssertPageDoesNotContain("amare-data-payload");
             var address = AddressText();
             Require(address.StartsWith(page, StringComparison.OrdinalIgnoreCase),
                 $"external data navigation changed the address: {address}");
@@ -2593,7 +2590,7 @@ internal static class Program
             OpenNewTabAndWait(before + 1);
             SubmitAddress(server.BaseUrl + "/page1.html");
             WaitForRequest(server, "/page1.html", "popup host page request");
-            WaitForPageTitle("Page One", "popup host page");
+            AssertPageContains("Page One");
             AutomationElement? popup = null;
             WaitFor(() =>
             {
@@ -2605,8 +2602,8 @@ internal static class Program
             }, TimeSpan.FromSeconds(10), "popup page button");
             Invoke(popup!);
             WaitFor(() => CountTabs() == before + 2, TimeSpan.FromSeconds(10), "window.open tab");
-            WaitForPageTitle("Popup", "popup tab title");
             Require(server.Requested("/popup.html"), "popup request did not reach the local server");
+            AssertPageContains("Popup");
             CloseActiveTabAndWait(before + 1);
             CloseActiveTabAndWait(before);
             NavigateToExample();
@@ -2627,7 +2624,7 @@ internal static class Program
             OpenNewTabAndWait(before + 1);
             SubmitAddress(server.BaseUrl + "/iframe-nested.html");
             WaitForRequest(server, "/iframe-nested.html", "iframe parent request");
-            WaitForPageTitle("Frame Parent", "iframe parent page");
+            AssertPageContains("Frame Parent");
             WaitFor(() => server.Requested("/page2.html"), TimeSpan.FromSeconds(15), "iframe child request");
             CloseActiveTabAndWait(before);
             NavigateToExample();
