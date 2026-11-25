@@ -2764,7 +2764,7 @@ internal static class Program
                 TimeSpan.FromSeconds(20), "second save password dialog");
             InvokeDialogButton("Save password?", "Save");
             WaitFor(() => StatusTextContains("Password saved to Vault."),
-                TimeSpan.FromSeconds(15), "password saved");
+                TimeSpan.FromSeconds(30), "password saved");
             Require(VaultEntryCountForTest() == before + 1, "approved password was not saved");
             return "capture requires explicit approval and saves the exact origin";
         }

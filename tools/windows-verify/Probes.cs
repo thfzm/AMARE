@@ -17,13 +17,16 @@ internal static class Probes
         try
         {
             var core = first.CoreWebView2;
-            core.Settings.IsPasswordAutosaveEnabled = false;
-            core.Settings.IsGeneralAutofillEnabled = false;
-            core.Settings.AreHostObjectsAllowed = false;
-            core.Profile.IsPasswordAutosaveEnabled = false;
-            core.Profile.IsGeneralAutofillEnabled = false;
-
             var secondCore = second.CoreWebView2;
+            foreach (var view in new[] { core, secondCore })
+            {
+                view.Settings.IsPasswordAutosaveEnabled = false;
+                view.Settings.IsGeneralAutofillEnabled = false;
+                view.Settings.AreHostObjectsAllowed = false;
+                view.Profile.IsPasswordAutosaveEnabled = false;
+                view.Profile.IsGeneralAutofillEnabled = false;
+            }
+
             var passed = !core.Settings.IsPasswordAutosaveEnabled
                          && !core.Settings.IsGeneralAutofillEnabled
                          && !core.Profile.IsPasswordAutosaveEnabled
@@ -39,7 +42,15 @@ internal static class Probes
                 true,
                 passed
                     ? "password autosave and general autofill are disabled for the profile"
-                    : "one or more autofill settings remained enabled",
+                    : $"autofill settings remained enabled: first pw={core.Settings.IsPasswordAutosaveEnabled} " +
+                      $"first gen={core.Settings.IsGeneralAutofillEnabled} " +
+                      $"first profilePw={core.Profile.IsPasswordAutosaveEnabled} " +
+                      $"first profileGen={core.Profile.IsGeneralAutofillEnabled} " +
+                      $"second pw={secondCore.Settings.IsPasswordAutosaveEnabled} " +
+                      $"second gen={secondCore.Settings.IsGeneralAutofillEnabled} " +
+                      $"second profilePw={secondCore.Profile.IsPasswordAutosaveEnabled} " +
+                      $"second profileGen={secondCore.Profile.IsGeneralAutofillEnabled} " +
+                      $"hostObjects={secondCore.Settings.AreHostObjectsAllowed}",
                 new
                 {
                     firstPasswordAutosave = core.Settings.IsPasswordAutosaveEnabled,

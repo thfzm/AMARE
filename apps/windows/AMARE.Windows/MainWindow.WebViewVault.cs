@@ -285,8 +285,10 @@ public sealed partial class MainWindow
             || !EnsureVaultClient()
             || _vaultClient is not { } vault)
         {
+            AppLog.Info("WebView login candidate ignored: vault client unavailable");
             return;
         }
+        AppLog.Info("WebView login candidate received");
         var context = _context;
         var profileId = _profileId;
         if (!host.VaultState.IsContextCurrent(profileId, (long)context.Generation))
@@ -306,6 +308,7 @@ public sealed partial class MainWindow
         }
         if (!status.Unlocked)
         {
+            AppLog.Info("WebView login candidate deferred: vault locked");
             StatusText.Text = "Password detected. Unlock the Vault before saving it.";
             return;
         }

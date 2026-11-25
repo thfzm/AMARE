@@ -270,6 +270,7 @@ public sealed class WebViewVaultTabState
                 || ambiguous
                 || !IsSafeToken(formToken)
                 || !IsSafeUsername(username)
+                || string.IsNullOrWhiteSpace(username)
                 || !WebOrigin.TryParse(originText, out var origin)
                 || DocumentOrigin is not { } doc
                 || origin != doc
@@ -384,7 +385,7 @@ public sealed class WebViewVaultTabState
             {
                 return false;
             }
-            var ambiguousResult = ambiguous || !hasUsername || string.IsNullOrEmpty(username);
+            var ambiguousResult = ambiguous || !hasUsername;
             if (!ambiguousResult && !IsSafeUsername(username))
             {
                 return false;
