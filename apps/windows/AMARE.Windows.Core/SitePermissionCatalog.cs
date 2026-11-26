@@ -27,6 +27,24 @@ public static class SitePermissionCatalog
     public static bool IsSupported(string? kind) =>
         kind is not null && Kinds.Contains(kind, StringComparer.Ordinal);
 
+    public static string LocalizedDisplayName(string kind) => kind switch
+    {
+        "microphone" => L10n.T("permissions.kind.microphone"),
+        "camera" => L10n.T("permissions.kind.camera"),
+        "geolocation" => L10n.T("permissions.kind.geolocation"),
+        "notifications" => L10n.T("permissions.kind.notifications"),
+        "other_sensors" => L10n.T("permissions.kind.other_sensors"),
+        "clipboard_read" => L10n.T("permissions.kind.clipboard_read"),
+        "multiple_automatic_downloads" => L10n.T("permissions.kind.multiple_automatic_downloads"),
+        "file_read_write" => L10n.T("permissions.kind.file_read_write"),
+        "autoplay" => L10n.T("permissions.kind.autoplay"),
+        "local_fonts" => L10n.T("permissions.kind.local_fonts"),
+        "midi_system_exclusive_messages" => L10n.T("permissions.kind.midi_system_exclusive_messages"),
+        "window_management" => L10n.T("permissions.kind.window_management"),
+        "persistent_storage" => L10n.T("permissions.kind.persistent_storage"),
+        _ => L10n.T("permissions.kind.unknown")
+    };
+
     public static string DisplayName(string kind) => kind switch
     {
         "microphone" => "Microphone",

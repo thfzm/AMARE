@@ -46,31 +46,51 @@ public sealed partial class MainWindow
                && ActiveHost?.Model.Id == hostId;
     }
 
-    private async Task<string> TestAiConnectionAsync(AiApiSettings settings, string? key)
+    private sealed record AiConnectionTestResult(string Message, AiErrorKind? ErrorKind);
+
+    private static string LocalizedAiError(AiException exception) => exception.Kind switch
+    {
+        AiErrorKind.Disabled => L10n.T("ai.error.disabled"),
+        AiErrorKind.MissingKey => L10n.T("ai.error.missingKey"),
+        AiErrorKind.InvalidKey => L10n.T("ai.error.invalidKey"),
+        AiErrorKind.RateLimit => exception.RetryAfter is { } retry
+            ? L10n.T("ai.error.rateLimit") + $" ({Math.Max(1, (int)retry.TotalSeconds)}s)"
+            : L10n.T("ai.error.rateLimit"),
+        AiErrorKind.Quota => L10n.T("ai.error.quota"),
+        AiErrorKind.Server => L10n.T("ai.error.server"),
+        AiErrorKind.Timeout => L10n.T("ai.error.timeout"),
+        AiErrorKind.Network => L10n.T("ai.error.network"),
+        AiErrorKind.InvalidResponse => L10n.T("ai.error.invalidResponse"),
+        AiErrorKind.InvalidConfiguration => L10n.T("ai.error.invalidConfiguration"),
+        AiErrorKind.Canceled => L10n.T("ai.error.canceled"),
+        _ => L10n.T("ai.error.unknown")
+    };
+
+    private async Task<AiConnectionTestResult> TestAiConnectionAsync(AiApiSettings settings, string? key)
     {
         if (settings.Mode == AiExecutionMode.Mock)
         {
-            return "Mock mode works offline; no network request was sent.";
+            return new AiConnectionTestResult(L10n.T("ai.mockOffline"), null);
         }
         if (string.IsNullOrWhiteSpace(key))
         {
-            return "An API key is required for Actual API mode.";
+            return new AiConnectionTestResult(L10n.T("ai.error.missingKey"), AiErrorKind.MissingKey);
         }
         try
         {
             var service = AiAssistantService.Create(settings, key);
             await service.ValidateAsync();
-            return "Connection OK: the key and model were accepted.";
+            return new AiConnectionTestResult(L10n.T("ai.connectionOk"), null);
         }
         catch (AiException exception)
         {
             AppLog.Warn($"AI connection test failed kind={exception.Kind}");
-            return exception.UserMessage;
+            return new AiConnectionTestResult(LocalizedAiError(exception), exception.Kind);
         }
         catch (Exception exception)
         {
             AppLog.Warn($"AI connection test failed type={exception.GetType().Name}");
-            return "Connection test failed.";
+            return new AiConnectionTestResult(L10n.T("ai.error.unknown"), AiErrorKind.Unknown);
         }
     }
 
@@ -139,14 +159,14 @@ public sealed partial class MainWindow
         if (!_aiApiSettings.Enabled)
         {
             await ShowMessageAsync(
-                "API AI",
-                "AMARE API assistant is disabled. Enable it in Settings → AI assistant.");
+                L10n.T("ai.title"),
+                L10n.T("ai.disabled"));
             return;
         }
         var host = ActiveHost;
         if (host?.View.CoreWebView2 is null)
         {
-            await ShowMessageAsync("API AI", "Open a page before asking API AI.");
+            await ShowMessageAsync(L10n.T("ai.title"), L10n.T("ai.noPage"));
             return;
         }
         var existingKey = AiCredentialStore.GetKey();
@@ -154,8 +174,8 @@ public sealed partial class MainWindow
             && string.IsNullOrWhiteSpace(existingKey))
         {
             await ShowMessageAsync(
-                "API AI",
-                "Configure an API key first from Settings → AI assistant or API AI settings.");
+                L10n.T("ai.title"),
+                L10n.T("ai.noKey"));
             return;
         }
 
@@ -166,12 +186,12 @@ public sealed partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 220,
             MaxHeight = 360,
-            PlaceholderText = "The conversation appears here."
+            PlaceholderText = L10n.T("ai.transcriptPlaceholder")
         };
         AutomationProperties.SetAutomationId(transcript, "AiTranscriptBox");
         var promptBox = new TextBox
         {
-            Text = "Summarize this page.",
+            Text = L10n.T("ai.prompt"),
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 80
@@ -179,13 +199,13 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(promptBox, "AiPromptBox");
         var includeContext = new CheckBox
         {
-            Content = "Include current page title, URL, and extracted article (explicit consent)",
+            Content = L10n.T("ai.context"),
             IsChecked = false
         };
         AutomationProperties.SetAutomationId(includeContext, "AiIncludePageContext");
         var contextStatus = new TextBlock
         {
-            Text = "Page context: OFF",
+            Text = L10n.T("ai.contextOff"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         };
@@ -193,18 +213,18 @@ public sealed partial class MainWindow
         var status = new TextBlock
         {
             Text = _aiApiSettings.Mode == AiExecutionMode.Mock
-                ? "Mode: Mock (offline)."
-                : "Mode: Actual OpenAI. Requests may incur charges on your account.",
+                ? L10n.T("ai.mockMode")
+                : L10n.T("ai.actualMode"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         };
         AutomationProperties.SetAutomationId(status, "AiRequestStatus");
         var progress = new ProgressRing { IsActive = false, Width = 20, Height = 20 };
-        var stopButton = new Button { Content = "Stop", IsEnabled = false };
+        var stopButton = new Button { Content = L10n.T("common.stop"), IsEnabled = false };
         AutomationProperties.SetAutomationId(stopButton, "AiStopButton");
-        var retryButton = new Button { Content = "Retry", IsEnabled = false };
+        var retryButton = new Button { Content = L10n.T("common.retry"), IsEnabled = false };
         AutomationProperties.SetAutomationId(retryButton, "AiRetryButton");
-        var copyButton = new Button { Content = "Copy conversation" };
+        var copyButton = new Button { Content = L10n.T("ai.copyConversation") };
         AutomationProperties.SetAutomationId(copyButton, "AiCopyConversationButton");
 
         var history = new List<AiMessage>();
@@ -226,16 +246,16 @@ public sealed partial class MainWindow
             var active = ActiveHost;
             if (includeContext.IsChecked != true)
             {
-                contextStatus.Text = "Page context: OFF";
+                contextStatus.Text = L10n.T("ai.contextOff");
                 return;
             }
             if (active is null || active.Model.IsNewTabPage || active.View.CoreWebView2 is null)
             {
-                contextStatus.Text = "Page context: unavailable on this page.";
+                contextStatus.Text = L10n.T("ai.contextUnavailable");
                 includeContext.IsChecked = false;
                 return;
             }
-            contextStatus.Text = $"Page context: ON — {active.Model.Title}";
+            contextStatus.Text = L10n.T("ai.contextOn", active.Model.Title);
         }
 
         includeContext.Checked += (_, _) => UpdateContextStatus();
@@ -249,7 +269,7 @@ public sealed partial class MainWindow
             var data = new DataPackage();
             data.SetText(transcript.Text);
             Clipboard.SetContent(data);
-            status.Text = "Conversation copied.";
+            status.Text = L10n.T("ai.copied");
         };
 
         var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -259,13 +279,12 @@ public sealed partial class MainWindow
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = "Page content is sent only when you enable the context checkbox before pressing Send. " +
-                   "Page content is treated as untrusted data; it cannot change AMARE's security rules.",
+            Text = L10n.T("ai.contextPolicy"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         });
         panel.Children.Add(transcript);
-        panel.Children.Add(new TextBlock { Text = "Question" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("ai.question") });
         panel.Children.Add(promptBox);
         panel.Children.Add(includeContext);
         panel.Children.Add(contextStatus);
@@ -274,11 +293,11 @@ public sealed partial class MainWindow
         panel.Children.Add(status);
         var dialog = new ContentDialog
         {
-            Title = "API AI",
+            Title = L10n.T("ai.title"),
             Content = new ScrollViewer { MaxHeight = 620, Content = panel },
-            PrimaryButtonText = "Send",
-            SecondaryButtonText = "Clear conversation",
-            CloseButtonText = "Close",
+            PrimaryButtonText = L10n.T("common.send"),
+            SecondaryButtonText = L10n.T("common.clear"),
+            CloseButtonText = L10n.T("common.close"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
@@ -296,7 +315,7 @@ public sealed partial class MainWindow
                 prompt = promptBox.Text.Trim();
                 if (prompt.Length == 0)
                 {
-                    status.Text = "Enter a question first.";
+                    status.Text = L10n.T("ai.noQuestion");
                     return;
                 }
                 if (includeContext.IsChecked == true)
@@ -305,17 +324,17 @@ public sealed partial class MainWindow
                     pageContext = await CaptureAiPageContextAsync();
                     if (pageContext is null || !ReferenceEquals(ActiveHost, capturedHost))
                     {
-                        status.Text = "Page context could not be captured. The request was not sent.";
+                        status.Text = L10n.T("ai.contextFailed");
                         return;
                     }
-                    Append($"Page context: {pageContext.Title}\n{pageContext.Url}");
+                    Append(L10n.T("ai.contextSent", pageContext.Title, pageContext.Url));
                 }
                 history.Add(AiMessage.User(prompt));
-                Append("You: " + prompt);
+                Append(L10n.T("ai.you", prompt));
             }
             else if (lastRequest is null)
             {
-                status.Text = "There is no failed request to retry.";
+                status.Text = L10n.T("ai.noFailedRequest");
                 return;
             }
 
@@ -326,7 +345,7 @@ public sealed partial class MainWindow
             var requestHost = ActiveHost;
             if (requestHost is null)
             {
-                status.Text = "No active page.";
+                status.Text = L10n.T("ai.noActivePage");
                 return;
             }
             var hostId = requestHost.Model.Id;
@@ -343,9 +362,9 @@ public sealed partial class MainWindow
             retryButton.IsEnabled = false;
             dialog.IsPrimaryButtonEnabled = false;
             status.Text = _aiApiSettings.Mode == AiExecutionMode.Mock
-                ? "Mock response generating…"
-                : "Request sent to OpenAI…";
-            Append("AMARE: ");
+                ? L10n.T("ai.mockGenerating")
+                : L10n.T("ai.actualGenerating");
+            Append(L10n.T("ai.assistant"));
             var assistant = new StringBuilder();
             try
             {
@@ -371,14 +390,14 @@ public sealed partial class MainWindow
                         history.Add(AiMessage.Assistant(assistant.ToString()));
                     }
                     status.Text = _aiApiSettings.Mode == AiExecutionMode.Mock
-                        ? "Mock response complete. No network request was sent."
-                        : "Response complete.";
+                        ? L10n.T("ai.mockComplete")
+                        : L10n.T("ai.complete");
                     retryButton.IsEnabled = false;
                 }
             }
             catch (OperationCanceledException)
             {
-                status.Text = "Request canceled.";
+                status.Text = L10n.T("ai.canceled");
                 retryButton.IsEnabled = lastRequest is not null;
             }
             catch (AiException exception)
@@ -388,15 +407,16 @@ public sealed partial class MainWindow
                 {
                     SetAiKeyRejected(true);
                 }
-                status.Text = exception.UserMessage;
-                Append($"[request failed] {exception.UserMessage}");
+                var localized = LocalizedAiError(exception);
+                status.Text = localized;
+                Append($"[request failed] {localized}");
                 retryButton.IsEnabled = lastRequest is not null;
             }
             catch (Exception exception)
             {
                 AppLog.Warn($"AI request failed type={exception.GetType().Name}");
-                status.Text = "The AI request failed.";
-                Append("[request failed] The AI request failed.");
+                status.Text = L10n.T("ai.failed");
+                Append("[request failed] " + L10n.T("ai.failed"));
                 retryButton.IsEnabled = lastRequest is not null;
             }
             finally
@@ -420,7 +440,7 @@ public sealed partial class MainWindow
             lastRequest = null;
             transcript.Text = "";
             retryButton.IsEnabled = false;
-            status.Text = "Conversation cleared.";
+            status.Text = L10n.T("ai.cleared");
         }
 
         stopButton.Click += (_, _) =>
@@ -442,6 +462,7 @@ public sealed partial class MainWindow
         {
             CancelAiRequest();
         };
+        LocalizationUi.ApplyDialog(dialog);
         await dialog.ShowAsync();
     }
 
@@ -451,17 +472,17 @@ public sealed partial class MainWindow
         var keyBox = new PasswordBox
         {
             PlaceholderText = existingKey is null
-                ? "OpenAI API key"
-                : "Configured — leave blank to keep the current key"
+                ? L10n.T("settings.aiKeyPlaceholderEmpty")
+                : L10n.T("settings.aiKeyPlaceholder")
         };
         AutomationProperties.SetAutomationId(keyBox, "AiKeyBox");
         var keyStatus = new TextBlock
         {
             Text = existingKey is null
-                ? "No API key configured."
+                ? L10n.T("settings.aiKeyNone")
                 : _aiKeyRejected
-                    ? "The stored API key was rejected by OpenAI. Replace it."
-                    : "API key configured in Windows Credential Manager (masked).",
+                    ? L10n.T("settings.aiKeyRejected")
+                    : L10n.T("settings.aiKeyConfigured"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         };
@@ -478,13 +499,17 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(providerCombo, "AiProviderBox");
         var enabledBox = new CheckBox
         {
-            Content = "Enable AMARE API assistant",
+            Content = L10n.T("settings.aiEnabled"),
             IsChecked = _aiApiSettings.Enabled
         };
         AutomationProperties.SetAutomationId(enabledBox, "AiEnabledBox");
         var modeCombo = new ComboBox
         {
-            ItemsSource = new[] { "Mock (offline)", "Actual API" },
+            ItemsSource = new[]
+            {
+                L10n.T("settings.aiModeMock"),
+                L10n.T("settings.aiModeActual")
+            },
             SelectedIndex = _aiApiSettings.Mode == AiExecutionMode.Mock ? 0 : 1,
             MinWidth = 220
         };
@@ -503,12 +528,12 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(baseUrlBox, "AiBaseUrlBox");
         var testStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         AutomationProperties.SetAutomationId(testStatus, "AiTestStatus");
-        var testButton = new Button { Content = "Test connection" };
+        var testButton = new Button { Content = L10n.T("settings.aiTest") };
         testButton.Click += async (_, _) =>
         {
             try
             {
-                testStatus.Text = "Testing…";
+                testStatus.Text = L10n.T("common.testing");
                 var provider = providerCombo.SelectedItem as AiProviderDescriptor
                                ?? AiProviderCatalog.All[0];
                 var settings = new AiApiSettings(
@@ -518,55 +543,56 @@ public sealed partial class MainWindow
                     enabledBox.IsChecked == true,
                     modeCombo.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
                 var key = keyBox.Password.Trim().Length > 0 ? keyBox.Password : existingKey;
-                testStatus.Text = await TestAiConnectionAsync(settings, key);
+                var result = await TestAiConnectionAsync(settings, key);
+                testStatus.Text = result.Message;
                 keyRejected = settings.Mode == AiExecutionMode.Actual
-                              && testStatus.Text.StartsWith("The OpenAI API key was rejected", StringComparison.Ordinal);
+                              && result.ErrorKind == AiErrorKind.InvalidKey;
                 if (keyRejected)
                 {
                     SetAiKeyRejected(true);
                 }
-                else if (testStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
+                else if (result.ErrorKind is null)
                 {
                     SetAiKeyRejected(false);
                 }
             }
             catch (Exception exception)
             {
-                testStatus.Text = $"Connection test failed: {exception.GetType().Name}";
+                testStatus.Text = L10n.T("ai.connectionFailed", exception.GetType().Name);
             }
         };
-        var deleteButton = new Button { Content = "Delete stored key" };
+        var deleteButton = new Button { Content = L10n.T("settings.aiDelete") };
         AutomationProperties.SetAutomationId(deleteButton, "AiDeleteKeyButton");
         deleteButton.Click += (_, _) =>
         {
             if (AiCredentialStore.Delete())
             {
                 SetAiKeyRejected(false);
-                keyStatus.Text = "API key deleted.";
-                testStatus.Text = "Stored key deleted.";
+                keyStatus.Text = L10n.T("ai.settings.keyDeleted");
+                testStatus.Text = L10n.T("ai.settings.keyDeleted");
             }
             else
             {
-                testStatus.Text = "The stored key could not be deleted.";
+                testStatus.Text = L10n.T("ai.settings.keyDeleteFailed");
             }
         };
 
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {
-            Text = "The API key is stored only in Windows Credential Manager and is never written to settings, logs, or the AI WebView.",
+            Text = L10n.T("ai.settings.info"),
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(enabledBox);
-        panel.Children.Add(new TextBlock { Text = "Mode" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("settings.aiMode") });
         panel.Children.Add(modeCombo);
-        panel.Children.Add(new TextBlock { Text = "Provider" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("ai.settings.provider") });
         panel.Children.Add(providerCombo);
-        panel.Children.Add(new TextBlock { Text = "Model (editable)" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("ai.settings.model") });
         panel.Children.Add(modelBox);
-        panel.Children.Add(new TextBlock { Text = "Base URL (HTTPS only)" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("ai.settings.baseUrl") });
         panel.Children.Add(baseUrlBox);
-        panel.Children.Add(new TextBlock { Text = "API key" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("ai.settings.key") });
         panel.Children.Add(keyBox);
         panel.Children.Add(keyStatus);
         panel.Children.Add(testButton);
@@ -574,20 +600,20 @@ public sealed partial class MainWindow
         panel.Children.Add(deleteButton);
         panel.Children.Add(new TextBlock
         {
-            Text = "Actual API requests are sent to the configured endpoint and may incur charges on your API account. " +
-                   "AMARE does not control your plan, rate limits, or billing.",
+            Text = L10n.T("ai.settings.cost"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         });
         var dialog = new ContentDialog
         {
-            Title = "API AI settings",
+            Title = L10n.T("ai.settings.title"),
             Content = new ScrollViewer { MaxHeight = 620, Content = panel },
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = L10n.T("common.save"),
+            CloseButtonText = L10n.T("common.cancel"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = RootGrid.XamlRoot
         };
+        LocalizationUi.ApplyDialog(dialog);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
         {
             return;
@@ -595,8 +621,8 @@ public sealed partial class MainWindow
         if (keyRejected && keyBox.Password.Trim().Length > 0)
         {
             await ShowMessageAsync(
-                "API AI settings",
-                "The new API key was rejected. The previously stored key was not replaced.");
+                L10n.T("ai.settings.title"),
+                L10n.T("ai.settings.keyRejectedNotSaved"));
             return;
         }
         var selectedProvider = providerCombo.SelectedItem as AiProviderDescriptor
@@ -604,7 +630,7 @@ public sealed partial class MainWindow
         var newKey = keyBox.Password.Trim();
         if (newKey.Length > 0 && !AiCredentialStore.Save(newKey))
         {
-            await ShowMessageAsync("API AI settings", "Windows Credential Manager could not store the key.");
+            await ShowMessageAsync(L10n.T("ai.settings.title"), L10n.T("ai.settings.keyStoreFailed"));
             return;
         }
         var keyChanged = newKey.Length > 0;
@@ -621,8 +647,8 @@ public sealed partial class MainWindow
         AppLog.Info($"AI settings saved mode={settings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");
         StatusText.Text = settings.Mode == AiExecutionMode.Actual
                           && string.IsNullOrWhiteSpace(AiCredentialStore.GetKey())
-            ? "AI settings saved. Actual API requests are blocked until a key is added."
-            : "AI settings saved.";
+            ? L10n.T("ai.settings.savedNoKey")
+            : L10n.T("ai.settings.saved");
     }
 
 }

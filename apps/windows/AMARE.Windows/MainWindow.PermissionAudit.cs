@@ -391,20 +391,20 @@ public sealed partial class MainWindow
         {
             if (!PermissionAudits.TryGetValue(auditKey, out var entry))
             {
-                return "Legacy WebView2 audit: Not started. Permission requests are blocked.";
+                return L10n.T("permissions.auditNotStarted");
             }
             return entry.State switch
             {
                 WebViewPermissionAuditState.Reconciled =>
-                    $"Legacy WebView2 audit: Reconciled ({entry.Result?.ResetCount ?? 0} legacy setting(s) reset).",
+                    L10n.T("permissions.auditReconciled", entry.Result?.ResetCount ?? 0),
                 WebViewPermissionAuditState.Auditing =>
-                    "Legacy WebView2 audit: Auditing. Permission requests are blocked.",
+                    L10n.T("permissions.auditAuditing"),
                 WebViewPermissionAuditState.Unsupported =>
-                    "Legacy WebView2 audit: Unsupported. Permission requests are blocked until a supported WebView2 runtime is available.",
+                    L10n.T("permissions.auditUnsupported"),
                 WebViewPermissionAuditState.Failed =>
-                    "Legacy WebView2 audit: Failed. Permission requests are blocked; the audit will retry on the next app start.",
+                    L10n.T("permissions.auditFailed"),
                 _ =>
-                    "Legacy WebView2 audit: Not started. Permission requests are blocked."
+                    L10n.T("permissions.auditNotStarted")
             };
         }
     }

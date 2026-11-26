@@ -1,0 +1,440 @@
+using System.Globalization;
+
+namespace Amare.Windows.Core;
+
+public sealed record AppPreferences(
+    string Language = "system",
+    string DownloadDirectory = "");
+
+public sealed record LanguageOption(string Id, string DisplayName);
+
+public static class L10n
+{
+    public const string SystemLanguage = "system";
+    public const string English = "en-US";
+    public const string Korean = "ko-KR";
+
+    public static readonly IReadOnlyList<LanguageOption> Languages =
+    [
+        new(SystemLanguage, "System"),
+        new(English, "English"),
+        new(Korean, "한국어")
+    ];
+
+    private static readonly Dictionary<string, (string English, string Korean)> Keyed = new()
+    {
+        // Settings shell
+        ["settings.title"] = ("Settings", "설정"),
+        ["settings.general"] = ("General", "일반"),
+        ["settings.appearance"] = ("Appearance", "모양"),
+        ["settings.privacy"] = ("Privacy & Security", "개인정보 및 보안"),
+        ["settings.ai"] = ("AI assistant", "AI 도우미"),
+        ["settings.downloads"] = ("Downloads", "다운로드"),
+        ["settings.updates"] = ("Updates", "업데이트"),
+        ["settings.profileScope"] = ("Profile-specific", "프로필별 설정"),
+        ["settings.appScope"] = ("App-wide", "앱 전체 설정"),
+        ["settings.save"] = ("Save", "저장"),
+        ["settings.cancel"] = ("Cancel", "취소"),
+        ["settings.saved"] = ("Settings saved.", "설정을 저장했습니다."),
+        ["settings.saveFailed"] = ("Settings could not be saved.", "설정을 저장하지 못했습니다."),
+        ["settings.partialSave"] = (
+            "Some settings could not be saved. Review the current values and try again.",
+            "일부 설정을 저장하지 못했습니다. 현재 값을 확인한 뒤 다시 시도하세요."),
+        ["settings.language"] = ("Language", "언어"),
+        ["settings.languageRestart"] = (
+            "Language saved. Restart AMARE to apply it.",
+            "언어를 저장했습니다. 적용하려면 AMARE를 다시 시작하세요."),
+        ["settings.languageSystem"] = ("System default", "시스템 기본값"),
+        ["settings.theme"] = ("Appearance theme", "화면 테마"),
+        ["settings.themeSystem"] = ("System", "시스템"),
+        ["settings.themeLight"] = ("Light", "밝게"),
+        ["settings.themeDark"] = ("Dark", "어둡게"),
+        ["settings.uiFont"] = ("UI font", "UI 글꼴"),
+        ["settings.uiFontSize"] = ("UI font size", "UI 글꼴 크기"),
+        ["settings.searchEngine"] = ("Search engine", "검색 엔진"),
+        ["settings.restoreSession"] = ("Restore previous tabs on startup", "시작할 때 이전 탭 복원"),
+        ["settings.saveHistory"] = ("Save browsing history", "방문 기록 저장"),
+        ["settings.passwordAutofill"] = ("Allow password autofill", "비밀번호 자동 입력 허용"),
+        ["settings.passwordSavePrompt"] = ("Offer to save passwords after login", "로그인 후 비밀번호 저장 제안"),
+        ["settings.manageSitePermissions"] = ("Manage site permissions…", "사이트 권한 관리…"),
+        ["settings.openVault"] = ("Open password vault…", "비밀번호 보관함 열기…"),
+        ["settings.clearWebPasswords"] = ("Clear WebView saved passwords…", "WebView 저장 비밀번호 지우기…"),
+        ["settings.downloadDirectory"] = ("Download folder", "다운로드 폴더"),
+        ["settings.downloadDirectoryHint"] = (
+            "Leave blank to use the default AMARE downloads folder. The folder is created when you save.",
+            "비워 두면 AMARE 기본 다운로드 폴더를 사용합니다. 저장할 때 폴더를 만듭니다."),
+        ["settings.defaultDownloadDirectory"] = ("Default AMARE downloads folder", "AMARE 기본 다운로드 폴더"),
+        ["settings.checkOnStartup"] = ("Check GitHub Releases for updates on startup", "시작할 때 GitHub Releases 업데이트 확인"),
+        ["settings.updateChannel"] = ("Update channel", "업데이트 채널"),
+        ["settings.channelStable"] = ("Stable", "안정 버전"),
+        ["settings.channelPrerelease"] = ("Prerelease", "사전 버전"),
+        ["settings.checkNow"] = ("Check now…", "지금 확인…"),
+        ["settings.languageHint"] = ("Takes effect after restart. System follows the Windows display language.", "다시 시작한 뒤 적용됩니다. 시스템은 Windows 표시 언어를 따릅니다."),
+        ["settings.downloadPathInvalid"] = ("Enter a full folder path or leave it blank.", "전체 폴더 경로를 입력하거나 비워 두세요."),
+        ["settings.downloadPathCreateFailed"] = ("The download folder could not be created.", "다운로드 폴더를 만들지 못했습니다."),
+        ["settings.appPrefsFailed"] = ("App-wide preferences could not be saved.", "앱 전체 설정을 저장하지 못했습니다."),
+        ["settings.updatePrefsFailed"] = ("Update preferences could not be saved.", "업데이트 설정을 저장하지 못했습니다."),
+        ["settings.keySaveFailed"] = ("The API key could not be stored in Windows Credential Manager.", "API 키를 Windows 자격 증명 관리자에 저장하지 못했습니다."),
+        ["settings.scopeProfile"] = ("Applies to this profile.", "이 프로필에 적용됩니다."),
+        ["settings.scopeApp"] = ("Applies to all windows and profiles.", "모든 창과 프로필에 적용됩니다."),
+        ["settings.openVaultHint"] = ("Open the encrypted per-profile password vault.", "프로필별 암호화 비밀번호 보관함을 엽니다."),
+        ["settings.sitePermissionsHint"] = ("Review and change saved site permissions for this profile.", "이 프로필에 저장된 사이트 권한을 확인하고 변경합니다."),
+        ["settings.clearWebHint"] = ("Clear WebView2 password/autofill data after confirmation.", "확인 후 WebView2 비밀번호/자동 채우기 데이터를 지웁니다."),
+        ["settings.aiEnabled"] = ("Enable AMARE API assistant", "AMARE API 도우미 사용"),
+        ["settings.aiMode"] = ("Execution mode", "실행 모드"),
+        ["settings.aiModeMock"] = ("Mock (offline)", "모의 (오프라인)"),
+        ["settings.aiModeActual"] = ("Actual API", "실제 API"),
+        ["settings.aiModel"] = ("Model (editable)", "모델 (직접 입력)"),
+        ["settings.aiKey"] = ("API key", "API 키"),
+        ["settings.aiKeyConfigured"] = (
+            "API key configured in Windows Credential Manager (masked).",
+            "Windows 자격 증명 관리자에 API 키가 저장되어 있습니다(마스킹됨)."),
+        ["settings.aiKeyNone"] = ("No API key configured.", "저장된 API 키가 없습니다."),
+        ["settings.aiKeyRejected"] = (
+            "The stored API key was rejected by OpenAI. Replace it.",
+            "저장된 API 키가 OpenAI에서 거부되었습니다. 새 키로 교체하세요."),
+        ["settings.aiKeyPlaceholder"] = (
+            "Configured — leave blank to keep the current key",
+            "저장됨 — 현재 키를 유지하려면 비워 두세요"),
+        ["settings.aiKeyPlaceholderEmpty"] = ("OpenAI API key", "OpenAI API 키"),
+        ["settings.aiTest"] = ("Test connection", "연결 테스트"),
+        ["settings.aiDelete"] = ("Delete stored key", "저장된 키 삭제"),
+        ["settings.aiCost"] = (
+            "Actual API requests are sent only when you press Send. They may incur charges on your OpenAI account. Page content is included only when you explicitly enable it for a request.",
+            "실제 API 요청은 전송을 누를 때만 전송되며 OpenAI 계정에 비용이 발생할 수 있습니다. 페이지 내용은 요청별로 직접 허용한 경우에만 포함됩니다."),
+        ["settings.aiDisabledWarning"] = (
+            "Actual API requests are blocked until an API key is added.",
+            "API 키를 추가할 때까지 실제 API 요청은 차단됩니다."),
+        ["settings.openAiSettings"] = ("Open advanced API settings…", "고급 API 설정 열기…"),
+
+        // Common
+        ["ai.error.disabled"] = ("AMARE API assistant is disabled in Settings.", "설정에서 AMARE API 도우미가 비활성화되어 있습니다."),
+        ["ai.error.missingKey"] = ("Actual API mode requires an OpenAI API key. Open Settings → AI assistant.", "실제 API 모드에는 OpenAI API 키가 필요합니다. 설정 → AI 도우미를 여세요."),
+        ["ai.error.invalidKey"] = ("The OpenAI API key was rejected. Replace it in Settings → AI assistant.", "OpenAI API 키가 거부되었습니다. 설정 → AI 도우미에서 교체하세요."),
+        ["ai.error.rateLimit"] = ("OpenAI rate limit reached. Try again later.", "OpenAI 요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."),
+        ["ai.error.quota"] = ("OpenAI usage or billing limit reached. Check your API plan and usage.", "OpenAI 사용량 또는 결제 한도에 도달했습니다. API 요금제와 사용량을 확인하세요."),
+        ["ai.error.server"] = ("OpenAI returned a server error. Retry the request.", "OpenAI 서버 오류가 발생했습니다. 요청을 다시 시도하세요."),
+        ["ai.error.timeout"] = ("The OpenAI request timed out.", "OpenAI 요청 시간이 초과되었습니다."),
+        ["ai.error.network"] = ("Could not reach OpenAI. Check the network connection.", "OpenAI에 연결하지 못했습니다. 네트워크 연결을 확인하세요."),
+        ["ai.error.invalidResponse"] = ("OpenAI returned a response AMARE could not read.", "OpenAI 응답을 AMARE가 읽지 못했습니다."),
+        ["ai.error.invalidConfiguration"] = ("The AI model or API configuration is invalid.", "AI 모델 또는 API 구성이 올바르지 않습니다."),
+        ["ai.error.canceled"] = ("The AI request was canceled.", "AI 요청이 취소되었습니다."),
+        ["ai.error.unknown"] = ("The AI request failed.", "AI 요청이 실패했습니다."),
+        ["ai.settings.title"] = ("API AI settings", "API AI 설정"),
+        ["ai.settings.info"] = ("The API key is stored only in Windows Credential Manager and is never written to settings, logs, or the AI WebView.", "API 키는 Windows 자격 증명 관리자에만 저장되며 설정, 로그, AI WebView에 기록되지 않습니다."),
+        ["ai.settings.provider"] = ("Provider", "제공자"),
+        ["ai.settings.model"] = ("Model (editable)", "모델 (직접 입력)"),
+        ["ai.settings.baseUrl"] = ("Base URL (HTTPS only)", "기본 URL (HTTPS만)"),
+        ["ai.settings.key"] = ("API key", "API 키"),
+        ["ai.settings.test"] = ("Test connection", "연결 테스트"),
+        ["ai.settings.delete"] = ("Delete stored key", "저장된 키 삭제"),
+        ["ai.settings.cost"] = ("Actual API requests are sent to the configured endpoint and may incur charges on your API account. AMARE does not control your plan, rate limits, or billing.", "실제 API 요청은 구성된 endpoint로 전송되며 API 계정에 비용이 발생할 수 있습니다. AMARE는 요금제, 요청 한도, 결제를 통제하지 않습니다."),
+        ["ai.settings.testing"] = ("Testing…", "테스트 중…"),
+        ["ai.settings.saved"] = ("AI settings saved.", "AI 설정을 저장했습니다."),
+        ["ai.settings.savedNoKey"] = ("AI settings saved. Actual API requests are blocked until a key is added.", "AI 설정을 저장했습니다. 키를 추가할 때까지 실제 API 요청은 차단됩니다."),
+        ["ai.settings.keyRejectedNotSaved"] = ("The new API key was rejected. The previously stored key was not replaced.", "새 API 키가 거부되었습니다. 기존 키는 교체하지 않았습니다."),
+        ["ai.settings.keyStoreFailed"] = ("Windows Credential Manager could not store the key.", "Windows 자격 증명 관리자에 키를 저장하지 못했습니다."),
+        ["ai.settings.keyDeleted"] = ("API key deleted.", "API 키를 삭제했습니다."),
+        ["ai.settings.keyDeleteFailed"] = ("The stored key could not be deleted.", "저장된 키를 삭제하지 못했습니다."),
+        ["ai.settings.keyConfigured"] = ("API key configured in Windows Credential Manager (masked).", "Windows 자격 증명 관리자에 API 키가 저장되어 있습니다(마스킹됨)."),
+        ["ai.mockOffline"] = ("Mock mode works offline; no network request was sent.", "모의 모드는 오프라인에서 동작합니다. 네트워크 요청은 전송되지 않았습니다."),
+        ["ai.connectionOk"] = ("Connection OK: the key and model were accepted.", "연결 성공: 키와 모델이 확인되었습니다."),
+        ["ai.connectionFailed"] = ("Connection test failed: {0}", "연결 테스트 실패: {0}"),
+        ["common.close"] = ("Close", "닫기"),
+        ["common.cancel"] = ("Cancel", "취소"),
+        ["common.save"] = ("Save", "저장"),
+        ["common.delete"] = ("Delete", "삭제"),
+        ["common.testing"] = ("Testing…", "테스트 중…"),
+        ["common.connectionOk"] = ("Connection OK: the key and model were accepted.", "연결 성공: 키와 모델이 확인되었습니다."),
+        ["common.failed"] = ("Failed", "실패"),
+        ["common.copy"] = ("Copy", "복사"),
+        ["common.retry"] = ("Retry", "다시 시도"),
+        ["common.stop"] = ("Stop", "중지"),
+        ["common.clear"] = ("Clear conversation", "대화 지우기"),
+        ["common.send"] = ("Send", "보내기"),
+
+        // Menus
+        ["menu.newTab"] = ("New tab", "새 탭"),
+        ["menu.newWindow"] = ("New window", "새 창"),
+        ["menu.history"] = ("History", "방문 기록"),
+        ["menu.bookmarks"] = ("Bookmarks", "북마크"),
+        ["menu.downloads"] = ("Downloads", "다운로드"),
+        ["menu.passwords"] = ("Passwords…", "비밀번호…"),
+        ["menu.sitePermissions"] = ("Site permissions…", "사이트 권한…"),
+        ["menu.fillPassword"] = ("Fill password for this site…", "이 사이트의 비밀번호 채우기…"),
+        ["menu.clearWebPasswords"] = ("Clear WebView saved passwords…", "WebView 저장 비밀번호 지우기…"),
+        ["menu.reader"] = ("Reader Mode", "읽기 모드"),
+        ["menu.find"] = ("Find in page", "페이지에서 찾기"),
+        ["menu.aiPanel"] = ("AI web panel", "AI 웹 패널"),
+        ["menu.closeAiPanel"] = ("Close AI panel", "AI 패널 닫기"),
+        ["menu.aiSettings"] = ("API AI settings…", "API AI 설정…"),
+        ["menu.askAi"] = ("Ask API AI…", "API AI에게 질문…"),
+        ["menu.checkUpdates"] = ("Check for updates…", "업데이트 확인…"),
+        ["menu.recoverUpdate"] = ("Recover interrupted update…", "중단된 업데이트 복구…"),
+        ["menu.diagnostics"] = ("Diagnostics…", "진단…"),
+        ["menu.zoomIn"] = ("Zoom in", "확대"),
+        ["menu.zoomOut"] = ("Zoom out", "축소"),
+        ["menu.zoomReset"] = ("Reset zoom", "확대/축소 초기화"),
+        ["menu.print"] = ("Print", "인쇄"),
+        ["menu.fullScreen"] = ("Full screen", "전체 화면"),
+        ["menu.exitFullScreen"] = ("Exit full screen", "전체 화면 종료"),
+
+        // AI dialog
+        ["ai.title"] = ("API AI", "API AI"),
+        ["ai.copyConversation"] = ("Copy conversation", "대화 복사"),
+        ["ai.contextPolicy"] = ("Page content is sent only when you enable the context checkbox before pressing Send. Page content is treated as untrusted data; it cannot change AMARE's security rules.", "페이지 내용은 전송 전에 컨텍스트 확인란을 직접 선택한 경우에만 전송됩니다. 페이지 내용은 신뢰할 수 없는 데이터로 취급되며 AMARE의 보안 규칙을 바꿀 수 없습니다."),
+        ["ai.question"] = ("Question", "질문"),
+        ["ai.prompt"] = ("Summarize this page.", "이 페이지를 요약해 주세요."),
+        ["ai.context"] = (
+            "Include current page title, URL, and extracted article (explicit consent)",
+            "현재 페이지 제목, URL, 추출된 본문 포함 (명시적 동의)"),
+        ["ai.contextOff"] = ("Page context: OFF", "페이지 컨텍스트: 꺼짐"),
+        ["ai.contextOn"] = ("Page context: ON — {0}", "페이지 컨텍스트: 켜짐 — {0}"),
+        ["ai.contextUnavailable"] = ("Page context: unavailable on this page.", "페이지 컨텍스트: 이 페이지에서는 사용할 수 없습니다."),
+        ["ai.mockMode"] = ("Mode: Mock (offline).", "모드: 모의 (오프라인)."),
+        ["ai.actualMode"] = ("Mode: Actual OpenAI. Requests may incur charges on your account.", "모드: 실제 OpenAI. 요청 시 계정에 비용이 발생할 수 있습니다."),
+        ["ai.transcriptPlaceholder"] = ("The conversation appears here.", "대화 내용이 여기에 표시됩니다."),
+        ["ai.contextSent"] = ("Page context: {0}\n{1}", "페이지 컨텍스트: {0}\n{1}"),
+        ["ai.you"] = ("You: {0}", "사용자: {0}"),
+        ["ai.assistant"] = ("AMARE: ", "AMARE: "),
+        ["ai.mockGenerating"] = ("Mock response generating…", "모의 응답 생성 중…"),
+        ["ai.actualGenerating"] = ("Request sent to OpenAI…", "OpenAI로 요청을 보냈습니다…"),
+        ["ai.mockComplete"] = ("Mock response complete. No network request was sent.", "모의 응답이 완료되었습니다. 네트워크 요청은 전송되지 않았습니다."),
+        ["ai.complete"] = ("Response complete.", "응답이 완료되었습니다."),
+        ["ai.canceled"] = ("Request canceled.", "요청이 취소되었습니다."),
+        ["ai.noQuestion"] = ("Enter a question first.", "먼저 질문을 입력하세요."),
+        ["ai.contextFailed"] = ("Page context could not be captured. The request was not sent.", "페이지 컨텍스트를 가져오지 못했습니다. 요청을 보내지 않았습니다."),
+        ["ai.noActivePage"] = ("No active page.", "활성 페이지가 없습니다."),
+        ["ai.noFailedRequest"] = ("There is no failed request to retry.", "다시 시도할 실패한 요청이 없습니다."),
+        ["ai.cleared"] = ("Conversation cleared.", "대화를 지웠습니다."),
+        ["ai.copied"] = ("Conversation copied.", "대화를 복사했습니다."),
+        ["ai.disabled"] = ("AMARE API assistant is disabled. Enable it in Settings → AI assistant.", "AMARE API 도우미가 비활성화되어 있습니다. 설정 → AI 도우미에서 사용하세요."),
+        ["ai.noPage"] = ("Open a page before asking API AI.", "API AI에게 질문하기 전에 페이지를 여세요."),
+        ["ai.noKey"] = ("Configure an API key first from Settings → AI assistant or API AI settings.", "먼저 설정 → AI 도우미 또는 API AI 설정에서 API 키를 구성하세요."),
+        ["ai.failed"] = ("The AI request failed.", "AI 요청이 실패했습니다."),
+
+        // Site permissions
+        ["permissions.kind.microphone"] = ("Microphone", "마이크"),
+        ["permissions.kind.camera"] = ("Camera", "카메라"),
+        ["permissions.kind.geolocation"] = ("Location", "위치"),
+        ["permissions.kind.notifications"] = ("Notifications", "알림"),
+        ["permissions.kind.other_sensors"] = ("Motion and light sensors", "동작 및 조도 센서"),
+        ["permissions.kind.clipboard_read"] = ("Clipboard read", "클립보드 읽기"),
+        ["permissions.kind.multiple_automatic_downloads"] = ("Multiple automatic downloads", "여러 파일 자동 다운로드"),
+        ["permissions.kind.file_read_write"] = ("File access", "파일 접근"),
+        ["permissions.kind.autoplay"] = ("Autoplay", "자동 재생"),
+        ["permissions.kind.local_fonts"] = ("Local fonts", "로컬 글꼴"),
+        ["permissions.kind.midi_system_exclusive_messages"] = ("MIDI devices", "MIDI 장치"),
+        ["permissions.kind.window_management"] = ("Window management", "창 관리"),
+        ["permissions.kind.persistent_storage"] = ("Persistent storage", "영구 저장소"),
+        ["permissions.kind.unknown"] = ("Unknown permission", "알 수 없는 권한"),
+        ["permissions.requestExplanation"] = ("AMARE will not grant a sensitive permission without your choice. Closing this dialog denies only this request.", "AMARE는 사용자의 선택 없이 민감한 권한을 허용하지 않습니다. 이 대화 상자를 닫으면 이번 요청만 거부됩니다."),
+        ["permissions.intro"] = ("Saved permissions are stored per profile and apply to exact HTTPS origins only.", "저장된 권한은 프로필별로 저장되며 정확한 HTTPS origin에만 적용됩니다."),
+        ["permissions.changedElsewhere"] = ("This permission changed elsewhere. The list was reloaded; review it and try again.", "다른 곳에서 이 권한이 변경되었습니다. 목록을 다시 불러왔으니 확인 후 다시 시도하세요."),
+        ["permissions.loadFailed"] = ("Site permissions could not be loaded.", "사이트 권한을 불러오지 못했습니다."),
+        ["permissions.saveFailedReload"] = ("The permission could not be saved. The list was reloaded.", "권한을 저장하지 못했습니다. 목록을 다시 불러왔습니다."),
+        ["permissions.deleteFailedReload"] = ("The permission could not be removed. The list was reloaded.", "권한을 삭제하지 못했습니다. 목록을 다시 불러왔습니다."),
+        ["permissions.resetConfirm"] = ("Click Reset site again to remove every permission for {0}.", "사이트 초기화를 한 번 더 누르면 {0}의 모든 권한이 삭제됩니다."),
+        ["permissions.clearConfirm"] = ("Click Clear all again to remove every site permission for this profile.", "모두 지우기를 한 번 더 누르면 이 프로필의 모든 사이트 권한이 삭제됩니다."),
+        ["permissions.reset"] = ("Reset", "초기화"),
+        ["permissions.clear"] = ("Clear", "지우기"),
+        ["permissions.cancel"] = ("Cancel", "취소"),
+        ["permissions.unavailable"] = ("Site permissions are unavailable.", "사이트 권한을 사용할 수 없습니다."),
+        ["permissions.title"] = ("Site permissions", "사이트 권한"),
+        ["permissions.requestTitle"] = ("Permission request", "권한 요청"),
+        ["permissions.origin"] = ("Site: {0}", "사이트: {0}"),
+        ["permissions.kind"] = ("Permission: {0}", "권한: {0}"),
+        ["permissions.allowOnce"] = ("Allow once", "이번만 허용"),
+        ["permissions.alwaysAllow"] = ("Always allow", "항상 허용"),
+        ["permissions.notNow"] = ("Not now", "나중에"),
+        ["permissions.blockAlways"] = ("Block always", "항상 차단"),
+        ["permissions.empty"] = ("No saved site permissions for this profile.", "이 프로필에 저장된 사이트 권한이 없습니다."),
+        ["permissions.filterAll"] = ("All permissions", "모든 권한"),
+        ["permissions.allow"] = ("Allow", "허용"),
+        ["permissions.block"] = ("Block", "차단"),
+        ["permissions.remove"] = ("Remove", "삭제"),
+        ["permissions.resetSite"] = ("Reset site", "사이트 초기화"),
+        ["permissions.clearAll"] = ("Clear all", "모두 지우기"),
+        ["permissions.auditNotStarted"] = ("Legacy WebView2 audit: Not started. Permission requests are blocked.", "WebView2 기존 권한 감사: 시작되지 않음. 권한 요청이 차단됩니다."),
+        ["permissions.auditAuditing"] = ("Legacy WebView2 audit: Auditing. Permission requests are blocked.", "WebView2 기존 권한 감사: 진행 중. 권한 요청이 차단됩니다."),
+        ["permissions.auditUnsupported"] = ("Legacy WebView2 audit: Unsupported. Permission requests are blocked until a supported WebView2 runtime is available.", "WebView2 기존 권한 감사: 지원되지 않음. 지원되는 WebView2 런타임이 준비될 때까지 권한 요청이 차단됩니다."),
+        ["permissions.auditFailed"] = ("Legacy WebView2 audit: Failed. Permission requests are blocked; the audit will retry on the next app start.", "WebView2 기존 권한 감사: 실패. 권한 요청이 차단되며 다음 앱 시작 시 다시 시도합니다."),
+        ["permissions.auditReconciled"] = ("Legacy WebView2 audit: Reconciled ({0} legacy setting(s) reset).", "WebView2 기존 권한 감사: 정리됨(기존 설정 {0}개 초기화)."),
+        ["permissions.auditBlocked"] = ("Site permissions are blocked: the WebView2 legacy permission audit did not reconcile.", "사이트 권한이 차단되었습니다: WebView2 기존 권한 감사가 완료되지 않았습니다."),
+        ["permissions.auditUnavailable"] = ("Legacy WebView2 audit: {0}", "WebView2 기존 권한 감사: {0}"),
+        ["permissions.saveFailed"] = ("The permission could not be saved.", "권한을 저장하지 못했습니다."),
+        ["permissions.deleteFailed"] = ("The permission could not be removed.", "권한을 삭제하지 못했습니다."),
+        ["permissions.listFailed"] = ("Site permissions could not be loaded.", "사이트 권한을 불러오지 못했습니다."),
+
+        // Vault / downloads / updates common labels
+        ["vault.autofillDisabled"] = ("Password autofill is disabled in Settings.", "설정에서 비밀번호 자동 입력이 비활성화되어 있습니다."),
+        ["vault.notInitialized"] = ("Not initialized", "초기화되지 않음"),
+        ["vault.create"] = ("Create your password vault", "비밀번호 보관함 만들기"),
+        ["vault.lockedCount"] = ("Locked · {0} revisions", "잠김 · {0}개 버전"),
+        ["vault.unlockedCount"] = ("Unlocked · {0} accounts", "잠금 해제 · 계정 {0}개"),
+        ["vault.unavailable"] = ("Unavailable", "사용할 수 없음"),
+        ["vault.unavailableTitle"] = ("Password vault unavailable", "비밀번호 보관함을 사용할 수 없음"),
+        ["vault.unavailableDetail"] = ("The Windows-protected vault service could not be initialized.", "Windows 보호 비밀번호 보관함 서비스를 초기화하지 못했습니다."),
+        ["vault.passwordHidden"] = ("Password hidden", "비밀번호 숨김"),
+        ["vault.passwordVisible"] = ("Password visible", "비밀번호 표시"),
+        ["vault.addAccount"] = ("Add account", "계정 추가"),
+        ["vault.editAccount"] = ("Edit account", "계정 편집"),
+        ["vault.title"] = ("Password vault", "비밀번호 보관함"),
+        ["vault.locked"] = ("Vault is locked", "보관함이 잠겨 있습니다"),
+        ["vault.lockedShort"] = ("Locked", "잠김"),
+        ["vault.empty"] = ("No saved accounts", "저장된 계정이 없습니다"),
+        ["downloads.empty"] = ("No downloads in this session", "이 세션에 다운로드가 없습니다"),
+        ["downloads.complete"] = ("Download complete: {0}", "다운로드 완료: {0}"),
+        ["downloads.failed"] = ("Download failed: {0}", "다운로드 실패: {0}"),
+        ["downloads.downloading"] = ("Downloading: {0}", "다운로드 중: {0}"),
+        ["updates.checking"] = ("Checking GitHub Releases…", "GitHub Releases 확인 중…"),
+        ["updates.none"] = ("AMARE is up to date.", "AMARE가 최신 상태입니다."),
+        ["updates.failed"] = ("Update check failed: {0}", "업데이트 확인 실패: {0}"),
+        ["updates.checkTitle"] = ("Update check", "업데이트 확인"),
+        ["updates.currentVersion"] = ("Current version: {0}", "현재 버전: {0}"),
+        ["updates.newVersion"] = ("New version: {0}", "새 버전: {0}"),
+        ["updates.noChecksum"] = ("This release has no SHA-256 checksum. Automatic download is blocked.", "이 릴리스에는 SHA-256 체크섬이 없어 자동 다운로드가 차단됩니다."),
+        ["updates.download"] = ("Download: {0} ({1:N0} bytes)", "다운로드: {0} ({1:N0}바이트)"),
+        ["updates.openRelease"] = ("Open release page", "릴리스 페이지 열기"),
+        ["updates.later"] = ("Later", "나중에"),
+        ["updates.preRelease"] = ("Pre-release update available", "사전 버전 업데이트가 있습니다"),
+        ["updates.available"] = ("Update available", "업데이트가 있습니다"),
+        ["updates.downloadVerify"] = ("Download & verify", "다운로드 및 확인"),
+        ["updates.downloadFailed"] = ("Update download failed.", "업데이트 다운로드에 실패했습니다."),
+        ["updates.packageInvalid"] = ("Update package is invalid.", "업데이트 패키지가 올바르지 않습니다."),
+        ["updates.verified"] = ("Update downloaded, checksum and package verified.", "업데이트를 다운로드했고 체크섬과 패키지를 확인했습니다."),
+        ["updates.downloading"] = ("Downloading AMARE {0}…", "AMARE {0} 다운로드 중…"),
+        ["updates.noNotes"] = ("No release notes provided.", "릴리스 노트가 없습니다.")
+    };
+
+    private static readonly Dictionary<string, string> StaticKorean = new()
+    {
+        ["Settings"] = "설정",
+        ["General"] = "일반",
+        ["Appearance"] = "모양",
+        ["Privacy & Security"] = "개인정보 및 보안",
+        ["AI assistant"] = "AI 도우미",
+        ["Downloads"] = "다운로드",
+        ["Updates"] = "업데이트",
+        ["Search engine"] = "검색 엔진",
+        ["Appearance theme"] = "화면 테마",
+        ["System"] = "시스템",
+        ["Light"] = "밝게",
+        ["Dark"] = "어둡게",
+        ["Language"] = "언어",
+        ["Save"] = "저장",
+        ["Cancel"] = "취소",
+        ["Close"] = "닫기",
+        ["Delete"] = "삭제",
+        ["Test connection"] = "연결 테스트",
+        ["Delete stored key"] = "저장된 키 삭제",
+        ["Open advanced API settings…"] = "고급 API 설정 열기…",
+        ["Manage site permissions…"] = "사이트 권한 관리…",
+        ["Open password vault…"] = "비밀번호 보관함 열기…",
+        ["Clear WebView saved passwords…"] = "WebView 저장 비밀번호 지우기…",
+        ["Check now…"] = "지금 확인…",
+        ["Update channel"] = "업데이트 채널",
+        ["Stable"] = "안정 버전",
+        ["Prerelease"] = "사전 버전",
+        ["Download folder"] = "다운로드 폴더",
+        ["Model (editable)"] = "모델 (직접 입력)",
+        ["Execution mode"] = "실행 모드",
+        ["Mock (offline)"] = "모의 (오프라인)",
+        ["Actual API"] = "실제 API",
+        ["API key"] = "API 키",
+        ["Provider"] = "제공자",
+        ["Base URL (HTTPS only)"] = "기본 URL (HTTPS만)",
+        ["Question"] = "질문",
+        ["Send"] = "보내기",
+        ["Stop"] = "중지",
+        ["Retry"] = "다시 시도",
+        ["Clear conversation"] = "대화 지우기",
+        ["Copy conversation"] = "대화 복사",
+        ["Password vault"] = "비밀번호 보관함",
+        ["Vault is locked"] = "보관함이 잠겨 있습니다",
+        ["No saved accounts"] = "저장된 계정이 없습니다",
+        ["Add account"] = "계정 추가",
+        ["Site or service name"] = "사이트 또는 서비스 이름",
+        ["Origin / URL"] = "출처 / URL",
+        ["Username"] = "사용자 이름",
+        ["Password"] = "비밀번호",
+        ["Unlock"] = "잠금 해제",
+        ["Lock"] = "잠금",
+        ["Hide vault"] = "보관함 숨기기",
+        ["Reader"] = "읽기",
+        ["Find in page"] = "페이지에서 찾기",
+        ["Previous match"] = "이전 일치",
+        ["Next match"] = "다음 일치",
+        ["Close find"] = "찾기 닫기",
+        ["AI web panel"] = "AI 웹 패널",
+        ["Page info"] = "페이지 정보",
+        ["Article"] = "본문",
+        ["Back"] = "뒤로",
+        ["Forward"] = "앞으로",
+        ["Reload"] = "새로 고침",
+        ["Go"] = "이동",
+        ["Bookmarks"] = "북마크",
+        ["Profiles"] = "프로필",
+        ["Browser menu"] = "브라우저 메뉴",
+        ["New tab (Ctrl+T)"] = "새 탭 (Ctrl+T)",
+        ["New window (Ctrl+N)"] = "새 창 (Ctrl+N)",
+        ["Close tab"] = "탭 닫기",
+        ["Closed"] = "닫힘",
+        ["Add"] = "추가",
+        ["Backup"] = "백업",
+        ["Reveal"] = "표시",
+        ["Copy"] = "복사",
+        ["Edit"] = "편집",
+        ["Password hidden"] = "비밀번호 숨김",
+        ["Password visible"] = "비밀번호 표시",
+        ["Edit account"] = "계정 편집",
+        ["Show password"] = "비밀번호 표시",
+        ["Unlock with Windows protection to view saved accounts."] = "저장된 계정을 보려면 Windows 보호로 잠금을 해제하세요.",
+        ["Passwords are stored encrypted. Use Copy only when needed; clipboard cleanup is best-effort."] = "비밀번호는 암호화되어 저장됩니다. 필요할 때만 복사하세요. 클립보드 정리는 최선의 노력으로 수행됩니다.",
+    };
+
+    public static string CurrentLanguage { get; private set; } = English;
+
+    public static IReadOnlyCollection<string> Keys => Keyed.Keys;
+
+    public static IReadOnlyDictionary<string, string> StaticResources => StaticKorean;
+
+    public static void Initialize(string? preference)
+    {
+        var requested = string.IsNullOrWhiteSpace(preference) ? SystemLanguage : preference.Trim();
+        CurrentLanguage = requested == SystemLanguage
+            ? ResolveSystemLanguage()
+            : requested == Korean ? Korean : English;
+    }
+
+    public static string T(string key, params object?[] args)
+    {
+        if (!Keyed.TryGetValue(key, out var value))
+        {
+            return key;
+        }
+        var format = CurrentLanguage == Korean ? value.Korean : value.English;
+        return args.Length == 0
+            ? format
+            : string.Format(CultureInfo.CurrentCulture, format, args);
+    }
+
+    public static string EnglishText(string key) =>
+        Keyed.TryGetValue(key, out var value) ? value.English : key;
+
+    public static string KoreanText(string key) =>
+        Keyed.TryGetValue(key, out var value) ? value.Korean : key;
+
+    public static string TranslateStatic(string text) =>
+        CurrentLanguage == Korean && StaticKorean.TryGetValue(text, out var translated)
+            ? translated
+            : text;
+
+    public static string LanguageDisplayName(string id) =>
+        id == Korean ? "한국어" : id == English ? "English" : "System";
+
+    private static string ResolveSystemLanguage() =>
+        CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("ko", StringComparison.OrdinalIgnoreCase)
+            ? Korean
+            : English;
+}

@@ -123,10 +123,13 @@ public sealed partial class MainWindow : Window
             ? restoredId
             : Guid.NewGuid();
         _windowOrdinal = initialWindow?.Ordinal ?? TakeNextWindowOrdinal();
+        _appDataRoot = AppPaths.LocalRoot();
+        LoadAppPreferences();
+        L10n.Initialize(_appPreferences.Language);
         InitializeComponent();
         ApplyWindowIcon();
+        LocalizationUi.Apply(RootGrid);
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-        _appDataRoot = AppPaths.LocalRoot();
         _profileCleanup = new ProfileDataCleanup(_appDataRoot);
         AppLog.Initialize(_appDataRoot);
         AppLog.Info("MainWindow created");
@@ -612,7 +615,18 @@ public sealed partial class MainWindow : Window
             _restoreSession = restore.Value.AsBoolean();
             var theme = await _settings.GetAsync(_context, "theme");
             _themeId = theme.Value.AsText().ToLowerInvariant();
+            var saveHistory = await _settings.GetAsync(_context, "save_history");
+            _saveHistory = saveHistory.Value.AsBoolean();
+            var autofill = await _settings.GetAsync(_context, "password_autofill_enabled");
+            _passwordAutofillEnabled = autofill.Value.AsBoolean();
+            var savePrompt = await _settings.GetAsync(_context, "password_save_prompt_enabled");
+            _passwordSavePromptEnabled = savePrompt.Value.AsBoolean();
+            var uiFont = await _settings.GetAsync(_context, "ui_font");
+            _uiFont = uiFont.Value.AsText();
+            var uiFontSize = await _settings.GetAsync(_context, "ui_font_size");
+            _uiFontSize = Math.Clamp(uiFontSize.Value.AsInteger(), 12, 20);
             ApplyTheme(_themeId);
+            ApplyUiAppearance();
         }
         catch (Exception exception)
         {
@@ -815,7 +829,7 @@ public sealed partial class MainWindow : Window
 
     private async Task RecordHistoryAsync(BrowserTab host)
     {
-        if (_context is null || _history is null || host.Model.IsNewTabPage)
+        if (!_saveHistory || _context is null || _history is null || host.Model.IsNewTabPage)
         {
             return;
         }
@@ -1013,7 +1027,7 @@ public sealed partial class MainWindow : Window
                 webView.CoreWebView2!, _profileId, useStore: true, allowTestSeed: true);
             if (!PermissionAuditGate.CanServePermissionRequests(audit.State))
             {
-                StatusText.Text = "Site permissions are blocked: the WebView2 legacy permission audit did not reconcile.";
+                StatusText.Text = L10n.T("permissions.auditBlocked");
             }
             await ConfigureWebViewVaultAsync(host);
             AttachWebViewEvents(host);
@@ -1205,8 +1219,7 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                var downloads = Path.Combine(_appDataRoot, "downloads");
-                Directory.CreateDirectory(downloads);
+                var downloads = ResolveDownloadDirectory();
                 var suggested = Path.GetFileName(args.ResultFilePath);
                 if (string.IsNullOrWhiteSpace(suggested))
                 {
@@ -1230,12 +1243,12 @@ public sealed partial class MainWindow : Window
                     record.TotalBytes = operation.TotalBytesToReceive;
                     if (operation.State == CoreWebView2DownloadState.Completed)
                     {
-                        StatusText.Text = $"Download complete: {record.FileName}";
+                        StatusText.Text = L10n.T("downloads.complete", record.FileName);
                     }
                     else if (operation.State == CoreWebView2DownloadState.Interrupted)
                     {
                         record.Error = operation.InterruptReason.ToString();
-                        StatusText.Text = $"Download failed: {record.FileName}";
+                        StatusText.Text = L10n.T("downloads.failed", record.FileName);
                     }
                     SaveDownloads();
                 };
@@ -1244,7 +1257,7 @@ public sealed partial class MainWindow : Window
                     record.ReceivedBytes = operation.BytesReceived;
                     record.TotalBytes = operation.TotalBytesToReceive;
                 };
-                StatusText.Text = $"Downloading: {suggested}";
+                StatusText.Text = L10n.T("downloads.downloading", suggested);
             }
             catch (Exception exception)
             {
@@ -2280,36 +2293,36 @@ public sealed partial class MainWindow : Window
     private void Menu_Click(object sender, RoutedEventArgs e)
     {
         var menu = new MenuFlyout();
-        AddMenu(menu, "New tab", "Ctrl+T", () => _ = CreateTabAsync("amare://newtab", "New Tab", false, true));
-        AddMenu(menu, "New window", "Ctrl+N", OpenNewWindow);
+        AddMenu(menu, L10n.T("menu.newTab"), "Ctrl+T", () => _ = CreateTabAsync("amare://newtab", "New Tab", false, true));
+        AddMenu(menu, L10n.T("menu.newWindow"), "Ctrl+N", OpenNewWindow);
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenu(menu, "History", "", () => ShowHistoryAsync());
-        AddMenu(menu, "Bookmarks", "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
-        AddMenu(menu, "Downloads", "", () => Downloads_Click(DownloadsButton, new RoutedEventArgs()));
-        AddMenu(menu, "Passwords…", "", () => _ = OpenVaultPanelAsync());
-        AddMenu(menu, "Site permissions…", "", () => _ = ShowSitePermissionsAsync());
-        AddMenu(menu, "Fill password for this site…", "", () => _ = ShowVaultFillDialogAsync());
-        AddMenu(menu, "Clear WebView saved passwords…", "", () => _ = ShowClearWebViewDataDialogAsync());
+        AddMenu(menu, L10n.T("menu.history"), "", () => ShowHistoryAsync());
+        AddMenu(menu, L10n.T("menu.bookmarks"), "", () => Bookmarks_Click(BookmarksButton, new RoutedEventArgs()));
+        AddMenu(menu, L10n.T("menu.downloads"), "", () => Downloads_Click(DownloadsButton, new RoutedEventArgs()));
+        AddMenu(menu, L10n.T("menu.passwords"), "", () => _ = OpenVaultPanelAsync());
+        AddMenu(menu, L10n.T("menu.sitePermissions"), "", () => _ = ShowSitePermissionsAsync());
+        AddMenu(menu, L10n.T("menu.fillPassword"), "", () => _ = ShowVaultFillDialogAsync());
+        AddMenu(menu, L10n.T("menu.clearWebPasswords"), "", () => _ = ShowClearWebViewDataDialogAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenu(menu, "Reader Mode", "", () => _ = OpenReaderAsync());
-        AddMenu(menu, "Find in page", "Ctrl+F", OpenFind);
-        AddMenu(menu, _aiOpen ? "Close AI panel" : "AI web panel", "", () => Ai_Click(AiButton, new RoutedEventArgs()));
-        AddMenu(menu, "API AI settings…", "", () => _ = ShowAiApiSettingsAsync());
-        AddMenu(menu, "Ask API AI…", "", () => _ = AskApiAiAsync());
+        AddMenu(menu, L10n.T("menu.reader"), "", () => _ = OpenReaderAsync());
+        AddMenu(menu, L10n.T("menu.find"), "Ctrl+F", OpenFind);
+        AddMenu(menu, _aiOpen ? L10n.T("menu.closeAiPanel") : L10n.T("menu.aiPanel"), "", () => Ai_Click(AiButton, new RoutedEventArgs()));
+        AddMenu(menu, L10n.T("menu.aiSettings"), "", () => _ = ShowAiApiSettingsAsync());
+        AddMenu(menu, L10n.T("menu.askAi"), "", () => _ = AskApiAiAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenu(menu, "Check for updates…", "", () => _ = CheckForUpdatesAsync(true));
+        AddMenu(menu, L10n.T("menu.checkUpdates"), "", () => _ = CheckForUpdatesAsync(true));
         if (PortableUpdateRecovery.NeedsRecovery(_appDataRoot))
         {
-            AddMenu(menu, "Recover interrupted update…", "", () => _ = RecoverInterruptedUpdateAsync());
+            AddMenu(menu, L10n.T("menu.recoverUpdate"), "", () => _ = RecoverInterruptedUpdateAsync());
         }
-        AddMenu(menu, "Diagnostics…", "", () => _ = ShowDiagnosticsAsync());
-        AddMenu(menu, "Zoom in", "Ctrl++", () => ChangeZoom(0.1));
-        AddMenu(menu, "Zoom out", "Ctrl+-", () => ChangeZoom(-0.1));
-        AddMenu(menu, "Reset zoom", "Ctrl+0", () => SetZoom(1.0));
-        AddMenu(menu, "Print", "Ctrl+P", () => _ = PrintAsync());
-        AddMenu(menu, _fullScreen ? "Exit full screen" : "Full screen", "F11", ToggleFullScreen);
+        AddMenu(menu, L10n.T("menu.diagnostics"), "", () => _ = ShowDiagnosticsAsync());
+        AddMenu(menu, L10n.T("menu.zoomIn"), "Ctrl++", () => ChangeZoom(0.1));
+        AddMenu(menu, L10n.T("menu.zoomOut"), "Ctrl+-", () => ChangeZoom(-0.1));
+        AddMenu(menu, L10n.T("menu.zoomReset"), "Ctrl+0", () => SetZoom(1.0));
+        AddMenu(menu, L10n.T("menu.print"), "Ctrl+P", () => _ = PrintAsync());
+        AddMenu(menu, _fullScreen ? L10n.T("menu.exitFullScreen") : L10n.T("menu.fullScreen"), "F11", ToggleFullScreen);
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenu(menu, "Settings", "", () => _ = ShowSettingsAsync());
+        AddMenu(menu, L10n.T("settings.title"), "", () => _ = ShowSettingsAsync());
         menu.ShowAt(MenuButton);
     }
 
@@ -2346,15 +2359,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SaveUpdatePreferences()
+    private bool SaveUpdatePreferences()
     {
         try
         {
-            File.WriteAllText(UpdatePreferencesPath, JsonSerializer.Serialize(_updatePreferences));
+            var temporary = UpdatePreferencesPath + ".tmp";
+            File.WriteAllText(temporary, JsonSerializer.Serialize(_updatePreferences));
+            File.Move(temporary, UpdatePreferencesPath, overwrite: true);
+            return true;
         }
         catch (Exception exception)
         {
             AppLog.Error("Update preferences could not be saved", exception);
+            return false;
         }
     }
 
@@ -2375,15 +2392,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SaveAiApiSettings()
+    private bool SaveAiApiSettings()
     {
         try
         {
-            File.WriteAllText(AiApiSettingsPath, JsonSerializer.Serialize(_aiApiSettings));
+            var temporary = AiApiSettingsPath + ".tmp";
+            File.WriteAllText(temporary, JsonSerializer.Serialize(_aiApiSettings));
+            File.Move(temporary, AiApiSettingsPath, overwrite: true);
+            return true;
         }
         catch (Exception exception)
         {
             AppLog.Error("AI API settings could not be saved", exception);
+            return false;
         }
     }
 
@@ -2396,7 +2417,7 @@ public sealed partial class MainWindow : Window
             if (DateTimeOffset.UtcNow - last < TimeSpan.FromHours(24)) return;
         }
         _updateCheckRunning = true;
-        if (manual) StatusText.Text = "Checking GitHub Releases…";
+        if (manual) StatusText.Text = L10n.T("updates.checking");
         try
         {
             var result = await _releaseClient.CheckAsync(CurrentAppVersion, _updatePreferences.Channel);
@@ -2407,15 +2428,15 @@ public sealed partial class MainWindow : Window
             SaveUpdatePreferences();
             if (!result.Succeeded)
             {
-                StatusText.Text = result.Error ?? "Update check failed.";
-                if (manual) await ShowMessageAsync("Update check", result.Error ?? "Update check failed.");
+                StatusText.Text = L10n.T("updates.failed", result.Error ?? "");
+                if (manual) await ShowMessageAsync(L10n.T("updates.checkTitle"), result.Error ?? L10n.T("updates.failed", ""));
                 return;
             }
             var update = result.Update;
             if (!result.UpdateAvailable || update == null)
             {
-                StatusText.Text = "AMARE is up to date.";
-                if (manual) await ShowMessageAsync("Update check", "AMARE is up to date.");
+                StatusText.Text = L10n.T("updates.none");
+                if (manual) await ShowMessageAsync(L10n.T("updates.checkTitle"), L10n.T("updates.none"));
                 return;
             }
             await ShowUpdateDialogAsync(update);
@@ -2423,8 +2444,8 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             AppLog.Error("Update check failed", exception);
-            StatusText.Text = $"Update check failed: {exception.Message}";
-            if (manual) await ShowMessageAsync("Update check", "Update check failed. Please try again later.");
+            StatusText.Text = L10n.T("updates.failed", exception.Message);
+            if (manual) await ShowMessageAsync(L10n.T("updates.checkTitle"), L10n.T("updates.failed", exception.Message));
         }
         finally
         {
@@ -2434,16 +2455,16 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowUpdateDialogAsync(AvailableUpdate update)
     {
-        var notes = string.IsNullOrWhiteSpace(update.Notes) ? "No release notes provided." : update.Notes;
+        var notes = string.IsNullOrWhiteSpace(update.Notes) ? L10n.T("updates.noNotes") : update.Notes;
         if (notes.Length > 4000) notes = notes[..4000] + "…";
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock { Text = $"Current version: {CurrentAppVersion}" });
-        panel.Children.Add(new TextBlock { Text = $"New version: {update.Version}" });
+        panel.Children.Add(new TextBlock { Text = L10n.T("updates.currentVersion", CurrentAppVersion) });
+        panel.Children.Add(new TextBlock { Text = L10n.T("updates.newVersion", update.Version) });
         panel.Children.Add(new TextBlock
         {
             Text = update.Checksum == null
-                ? "This release has no SHA-256 checksum. Automatic download is blocked."
-                : $"Download: {update.Package.Name} ({update.Package.Size:N0} bytes)",
+                ? L10n.T("updates.noChecksum")
+                : L10n.T("updates.download", update.Package.Name, update.Package.Size),
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(new ScrollViewer
@@ -2451,18 +2472,19 @@ public sealed partial class MainWindow : Window
             MaxHeight = 260,
             Content = new TextBlock { Text = notes, TextWrapping = TextWrapping.Wrap }
         });
-        var releaseLink = new HyperlinkButton { Content = "Open release page" };
+        var releaseLink = new HyperlinkButton { Content = L10n.T("updates.openRelease") };
         releaseLink.Click += async (_, _) => await OpenUrlAsync(update.PageUrl);
         panel.Children.Add(releaseLink);
         var dialog = new ContentDialog
         {
-            Title = update.Prerelease ? "Pre-release update available" : "Update available",
+            Title = update.Prerelease ? L10n.T("updates.preRelease") : L10n.T("updates.available"),
             Content = panel,
-            PrimaryButtonText = update.Checksum == null ? "Open release page" : "Download & verify",
-            CloseButtonText = "Later",
+            PrimaryButtonText = update.Checksum == null ? L10n.T("updates.openRelease") : L10n.T("updates.downloadVerify"),
+            CloseButtonText = L10n.T("updates.later"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
+        LocalizationUi.ApplyDialog(dialog);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         if (update.Checksum == null)
         {
@@ -2475,7 +2497,7 @@ public sealed partial class MainWindow : Window
     private async Task DownloadUpdateAsync(AvailableUpdate update)
     {
         var destination = Path.Combine(_appDataRoot, "updates", update.Version);
-        StatusText.Text = $"Downloading AMARE {update.Version}…";
+        StatusText.Text = L10n.T("updates.downloading", update.Version);
         var result = await _updateDownloader.DownloadAsync(
             update, destination,
             (received, total) => StatusText.Text = total > 0
@@ -2483,19 +2505,19 @@ public sealed partial class MainWindow : Window
                 : $"Downloading AMARE {update.Version}: {received:N0} bytes");
         if (!result.Succeeded || result.FilePath == null)
         {
-            StatusText.Text = result.Error ?? "Update download failed.";
-            await ShowMessageAsync("Update download", result.Error ?? "Update download failed.");
+            StatusText.Text = result.Error ?? L10n.T("updates.downloadFailed");
+            await ShowMessageAsync(L10n.T("updates.checkTitle"), result.Error ?? L10n.T("updates.downloadFailed"));
             return;
         }
         var validation = PortableUpdatePackage.Validate(result.FilePath, update.Version, "win-x64");
         if (!validation.Valid)
         {
             try { File.Delete(result.FilePath); } catch { }
-            StatusText.Text = validation.Error ?? "Update package is invalid.";
-            await ShowMessageAsync("Update package", validation.Error ?? "Update package is invalid.");
+            StatusText.Text = validation.Error ?? L10n.T("updates.packageInvalid");
+            await ShowMessageAsync(L10n.T("updates.checkTitle"), validation.Error ?? L10n.T("updates.packageInvalid"));
             return;
         }
-        StatusText.Text = "Update downloaded, checksum and package verified.";
+        StatusText.Text = L10n.T("updates.verified");
         if (AppPaths.IsPackaged)
         {
             await ShowMessageAsync("MSIX update",
@@ -2689,224 +2711,6 @@ public sealed partial class MainWindow : Window
     {
         _fullScreen = !_fullScreen;
         AppWindow.SetPresenter(_fullScreen ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Default);
-    }
-
-    private async Task ShowSettingsAsync()
-    {
-        if (_context is null || _settings is null)
-        {
-            return;
-        }
-        var themeBox = new ComboBox { ItemsSource = new[] { "system", "light", "dark" }, SelectedItem = _themeId, MinWidth = 220 };
-        var engineBox = new ComboBox
-        {
-            ItemsSource = SearchEngineCatalog.All,
-            DisplayMemberPath = "Name",
-            SelectedItem = SearchEngineCatalog.Resolve(_engineId),
-            MinWidth = 220
-        };
-        var restoreBox = new CheckBox { Content = "Restore previous tabs on startup", IsChecked = _restoreSession };
-        var updateBox = new CheckBox { Content = "Check GitHub Releases for updates on startup", IsChecked = _updatePreferences.CheckOnStartup };
-        var managePermissions = false;
-        var permissionsButton = new Button
-        {
-            Content = "Manage site permissions…",
-            HorizontalAlignment = HorizontalAlignment.Left
-        };
-        AutomationProperties.SetAutomationId(permissionsButton, "ManageSitePermissionsButton");
-        ContentDialog? settingsDialog = null;
-        permissionsButton.Click += (_, _) =>
-        {
-            managePermissions = true;
-            settingsDialog?.Hide();
-        };
-        var aiExistingKey = AiCredentialStore.GetKey();
-        var aiKeyBox = new PasswordBox
-        {
-            PlaceholderText = aiExistingKey is null
-                ? "OpenAI API key"
-                : "Configured — leave blank to keep the current key"
-        };
-        AutomationProperties.SetAutomationId(aiKeyBox, "SettingsAiKeyBox");
-        var aiEnabledBox = new CheckBox
-        {
-            Content = "Enable AMARE API assistant",
-            IsChecked = _aiApiSettings.Enabled
-        };
-        AutomationProperties.SetAutomationId(aiEnabledBox, "SettingsAiEnabledBox");
-        var aiModeBox = new ComboBox
-        {
-            ItemsSource = new[] { "Mock (offline)", "Actual API" },
-            SelectedIndex = _aiApiSettings.Mode == AiExecutionMode.Mock ? 0 : 1,
-            MinWidth = 220
-        };
-        AutomationProperties.SetAutomationId(aiModeBox, "SettingsAiModeBox");
-        var aiModelBox = new TextBox
-        {
-            Text = _aiApiSettings.Model,
-            PlaceholderText = AiApiClient.DefaultModel
-        };
-        AutomationProperties.SetAutomationId(aiModelBox, "SettingsAiModelBox");
-        var aiKeyStatus = new TextBlock
-        {
-            Text = aiExistingKey is null
-                ? "No API key configured."
-                : _aiKeyRejected
-                    ? "The stored API key was rejected by OpenAI. Replace it."
-                    : "API key configured in Windows Credential Manager (masked).",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 12
-        };
-        var aiTestStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-        AutomationProperties.SetAutomationId(aiTestStatus, "SettingsAiTestStatus");
-        var aiKeyRejected = false;
-        aiKeyBox.PasswordChanged += (_, _) => aiKeyRejected = false;
-        var aiTestButton = new Button { Content = "Test connection" };
-        aiTestButton.Click += async (_, _) =>
-        {
-            try
-            {
-                aiTestStatus.Text = "Testing…";
-                var settings = new AiApiSettings(
-                    aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
-                    _aiApiSettings.BaseUrl,
-                    _aiApiSettings.Provider,
-                    aiEnabledBox.IsChecked == true,
-                    aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
-                var key = aiKeyBox.Password.Trim().Length > 0 ? aiKeyBox.Password : aiExistingKey;
-                aiTestStatus.Text = await TestAiConnectionAsync(settings, key);
-                aiKeyRejected = settings.Mode == AiExecutionMode.Actual
-                                && aiTestStatus.Text.StartsWith("The OpenAI API key was rejected", StringComparison.Ordinal);
-                if (aiKeyRejected)
-                {
-                    SetAiKeyRejected(true);
-                }
-                else if (aiTestStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
-                {
-                    SetAiKeyRejected(false);
-                }
-            }
-            catch (Exception exception)
-            {
-                aiTestStatus.Text = $"Connection test failed: {exception.GetType().Name}";
-            }
-        };
-        var aiDeleteButton = new Button { Content = "Delete stored key" };
-        aiDeleteButton.Click += (_, _) =>
-        {
-            if (AiCredentialStore.Delete())
-            {
-                aiExistingKey = null;
-                SetAiKeyRejected(false);
-                aiKeyStatus.Text = "API key deleted.";
-                aiTestStatus.Text = "Stored key deleted.";
-            }
-            else
-            {
-                aiTestStatus.Text = "The stored key could not be deleted.";
-            }
-        };
-        var aiHint = new TextBlock
-        {
-            Text = "Actual API requests are sent only when you press Send. They may incur charges on your OpenAI account. " +
-                   "Page content is included only when you explicitly enable it for a request.",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 12
-        };
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(new TextBlock { Text = "Appearance theme" });
-        stack.Children.Add(themeBox);
-        stack.Children.Add(new TextBlock { Text = "Search engine" });
-        stack.Children.Add(engineBox);
-        stack.Children.Add(restoreBox);
-        stack.Children.Add(updateBox);
-        stack.Children.Add(new TextBlock { Text = "AI assistant", Margin = new Thickness(0, 8, 0, 0) });
-        stack.Children.Add(aiEnabledBox);
-        stack.Children.Add(new TextBlock { Text = "Execution mode" });
-        stack.Children.Add(aiModeBox);
-        stack.Children.Add(new TextBlock { Text = "Model (editable)" });
-        stack.Children.Add(aiModelBox);
-        stack.Children.Add(new TextBlock { Text = "API key" });
-        stack.Children.Add(aiKeyBox);
-        stack.Children.Add(aiKeyStatus);
-        stack.Children.Add(aiTestButton);
-        stack.Children.Add(aiTestStatus);
-        stack.Children.Add(aiDeleteButton);
-        stack.Children.Add(aiHint);
-        stack.Children.Add(new TextBlock { Text = "Site permissions", Margin = new Thickness(0, 8, 0, 0) });
-        stack.Children.Add(permissionsButton);
-        settingsDialog = new ContentDialog
-        {
-            Title = "Settings",
-            Content = new ScrollViewer { MaxHeight = 620, Content = stack },
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = RootGrid.XamlRoot
-        };
-        var settingsResult = await settingsDialog.ShowAsync();
-        if (managePermissions)
-        {
-            await ShowSitePermissionsAsync();
-            return;
-        }
-        if (settingsResult != ContentDialogResult.Primary)
-        {
-            return;
-        }
-        var theme = themeBox.SelectedItem as string ?? "system";
-        var engine = engineBox.SelectedItem as SearchEngineDescriptor ?? SearchEngineCatalog.Resolve(_engineId);
-        var restore = restoreBox.IsChecked == true;
-        try
-        {
-            await _settings.SetManyAsync(_context, new[]
-            {
-                ("theme", SettingValueDto.Text(theme)),
-                ("engine", SettingValueDto.Text(engine.Id)),
-                ("restore_session", SettingValueDto.Boolean(restore))
-            });
-            _engineId = engine.Id;
-            _restoreSession = restore;
-            _themeId = theme;
-            _updatePreferences = _updatePreferences with { CheckOnStartup = updateBox.IsChecked == true };
-            SaveUpdatePreferences();
-            if (aiKeyRejected && aiKeyBox.Password.Trim().Length > 0)
-            {
-                await ShowMessageAsync(
-                    "AI settings",
-                    "The new API key was rejected. The previously stored key was not replaced.");
-                return;
-            }
-            var newAiKey = aiKeyBox.Password.Trim();
-            if (newAiKey.Length > 0 && !AiCredentialStore.Save(newAiKey))
-            {
-                await ShowMessageAsync("AI settings", "Windows Credential Manager could not store the key.");
-                return;
-            }
-            var keyChanged = newAiKey.Length > 0;
-            _aiKeyRejected = keyChanged ? false : _aiKeyRejected;
-            _aiApiSettings = new AiApiSettings(
-                aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
-                _aiApiSettings.BaseUrl,
-                _aiApiSettings.Provider,
-                aiEnabledBox.IsChecked == true,
-                aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual,
-                KeyRejected: _aiKeyRejected);
-            SaveAiApiSettings();
-            AppLog.Info($"AI settings saved mode={_aiApiSettings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");
-            ApplyTheme(theme);
-            _initializingSettings = true;
-            SearchEngineBox.SelectedItem = engine;
-            _initializingSettings = false;
-            StatusText.Text = _aiApiSettings.Mode == AiExecutionMode.Actual
-                              && string.IsNullOrWhiteSpace(AiCredentialStore.GetKey())
-                ? "Settings saved. Actual API requests are blocked until an API key is added."
-                : "Settings saved";
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = $"Settings save failed: {exception.Message}";
-        }
     }
 
     private async void Profile_Click(object sender, RoutedEventArgs e)
@@ -3170,7 +2974,7 @@ public sealed partial class MainWindow : Window
         var menu = new MenuFlyout();
         if (_downloads.Count == 0)
         {
-            menu.Items.Add(new MenuFlyoutItem { Text = "No downloads in this session", IsEnabled = false });
+            menu.Items.Add(new MenuFlyoutItem { Text = L10n.T("downloads.empty"), IsEnabled = false });
         }
         else
         {

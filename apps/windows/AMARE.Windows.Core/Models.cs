@@ -44,6 +44,11 @@ public sealed class SettingValueDto
         JsonValueKind.False => false,
         _ => throw new InvalidOperationException("Setting value is not boolean.")
     };
+
+    public long AsInteger() => Value.ValueKind == JsonValueKind.Number
+        && Value.TryGetInt64(out var value)
+        ? value
+        : throw new InvalidOperationException("Setting value is not an integer.");
 }
 
 public sealed class ResolvedSettingDto

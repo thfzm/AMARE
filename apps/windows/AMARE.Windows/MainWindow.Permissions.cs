@@ -288,24 +288,23 @@ public sealed partial class MainWindow
         var content = new StackPanel { Spacing = 8 };
         var originText = new TextBlock
         {
-            Text = $"Site: {origin.Value}",
+            Text = L10n.T("permissions.origin", origin.Value),
             TextWrapping = TextWrapping.Wrap
         };
         AutomationProperties.SetAutomationId(originText, "PermissionRequestOrigin");
         var kindText = new TextBlock
         {
-            Text = $"Permission: {SitePermissionCatalog.DisplayName(kind)}",
+            Text = L10n.T("permissions.kind", SitePermissionCatalog.LocalizedDisplayName(kind)),
             TextWrapping = TextWrapping.Wrap
         };
         AutomationProperties.SetAutomationId(kindText, "PermissionRequestKind");
         var explanation = new TextBlock
         {
-            Text = "AMARE will not grant a sensitive permission without your choice. " +
-                   "Closing this dialog denies only this request.",
+            Text = L10n.T("permissions.requestExplanation"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         };
-        var blockButton = new Button { Content = "Block always" };
+        var blockButton = new Button { Content = L10n.T("permissions.blockAlways") };
         AutomationProperties.SetAutomationId(blockButton, "PermissionBlockAlwaysButton");
         content.Children.Add(originText);
         content.Children.Add(kindText);
@@ -314,11 +313,11 @@ public sealed partial class MainWindow
 
         var dialog = new ContentDialog
         {
-            Title = "Permission request",
+            Title = L10n.T("permissions.requestTitle"),
             Content = content,
-            PrimaryButtonText = "Allow once",
-            SecondaryButtonText = "Always allow",
-            CloseButtonText = "Not now",
+            PrimaryButtonText = L10n.T("permissions.allowOnce"),
+            SecondaryButtonText = L10n.T("permissions.alwaysAllow"),
+            CloseButtonText = L10n.T("permissions.notNow"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
@@ -331,6 +330,7 @@ public sealed partial class MainWindow
         _permissionDialogOpen = true;
         try
         {
+            LocalizationUi.ApplyDialog(dialog);
             var result = await dialog.ShowAsync();
             return (result, blockAlways);
         }
@@ -396,7 +396,7 @@ public sealed partial class MainWindow
     {
         if (_context is null || !EnsureVaultClient() || _vaultClient is not { } client)
         {
-            StatusText.Text = "Site permissions are unavailable.";
+            StatusText.Text = L10n.T("permissions.unavailable");
             return;
         }
         var context = _context;
@@ -404,10 +404,10 @@ public sealed partial class MainWindow
 
         var filters = new List<PermissionFilter>
         {
-            new(null, "All permissions")
+            new(null, L10n.T("permissions.filterAll"))
         };
         filters.AddRange(SitePermissionCatalog.Kinds.Select(kind =>
-            new PermissionFilter(kind, SitePermissionCatalog.DisplayName(kind))));
+            new PermissionFilter(kind, SitePermissionCatalog.LocalizedDisplayName(kind))));
         var filterBox = new ComboBox
         {
             ItemsSource = filters,
@@ -426,11 +426,11 @@ public sealed partial class MainWindow
         };
         AutomationProperties.SetAutomationId(list, "SitePermissionsList");
 
-        var allowButton = MakePermissionButton("Allow", "SitePermissionAllowButton");
-        var blockButton = MakePermissionButton("Block", "SitePermissionBlockButton");
-        var removeButton = MakePermissionButton("Remove", "SitePermissionRemoveButton");
-        var resetSiteButton = MakePermissionButton("Reset site", "SitePermissionResetSiteButton");
-        var clearAllButton = MakePermissionButton("Clear all", "SitePermissionClearAllButton");
+        var allowButton = MakePermissionButton(L10n.T("permissions.allow"), "SitePermissionAllowButton");
+        var blockButton = MakePermissionButton(L10n.T("permissions.block"), "SitePermissionBlockButton");
+        var removeButton = MakePermissionButton(L10n.T("permissions.remove"), "SitePermissionRemoveButton");
+        var resetSiteButton = MakePermissionButton(L10n.T("permissions.resetSite"), "SitePermissionResetSiteButton");
+        var clearAllButton = MakePermissionButton(L10n.T("permissions.clearAll"), "SitePermissionClearAllButton");
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         foreach (var button in new[]
                  {
@@ -442,7 +442,7 @@ public sealed partial class MainWindow
 
         var emptyText = new TextBlock
         {
-            Text = "No saved site permissions for this profile.",
+            Text = L10n.T("permissions.empty"),
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed
         };
@@ -457,7 +457,7 @@ public sealed partial class MainWindow
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(new TextBlock
         {
-            Text = "Saved permissions are stored per profile and apply to exact HTTPS origins only.",
+            Text = L10n.T("permissions.intro"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         });
@@ -477,9 +477,9 @@ public sealed partial class MainWindow
 
         var dialog = new ContentDialog
         {
-            Title = "Site permissions",
+            Title = L10n.T("permissions.title"),
             Content = new ScrollViewer { Content = stack, MaxHeight = 520 },
-            CloseButtonText = "Close",
+            CloseButtonText = L10n.T("common.close"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = RootGrid.XamlRoot
         };
@@ -491,8 +491,8 @@ public sealed partial class MainWindow
         {
             pendingResetOrigin = null;
             pendingClearAll = false;
-            resetSiteButton.Content = "Reset site";
-            clearAllButton.Content = "Clear all";
+            resetSiteButton.Content = L10n.T("permissions.resetSite");
+            clearAllButton.Content = L10n.T("permissions.clearAll");
         }
         void UpdateButtons()
         {
@@ -521,7 +521,7 @@ public sealed partial class MainWindow
                 rows = permissions
                     .Select(permission => new PermissionRow(
                         permission,
-                        $"{permission.Origin} — {SitePermissionCatalog.DisplayName(permission.Kind)} — " +
+                        $"{permission.Origin} — {SitePermissionCatalog.LocalizedDisplayName(permission.Kind)} — " +
                         $"{DecisionLabel(permission.Decision)}"))
                     .ToList();
                 errorText.Visibility = Visibility.Collapsed;
@@ -530,7 +530,7 @@ public sealed partial class MainWindow
             catch (Exception exception)
             {
                 AppLog.Warn($"Site permission list failed: {exception.GetType().Name}");
-                errorText.Text = "Site permissions could not be loaded.";
+                errorText.Text = L10n.T("permissions.loadFailed");
                 errorText.Visibility = Visibility.Visible;
             }
         }
@@ -561,13 +561,13 @@ public sealed partial class MainWindow
             }
             catch (VaultException exception) when (exception.Code == VaultErrorCode.PermissionConflict)
             {
-                ShowError("This permission changed elsewhere. The list was reloaded; review it and try again.");
+                ShowError(L10n.T("permissions.changedElsewhere"));
                 await ReloadAsync();
             }
             catch (Exception exception)
             {
                 AppLog.Warn($"Site permission update failed: {exception.GetType().Name}");
-                ShowError("The permission could not be saved. The list was reloaded.");
+                ShowError(L10n.T("permissions.saveFailedReload"));
                 await ReloadAsync();
             }
         }
@@ -587,13 +587,13 @@ public sealed partial class MainWindow
             }
             catch (VaultException exception) when (exception.Code == VaultErrorCode.PermissionConflict)
             {
-                ShowError("This permission changed elsewhere. The list was reloaded.");
+                ShowError(L10n.T("permissions.changedElsewhere"));
                 await ReloadAsync();
             }
             catch (Exception exception)
             {
                 AppLog.Warn($"Site permission delete failed: {exception.GetType().Name}");
-                ShowError("The permission could not be removed. The list was reloaded.");
+                ShowError(L10n.T("permissions.deleteFailedReload"));
                 await ReloadAsync();
             }
         }
@@ -608,8 +608,8 @@ public sealed partial class MainWindow
             {
                 ResetConfirmations();
                 pendingResetOrigin = row.Dto.Origin;
-                resetSiteButton.Content = "Confirm reset";
-                ShowError($"Click Reset site again to remove every permission for {row.Dto.Origin}.");
+                resetSiteButton.Content = L10n.T("permissions.reset");
+                ShowError(L10n.T("permissions.resetConfirm", row.Dto.Origin));
                 return;
             }
             ResetConfirmations();
@@ -622,7 +622,7 @@ public sealed partial class MainWindow
             catch (Exception exception)
             {
                 AppLog.Warn($"Site permission origin reset failed: {exception.GetType().Name}");
-                ShowError("The site permissions could not be reset.");
+                ShowError(L10n.T("permissions.saveFailedReload"));
                 await ReloadAsync();
             }
         }
@@ -633,8 +633,8 @@ public sealed partial class MainWindow
             {
                 ResetConfirmations();
                 pendingClearAll = true;
-                clearAllButton.Content = "Confirm clear";
-                ShowError("Click Clear all again to remove every site permission for this profile.");
+                clearAllButton.Content = L10n.T("permissions.clear");
+                ShowError(L10n.T("permissions.clearConfirm"));
                 return;
             }
             ResetConfirmations();
@@ -647,7 +647,7 @@ public sealed partial class MainWindow
             catch (Exception exception)
             {
                 AppLog.Warn($"Site permission clear failed: {exception.GetType().Name}");
-                ShowError("Site permissions could not be cleared.");
+                ShowError(L10n.T("permissions.saveFailedReload"));
                 await ReloadAsync();
             }
         }
@@ -681,6 +681,7 @@ public sealed partial class MainWindow
             return;
         }
         _sitePermissionsDialog = dialog;
+        LocalizationUi.ApplyDialog(dialog);
         await dialog.ShowAsync();
     }
 
@@ -692,5 +693,7 @@ public sealed partial class MainWindow
     }
 
     private static string DecisionLabel(string decision) =>
-        string.Equals(decision, "allow", StringComparison.Ordinal) ? "Allow" : "Block";
+        string.Equals(decision, "allow", StringComparison.Ordinal)
+            ? L10n.T("permissions.allow")
+            : L10n.T("permissions.block");
 }

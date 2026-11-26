@@ -180,13 +180,13 @@ public sealed partial class MainWindow
         if (!status.Initialized)
         {
             _vaultState = VaultUiState.Uninitialized;
-            VaultStatusText.Text = "Not initialized";
+            VaultStatusText.Text = L10n.T("vault.notInitialized");
             VaultPrimaryActionButton.Content = "Create vault";
             VaultPrimaryActionButton.IsEnabled = true;
             VaultLockButton.IsEnabled = false;
             VaultAddButton.IsEnabled = false;
             VaultBackupButton.IsEnabled = false;
-            VaultLockedTitle.Text = "Create your password vault";
+            VaultLockedTitle.Text = L10n.T("vault.create");
             VaultLockedDetail.Text =
                 "The vault is protected by Windows user credentials. The key is stored separately from the database.";
             VaultLockedPanel.Visibility = Visibility.Visible;
@@ -194,7 +194,7 @@ public sealed partial class MainWindow
         else if (!status.Unlocked)
         {
             _vaultState = VaultUiState.Locked;
-            VaultStatusText.Text = $"Locked · {status.Generation} revisions";
+            VaultStatusText.Text = L10n.T("vault.lockedCount", status.Generation);
             VaultPrimaryActionButton.Content = "Unlock";
             VaultPrimaryActionButton.IsEnabled = true;
             VaultLockButton.IsEnabled = false;
@@ -208,7 +208,7 @@ public sealed partial class MainWindow
         else
         {
             _vaultState = VaultUiState.Unlocked;
-            VaultStatusText.Text = $"Unlocked · {status.EntryCount} accounts";
+            VaultStatusText.Text = L10n.T("vault.unlockedCount", status.EntryCount);
             VaultPrimaryActionButton.Content = "Refresh";
             VaultPrimaryActionButton.IsEnabled = true;
             VaultLockButton.IsEnabled = true;
@@ -268,7 +268,7 @@ public sealed partial class MainWindow
         VaultDetailPassword.IsEnabled = true;
         VaultDetailPassword.IsHitTestVisible = false;
         VaultDetailPassword.IsTabStop = false;
-        VaultRevealStateText.Text = "Password hidden";
+        VaultRevealStateText.Text = L10n.T("vault.passwordHidden");
         VaultRevealButton.Content = "Reveal";
         VaultRevealedState(false);
         VaultDetailPanel.Visibility = Visibility.Visible;
@@ -279,7 +279,7 @@ public sealed partial class MainWindow
         _vaultRevealed = false;
         VaultDetailPassword.Password = "";
         VaultDetailPassword.PasswordRevealMode = PasswordRevealMode.Hidden;
-        VaultRevealStateText.Text = "Password hidden";
+        VaultRevealStateText.Text = L10n.T("vault.passwordHidden");
         VaultRevealButton.Content = "Reveal";
     }
 
@@ -287,7 +287,7 @@ public sealed partial class MainWindow
     {
         _vaultRevealed = revealed;
         VaultRevealButton.Content = revealed ? "Hide" : "Reveal";
-        VaultRevealStateText.Text = revealed ? "Password visible" : "Password hidden";
+        VaultRevealStateText.Text = revealed ? L10n.T("vault.passwordVisible") : L10n.T("vault.passwordHidden");
     }
 
     private async void VaultReveal_Click(object sender, RoutedEventArgs e)
@@ -347,7 +347,7 @@ public sealed partial class MainWindow
         _vaultEditing = null;
         VaultLockedPanel.Visibility = Visibility.Collapsed;
         VaultDetailPanel.Visibility = Visibility.Visible;
-        VaultEditorTitle.Text = "Add account";
+        VaultEditorTitle.Text = L10n.T("vault.addAccount");
         VaultSiteBox.Text = "";
         VaultOriginBox.Text = "";
         VaultUsernameBox.Text = "";
@@ -371,7 +371,7 @@ public sealed partial class MainWindow
             try
             {
                 _vaultEditing = _vaultSelected;
-                VaultEditorTitle.Text = "Edit account";
+                VaultEditorTitle.Text = L10n.T("vault.editAccount");
                 VaultSiteBox.Text = _vaultSelected.Title;
                 VaultOriginBox.Text = _vaultSelected.Origin;
                 VaultUsernameBox.Text = _vaultSelected.Username;
@@ -496,11 +496,11 @@ public sealed partial class MainWindow
         {
             AppLog.Warn("Vault client creation failed");
             _vaultState = VaultUiState.Error;
-            VaultStatusText.Text = "Unavailable";
+            VaultStatusText.Text = L10n.T("vault.unavailable");
             VaultPrimaryActionButton.IsEnabled = false;
             VaultLockedPanel.Visibility = Visibility.Visible;
-            VaultLockedTitle.Text = "Password vault unavailable";
-            VaultLockedDetail.Text = "The Windows-protected vault service could not be initialized.";
+            VaultLockedTitle.Text = L10n.T("vault.unavailableTitle");
+            VaultLockedDetail.Text = L10n.T("vault.unavailableDetail");
             return;
         }
         AppLog.Info("Vault client ready");
@@ -565,7 +565,7 @@ public sealed partial class MainWindow
             VaultLockButton.IsEnabled = false;
             VaultAddButton.IsEnabled = false;
             VaultBackupButton.IsEnabled = false;
-            VaultStatusText.Text = "Locked";
+            VaultStatusText.Text = L10n.T("vault.lockedShort");
         }
         if (_vaultClipboard is not null)
         {

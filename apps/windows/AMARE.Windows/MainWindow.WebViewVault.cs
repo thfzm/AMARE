@@ -297,6 +297,11 @@ public sealed partial class MainWindow
         string source)
     {
         VaultIdleMonitor.Touch();
+        if (!_passwordSavePromptEnabled)
+        {
+            AppLog.Info("WebView login capture disabled by settings");
+            return;
+        }
         if (_context is null
             || _webVaultDialogOpen
             || !EnsureVaultClient()
@@ -481,6 +486,11 @@ public sealed partial class MainWindow
         }
         if (_webVaultDialogOpen)
         {
+            return;
+        }
+        if (!_passwordAutofillEnabled)
+        {
+            StatusText.Text = L10n.T("vault.autofillDisabled");
             return;
         }
         if (ActiveHost is not { } host || host.View.CoreWebView2 is not { } core)
