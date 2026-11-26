@@ -521,6 +521,7 @@ public sealed partial class MainWindow
             aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual,
             KeyRejected: newAiKey.Length > 0 ? false : _aiKeyRejected);
 
+        AppLog.Info($"Settings save requested autofill={autofill} savePrompt={savePrompt} history={saveHistory}");
         try
         {
             await _settings.SetManyAsync(_context, new[]
@@ -581,6 +582,7 @@ public sealed partial class MainWindow
         _initializingSettings = true;
         SearchEngineBox.SelectedItem = engine;
         _initializingSettings = false;
+        AppLog.Info($"Settings saved autofill={_passwordAutofillEnabled} savePrompt={_passwordSavePromptEnabled} history={_saveHistory}");
         if (!appSaved || !updateSaved || !aiSaved)
         {
             StatusText.Text = L10n.T("settings.partialSave");

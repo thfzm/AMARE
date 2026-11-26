@@ -490,6 +490,7 @@ public sealed partial class MainWindow
     private async Task ShowVaultFillDialogAsync()
     {
         VaultIdleMonitor.Touch();
+        AppLog.Info($"Vault fill requested autofill={_passwordAutofillEnabled} dialogOpen={_webVaultDialogOpen}");
         if (_context is null || !EnsureVaultClient() || _vaultClient is not { } vault)
         {
             StatusText.Text = "Password Vault is not available.";
@@ -497,6 +498,7 @@ public sealed partial class MainWindow
         }
         if (_webVaultDialogOpen)
         {
+            StatusText.Text = "A Vault dialog is already open.";
             return;
         }
         if (!_passwordAutofillEnabled)

@@ -2992,6 +2992,19 @@ internal static class Program
         }
     }
 
+    private static void WaitForStatus(string text, TimeSpan timeout, string description)
+    {
+        try
+        {
+            WaitFor(() => StatusTextContains(text), timeout, description);
+        }
+        catch (TimeoutException)
+        {
+            var status = FindById("StatusText")?.Current.Name ?? "";
+            throw new TimeoutException($"{description}; status={status}");
+        }
+    }
+
     private static void SetSettingsToggle(string id, bool value)
     {
         OpenSettings();
@@ -3036,8 +3049,7 @@ internal static class Program
             SubmitVaultTestUrl("login.html?auto=0");
             Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
             InvokeMenu("Fill password for this site…");
-            WaitFor(() => StatusTextContains("disabled"),
-                TimeSpan.FromSeconds(8), "autofill-off status");
+            WaitForStatus("disabled", TimeSpan.FromSeconds(8), "autofill-off status");
             Require(FindByName("Fill password") is null,
                 "fill dialog appeared while login_autofill_enabled was OFF");
             AssertPageDoesNotContain("filled:");
@@ -3068,8 +3080,7 @@ internal static class Program
             SubmitVaultTestUrl("login.html?auto=0");
             Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
             InvokeMenu("Fill password for this site…");
-            WaitFor(() => StatusTextContains("Unlock the Vault"),
-                TimeSpan.FromSeconds(8), "locked fill status");
+            WaitForStatus("Unlock the Vault", TimeSpan.FromSeconds(8), "locked fill status");
             Require(FindByName("Fill password") is null,
                 "fill dialog appeared while the Vault was locked");
             AssertPageDoesNotContain("filled:");
@@ -3139,8 +3150,7 @@ internal static class Program
             AssertPageContains("AMARE Vault Login");
             Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
             InvokeMenu("Fill password for this site…");
-            WaitFor(() => StatusTextContains("No saved account matches"),
-                TimeSpan.FromSeconds(8), "other-origin fill status");
+            WaitForStatus("No saved account matches", TimeSpan.FromSeconds(8), "other-origin fill status");
             Require(FindByName("Fill password") is null,
                 "fill dialog listed an entry for another origin");
             AssertPageDoesNotContain("filled:");
@@ -3163,8 +3173,7 @@ internal static class Program
             AssertPageContains("AMARE Hidden Password Login");
             Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
             InvokeMenu("Fill password for this site…");
-            WaitFor(() => StatusTextContains("No single eligible login form"),
-                TimeSpan.FromSeconds(8), "hidden field fill status");
+            WaitForStatus("No single eligible login form", TimeSpan.FromSeconds(8), "hidden field fill status");
             Require(FindByName("Fill password") is null,
                 "fill dialog appeared for hidden/disabled password fields");
             AssertPageDoesNotContain("filled:");
@@ -3188,8 +3197,7 @@ internal static class Program
             WaitFor(() => FindByName("Save password?") is not null,
                 TimeSpan.FromSeconds(20), "duplicate save dialog");
             InvokeDialogButton("Save password?", "Save");
-            WaitFor(() => StatusTextContains("already saved"),
-                TimeSpan.FromSeconds(20), "duplicate not overwritten status");
+            WaitForStatus("already saved", TimeSpan.FromSeconds(20), "duplicate not overwritten status");
             Require(VaultEntryCountForTest() == before, "duplicate capture changed the Vault");
             return "duplicate exact-origin/account is not overwritten";
         }
