@@ -259,6 +259,18 @@ static DEFINITIONS: LazyLock<Vec<SettingDefinition>> = LazyLock::new(|| {
             "Show a credential save proposal after an observed login submit.",
         ),
         boolean(
+            "login_autofill_enabled",
+            SettingGroup::Privacy,
+            true,
+            "Allow exact-origin login autofill after user selection.",
+        ),
+        boolean(
+            "login_save_prompt_enabled",
+            SettingGroup::Privacy,
+            true,
+            "Show a login save proposal after an observed login submit.",
+        ),
+        boolean(
             "background_throttling",
             SettingGroup::Performance,
             true,
