@@ -6,7 +6,7 @@
 - 기준 제품/테스트 HEAD: **`e1b9cbf`**
 - 기준 문서 HEAD: **`3d44411`**
 - 최종 제품/테스트 HEAD: **`fcf1ded`**
-- 최종 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 최종 문서 HEAD: **`85ab0ee`** (이 보고서, design, audit/plan/security/testing 문서 포함)
 - DB schema 변경: **없음**
 - MSIX/코드 서명/공개 Release/업로드: **없음**
 - SHA-256의 의미: **파일 무결성**. 배포자 인증/서명이 아니다.
