@@ -443,7 +443,8 @@ public sealed class UpdateDownloader
         string? finalPath = null;
         try
         {
-            var expected = await ReadChecksumAsync(update.Checksum.DownloadUrl, cancellationToken);
+            var expected = await ReadChecksumAsync(
+                update.Checksum.DownloadUrl, update.Package.Name, cancellationToken);
             if (expected == null)
             {
                 return new UpdateDownloadResult(false, null, null, 0,
@@ -537,7 +538,10 @@ public sealed class UpdateDownloader
         }
     }
 
-    private async Task<string?> ReadChecksumAsync(string url, CancellationToken cancellationToken)
+    private async Task<string?> ReadChecksumAsync(
+        string url,
+        string expectedFileName,
+        CancellationToken cancellationToken)
     {
         using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -556,10 +560,26 @@ public sealed class UpdateDownloader
         var buffer = new char[UpdateDownloadPolicy.MaxChecksumBytes];
         var read = await reader.ReadBlockAsync(buffer, cancellationToken);
         var text = new string(buffer, 0, read);
-        foreach (var token in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        string? fallback = null;
+        foreach (var line in text.Split('\n'))
         {
-            if (token.Length == 64 && token.All(Uri.IsHexDigit)) return token.ToLowerInvariant();
+            var tokens = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0 || tokens[0].Length != 64 || !tokens[0].All(Uri.IsHexDigit))
+            {
+                continue;
+            }
+            var hash = tokens[0].ToLowerInvariant();
+            if (tokens.Length >= 2)
+            {
+                var listedName = tokens[1].TrimStart('*');
+                if (Path.GetFileName(listedName).Equals(expectedFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return hash;
+                }
+                continue;
+            }
+            fallback ??= hash;
         }
-        return null;
+        return fallback;
     }
 }

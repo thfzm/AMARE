@@ -236,6 +236,27 @@ internal static class Phase34Tests
         Require(good.Succeeded && good.Sha256 == hash, good.Error);
         Require(!Directory.EnumerateFiles(destination, "*.part").Any(), "partial file left after success");
 
+        using var checksumsHandler = new FakeHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith(".txt", StringComparison.Ordinal))
+            {
+                return Text($"{new string('1', 64)}  AMARE-0.93.0-unsigned.msix\n" +
+                            $"{hash}  AMARE-0.93.0-win-x64.zip");
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+        });
+        using var checksumsHttp = new HttpClient(checksumsHandler);
+        var checksumsUpdate = Update(payload.Length) with
+        {
+            Checksum = new ReleaseAsset("checksums.txt",
+                "https://github.com/amare/test/checksums.txt", 200)
+        };
+        var checksums = new UpdateDownloader(checksumsHttp)
+            .DownloadAsync(checksumsUpdate, Path.Combine(temp.Root, "checksums"))
+            .GetAwaiter().GetResult();
+        Require(checksums.Succeeded && checksums.Sha256 == hash,
+            "checksums.txt must select the hash for the package file name");
+
         using var wrongHashHandler = new FakeHandler(request =>
         {
             if (request.RequestUri!.AbsolutePath.EndsWith(".sha256", StringComparison.Ordinal))
