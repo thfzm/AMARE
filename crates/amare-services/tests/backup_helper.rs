@@ -269,7 +269,6 @@ fn _unused(_: PathBuf) {}
 #[cfg(windows)]
 #[test]
 fn helper_vault_export_restore_locks_and_imports() {
-    use amare_security::KeyProtector;
     use amare_services::vault::VaultService;
     use std::sync::Arc;
 
