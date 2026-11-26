@@ -391,6 +391,7 @@ internal static class Program
             Check("settings_shortcut_actions", SettingsShortcutActions);
             Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
             Check("api_ai_no_key", OpenAndCloseApiAiNoKey);
+            Check("api_ai_key_save_delete", AiKeySaveDelete);
             Check("update_check_dialog", OpenAndCloseUpdateCheck);
             Check("diagnostics_dialog", OpenAndCloseDiagnostics);
             Check("history_dialog", OpenAndCloseHistory);
@@ -1119,6 +1120,53 @@ internal static class Program
         }, TimeSpan.FromSeconds(8), "API AI no-key dialog");
         EscapeDialog("API AI", "Ask API AI");
         return "API AI no-key guard opened";
+    }
+
+    private static void SetAiKey(string value)
+    {
+        var element = FindById("AiKeyBox") ?? throw new InvalidOperationException("AiKeyBox missing");
+        element.SetFocus();
+        SendKeys.SendWait("^a");
+        SendKeys.SendWait(value);
+        Thread.Sleep(200);
+    }
+
+    private static string AiKeySaveDelete()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("API AI settings…");
+        WaitFor(() => FindByName("API AI settings") is not null,
+            TimeSpan.FromSeconds(8), "AI key settings dialog");
+        SetAiKey("sk-test-ui-key");
+        InvokeDialogButton("API AI settings", "Save");
+        WaitFor(() => StatusTextContains("AI settings saved"),
+            TimeSpan.FromSeconds(8), "AI key save status");
+
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("API AI settings…");
+        WaitFor(() => FindByName("API AI settings") is not null,
+            TimeSpan.FromSeconds(8), "AI key settings reopen");
+        var keyBox = FindById("AiKeyBox") ?? throw new InvalidOperationException("AiKeyBox missing");
+        Require(keyBox.Current.IsPassword, "AI key field is not masked");
+        var keyStatus = FindById("AiKeyStatus")?.Current.Name ?? "";
+        Require(keyStatus.Contains("configured", StringComparison.OrdinalIgnoreCase),
+            $"AI key status did not show configured: {keyStatus}");
+        Invoke(FindById("AiDeleteKeyButton")
+            ?? throw new InvalidOperationException("AiDeleteKeyButton missing"));
+        WaitFor(() => (FindById("AiKeyStatus")?.Current.Name ?? "")
+                .Contains("deleted", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(8), "AI key delete status");
+        EscapeDialog("API AI settings");
+
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("API AI settings…");
+        WaitFor(() => FindByName("API AI settings") is not null,
+            TimeSpan.FromSeconds(8), "AI key settings after delete");
+        var deletedStatus = FindById("AiKeyStatus")?.Current.Name ?? "";
+        Require(deletedStatus.Contains("No API key", StringComparison.OrdinalIgnoreCase),
+            $"AI key was not deleted: {deletedStatus}");
+        EscapeDialog("API AI settings");
+        return "AI key saved masked, retrieved as configured, then deleted";
     }
 
     private static string VaultInitializeLockUnlock()
