@@ -28,7 +28,7 @@ function Get-TreeHashes([string]$Root) {
     $map = @{}
     if (-not (Test-Path $Root)) { return $map }
     Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object {
-        $relative = $_.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
+        $relative = [System.IO.Path]::GetRelativePath($Root, $_.FullName).Replace('\', '/')
         if ($relative -eq "update-state.json" -or $relative -eq "update.lock" -or $relative -eq "update-health.json") { return }
         if ($relative.StartsWith("updates/", [StringComparison]::Ordinal)) { return }
         if ($relative.StartsWith("logs/updater.", [StringComparison]::OrdinalIgnoreCase)) { return }
@@ -239,7 +239,7 @@ try {
 
     Add-Check "recovery_restores_previous_version" {
         $fx = New-Fixture (Join-Path $root "recover")
-        $backup = Join-Path $fx.Data "updates\work\backup-manual"
+        $backup = Join-Path $root "recover-backup"
         New-Item -ItemType Directory -Force -Path $backup | Out-Null
         Copy-Item (Join-Path $fx.App "*") -Destination $backup -Recurse -Force
         $before = Get-TreeHashes $fx.Data
@@ -268,7 +268,7 @@ try {
 
     Add-Check "corrupt_backup_is_not_applied" {
         $fx = New-Fixture (Join-Path $root "corrupt")
-        $backup = Join-Path $fx.Data "updates\work\backup-corrupt"
+        $backup = Join-Path $root "corrupt-backup"
         New-Item -ItemType Directory -Force -Path $backup | Out-Null
         Copy-Item (Join-Path $fx.App "*") -Destination $backup -Recurse -Force
         $before = Get-TreeHashes $fx.Data
@@ -296,7 +296,7 @@ try {
 
     Add-Check "recovery_attempt_limit" {
         $fx = New-Fixture (Join-Path $root "limit")
-        $backup = Join-Path $fx.Data "updates\work\backup-limit"
+        $backup = Join-Path $root "limit-backup"
         New-Item -ItemType Directory -Force -Path $backup | Out-Null
         Copy-Item (Join-Path $fx.App "*") -Destination $backup -Recurse -Force
         $state = [ordered]@{
