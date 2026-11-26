@@ -7,7 +7,6 @@ namespace Amare.Windows;
 public sealed partial class MainWindow
 {
     private const string TestLegacyPermissionEnv = "AMARE_TEST_LEGACY_PERMISSION";
-    private const string TestVaultRootEnv = "AMARE_TEST_VAULT_ROOT";
     private static readonly TimeSpan PermissionAuditRetryDelay = TimeSpan.FromSeconds(30);
     private static readonly object PermissionAuditGate = new();
     private static readonly Dictionary<string, PermissionAuditEntry> PermissionAudits =
