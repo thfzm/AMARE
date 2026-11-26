@@ -1,16 +1,18 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1 사이트 권한 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1 사이트 권한 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.1 Site Permissions)
-- 기준: `feature/phase-2-site-permissions`, 제품/테스트 `f1d878d`
+- 최신 갱신: 2026-11-26 (Phase 2.1.1 Legacy Permission Reconciliation)
+- 기준: `fix/phase-2-webview-permission-reconciliation`, 제품/테스트 `d41ee59`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
 > Phase 2.1 상세는
-> [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md)에
+> [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md),
+> Phase 2.1.1 audit/reconciliation은
+> [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1/2.1.1 갱신을 함께 표시한다.
 
 ---
 
@@ -42,13 +44,14 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **71/71** (Phase 2.1, 기존 64 + site permissions 7) |
-| Windows 통합 검증 (최신) | **168 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (Phase 2.1, package 단계 skip) |
-| C#↔Rust interop (최신) | **100/100** (Phase 2.1) |
-| Rust site permissions | **5/5** (Phase 2.1) |
-| Rust `services` | **38/38** (Phase 2.1) |
+| WinUI UI smoke (최신) | **73/73** (Phase 2.1.1, 기존 64 + site permissions 9) |
+| Windows 통합 검증 (최신) | **172 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (188 total, package 단계 skip) |
+| C#↔Rust interop (최신) | **103/103** (Phase 2.1.1) |
+| WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
+| Rust site permissions | **5/5** |
+| Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.1, `f1d878d`) |
+| Linux CI | SUCCESS (Phase 2.1.1, `d41ee59`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -478,11 +481,19 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   않는다.
 - 설정: 목록, kind filter, Allow/Block/Remove, Reset site, Clear all,
   Settings의 `Manage site permissions…` 진입점. 실패 시 오류 표시 후 reload.
-- 검증: UI smoke **71/71**, interop **100/100**, site permission store
-  **5/5**, Windows **168/0/8/8**, Linux SUCCESS.
+- **Phase 2.1.1**: startup에서
+  `CoreWebView2Profile.GetNonDefaultPermissionSettingsAsync`로 기존
+  non-default setting을 조회하고 `SetPermissionStateAsync(Default)`로
+  reset한다. 13개 named kind Allow seed → `before=13`, `after=0` probe PASS.
+  audit는 첫 navigation 전에 실행되며, `NotStarted/Auditing/Failed/
+  Unsupported` 상태에서는 모든 권한 요청을 deny한다. audit 실패 UI test와
+  gate unit test PASS. 상세:
+  [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md).
+- 검증: UI smoke **73/73**, interop **103/103**, site permission store
+  **5/5**, Windows **172/0/8/8**, Linux SUCCESS.
 - UNVERIFIED: 실제 Windows 11, notification toast 표시, 13개 kind 전체의
-  live request, UI 수준 비동기 cancel/store failure, 기존 WebView2
-  non-default permission setting의 startup audit/reset.
+  live request, UI 수준 비동기 cancel/store failure, 실제 Windows 11
+  profile upgrade, cross-process 동시 audit, strict lifecycle race.
 
 **GPUI — `PARTIALLY_IMPLEMENTED`**
 
@@ -697,8 +708,11 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   상세: `docs/AMARE_PHASE1_SESSION_REPORT.md`.
 - 사이트 권한(P1-1)은 Phase 2.1에서 WebView2 consent, per-profile SQLite
   store(schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책까지
-  구현하고 Windows/Linux CI로 검증했다. 실제 Windows 11과 일부 비동기
-  race, 기존 WebView2 profile permission audit은 UNVERIFIED로 남긴다.
-  상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`.
+  구현하고 Windows/Linux CI로 검증했다. Phase 2.1.1에서 기존 WebView2
+  non-default permission setting의 startup audit/reset까지 추가했다.
+  실제 Windows 11, cross-process 동시 audit, strict lifecycle race는
+  UNVERIFIED로 남긴다.
+  상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`,
+  `docs/AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.

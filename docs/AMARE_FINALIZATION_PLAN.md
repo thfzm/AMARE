@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1 사이트 권한 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1 사이트 권한 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.1 Site Permissions)
-- 기준: `feature/phase-2-site-permissions`, 제품/테스트 `f1d878d`
+- 최신 갱신: 2026-11-26 (Phase 2.1.1 Legacy Permission Reconciliation)
+- 기준: `fix/phase-2-webview-permission-reconciliation`, 제품/테스트 `d41ee59`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -135,6 +135,20 @@
   permission setting의 startup audit/reset
 - 상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`
 
+### Phase 2.1.1 진행 상태
+
+- **Legacy WebView2 permission audit/reconciliation 완료** (`d41ee59`)
+- `GetNonDefaultPermissionSettingsAsync`로 기존 non-default setting 조회
+- `SetPermissionStateAsync(Default)`로 13개 named kind reset
+  (probe: Allow 13 → reset → 0)
+- 첫 tab navigation 전 audit, profile별 coordinator, Reader/AI 포함
+- `NotStarted/Auditing/Failed/Unsupported`에서는 모든 권한 요청 deny
+- audit 실패 UI injection + gate unit test PASS
+- UI smoke **73/73**, interop **103/103**, Windows **172/0/8/8**, Linux SUCCESS
+- UNVERIFIED: 실제 Windows 11 profile upgrade, cross-process 동시 audit,
+  strict lifecycle race, 구버전 WebView2 runtime
+- 상세: `docs/AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -144,9 +158,10 @@
 - **이미 충분히 검증된 것**: 탭, 주소창/검색, navigation, 북마크, 히스토리,
   다운로드, AI 패널, AI API(모의), Reader, Find, 설정, 성능/진단.
 - **부분 구현**: Vault, 창 관리/Windows 통합. (세션 멀티윈도우 P0는 Phase 1.1에서 해결)
-- **Phase 2.1 완료(CI)**: WinUI 사이트 권한 — consent, per-profile store
-  (schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책. 실제 Windows 11과
-  일부 비동기 race는 UNVERIFIED.
+- **Phase 2.1/2.1.1 완료(CI)**: WinUI 사이트 권한 — consent, per-profile
+  store(schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책, 그리고
+  legacy WebView2 permission startup audit/reset. 실제 Windows 11과
+  cross-process/strict race는 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
@@ -438,7 +453,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
 | 8 | 비밀번호 저장/자동완성 보안 | unit + 실기기 |
 | 9 | AI Web Panel 정상 | 실제 서비스 |
 | 10 | Reader/Find 정상 | UI smoke + 실기기 |
-| 11 | 사이트 권한 설정 가능 | UI smoke 71/71 + Store/FFI (Phase 2.1); 실제 Windows 11은 UNVERIFIED |
+| 11 | 사이트 권한 설정 가능 | UI smoke 73/73 + Store/FFI + legacy audit (Phase 2.1/2.1.1); 실제 Windows 11은 UNVERIFIED |
 | 12 | 설정/데이터 보존 | 업데이트 전후 비교 |
 | 13 | 업데이트/실패 복구 | ZIP apply/rollback |
 | 14 | 장시간 사용 중 치명적 크래시 없음 | 8시간 soak |

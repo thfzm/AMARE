@@ -62,7 +62,21 @@ WebView2가 실제로 보고한 `CanGoBack`/`CanGoForward`를 사용하며, UI�
 - AI/Reader WebView는 deny-all, popup/new window는 자체 WebView/프로필
   컨텍스트를 유지한다.
 
-상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
+### 5.1 기존 WebView2 권한 audit (Phase 2.1.1)
+
+- 첫 tab navigation 전에 `CoreWebView2Profile.GetNonDefaultPermissionSettingsAsync`로
+  기존 non-default permission setting을 읽는다.
+- 각 setting을 `SetPermissionStateAsync(kind, origin, Default)`로 reset한다.
+  AMARE SQLite는 read-only로 조회하며, legacy WebView2 Allow를 AMARE Allow로
+  승격하지 않는다.
+- profile별 audit state(`NotStarted/Auditing/Reconciled/Failed/Unsupported`)를
+  process 내에서 공유한다. `Reconciled` 전에는 모든 권한 요청을 deny한다.
+- Reader는 main profile audit 후 deny-all, AI는 별도 `ai-webview2` profile을
+  audit 후 deny-all을 적용한다.
+- 13개 named kind Allow seed → reset → 0 probe PASS.
+
+상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md),
+[`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md).
 
 ## 6. 오류 처리
 

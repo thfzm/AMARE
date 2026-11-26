@@ -10,6 +10,12 @@
 - Working tree: **clean** (문서 commit 후)
 - 패키지/MSIX/코드 서명/공개 Release: **없음**
 
+> **Phase 2.1.1 갱신:** 아래 제한 1(기존 WebView2 non-default permission
+> setting)은 Phase 2.1.1에서 startup audit/reconciliation로 보완했다.
+> 상세: [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md).
+> 이 문서의 2.1 수치(UI 71/71, Windows 168/0, interop 100/100)는 2.1 시점
+> 기록이며, 최신 수치는 2.1.1 보고서를 기준으로 한다.
+
 ---
 
 ## 1. 최종 요약
@@ -536,13 +542,13 @@ PASS permissions_client_crud_conflict_and_origin
 
 ## 10. 보안 검토 / 남은 제한
 
-1. **기존 WebView2 profile permission setting**: AMARE는 새 결정에 대해
-   `SavesInProfile=false`를 설정하고 store만 source of truth로 사용한다.
-   그러나 Phase 2.1 이전에 WebView2 기본 prompt/외부 도구로 profile에 저장된
-   non-default permission setting을 **열거·삭제하지 않는다**. 이런 setting이
-   있으면 WebView2가 event를 발생시키지 않아 AMARE 목록과 실제 상태가 다를 수
-   있다. 향후 `GetNonDefaultPermissionSettingsAsync` +
-   `SetPermissionStateAsync(Default)`로 startup audit/reset을 검토해야 한다.
+1. **기존 WebView2 profile permission setting**: Phase 2.1에서는 새 결정에
+   대해 `SavesInProfile=false`를 설정하고 store만 source of truth로 사용했다.
+   Phase 2.1 이전에 WebView2 기본 prompt/외부 도구로 profile에 저장된
+   non-default setting은 Phase 2.1.1의 startup audit에서
+   `GetNonDefaultPermissionSettingsAsync` + `SetPermissionStateAsync(Default)`로
+   reset한다. 다만 API가 없는 구버전 runtime에서는 완전히 제거할 수 없다
+   (2.1.1 보고서 제한 참조).
 2. **실제 Windows 11**: CI는 Windows Server 2025다. Windows 11의 알림 센터,
    실제 device(camera/mic), IME/DPI/접근성은 UNVERIFIED다.
 3. **notification 표시**: 권한 결정만 관리하고 `NotificationReceived`/OS toast

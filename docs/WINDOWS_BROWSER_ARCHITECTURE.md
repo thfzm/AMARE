@@ -133,8 +133,15 @@ Error code는 `amare.h`에 정의되어 있으며 C# `NativeErrorMapper`가 동�
 - **UI**: 메뉴 `Site permissions…`와 Settings의 `Manage site permissions…`.
   목록/filter/Allow/Block/Remove/Reset site/Clear all. 저장 실패 시 오류를
   표시하고 목록을 다시 읽으며 성공으로 표시하지 않는다.
+- **legacy audit (Phase 2.1.1)**: 첫 navigation 전에
+  `GetNonDefaultPermissionSettingsAsync`로 기존 WebView2 non-default
+  setting을 읽고 `SetPermissionStateAsync(Default)`로 reset한다. profile별
+  `NotStarted/Auditing/Reconciled/Failed/Unsupported` 상태를 공유하며,
+  `Reconciled` 전에는 모든 권한 요청을 deny한다. AMARE SQLite는 read-only
+  source of truth다.
 
-상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md).
+상세: [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md),
+[`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md).
 
 ## 7. 확인 상태
 
