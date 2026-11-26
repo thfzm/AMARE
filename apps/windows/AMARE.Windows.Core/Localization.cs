@@ -171,6 +171,7 @@ public static class L10n
         ["menu.aiSettings"] = ("API AI settings…", "API AI 설정…"),
         ["menu.askAi"] = ("Ask API AI…", "API AI에게 질문…"),
         ["menu.checkUpdates"] = ("Check for updates…", "업데이트 확인…"),
+        ["menu.cancelUpdateDownload"] = ("Cancel update download", "업데이트 다운로드 취소"),
         ["menu.recoverUpdate"] = ("Recover interrupted update…", "중단된 업데이트 복구…"),
         ["menu.diagnostics"] = ("Diagnostics…", "진단…"),
         ["menu.zoomIn"] = ("Zoom in", "확대"),
@@ -306,6 +307,10 @@ public static class L10n
         ["updates.packageInvalid"] = ("Update package is invalid.", "업데이트 패키지가 올바르지 않습니다."),
         ["updates.verified"] = ("Update downloaded, checksum and package verified.", "업데이트를 다운로드했고 체크섬과 패키지를 확인했습니다."),
         ["updates.downloading"] = ("Downloading AMARE {0}…", "AMARE {0} 다운로드 중…"),
+        ["updates.downloadProgress"] = ("Downloading AMARE {0}: {1}%", "AMARE {0} 다운로드 중: {1}%"),
+        ["updates.downloadProgressBytes"] = ("Downloading AMARE {0}: {1:N0} bytes", "AMARE {0} 다운로드 중: {1:N0}바이트"),
+        ["updates.downloadCancelled"] = ("Update download cancelled; no files were changed.", "업데이트 다운로드를 취소했습니다. 변경된 파일은 없습니다."),
+        ["updates.downloadBusy"] = ("An update download is already in progress.", "이미 업데이트 다운로드가 진행 중입니다."),
         ["updates.noNotes"] = ("No release notes provided.", "릴리스 노트가 없습니다.")
     };
 

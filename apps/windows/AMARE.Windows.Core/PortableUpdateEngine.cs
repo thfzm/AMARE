@@ -32,6 +32,7 @@ public sealed record PortableUpdateResult(
 public static class PortableUpdateEngine
 {
     public const string HealthMarkerEnvironmentVariable = "AMARE_UPDATE_HEALTH";
+    public const int MaxRecoveryAttempts = 3;
     private const int ParentExitTimeoutSeconds = 60;
 
     public static async Task<PortableUpdateResult> ApplyAsync(
@@ -41,6 +42,13 @@ public static class PortableUpdateEngine
         if (!File.Exists(request.PackagePath))
         {
             return Failure("Update package does not exist.");
+        }
+        if (string.IsNullOrWhiteSpace(request.EntryPoint)
+            || request.EntryPoint.Contains('/')
+            || request.EntryPoint.Contains('\\')
+            || request.EntryPoint.Contains(':'))
+        {
+            return Failure("Update entry point is unsafe.");
         }
         string actualHash;
         try
@@ -56,12 +64,16 @@ public static class PortableUpdateEngine
             return Failure("Update package SHA-256 does not match the verified release checksum.");
         }
         var validation = PortableUpdatePackage.Validate(
-            request.PackagePath, request.Version, request.Architecture);
+            request.PackagePath, request.Version, request.Architecture, request.EntryPoint);
         if (!validation.Valid || validation.Manifest == null)
         {
             return Failure(validation.Error ?? "Update package manifest is invalid.");
         }
         var manifest = validation.Manifest;
+        if (!manifest.EntryPoint.Equals(request.EntryPoint, StringComparison.OrdinalIgnoreCase))
+        {
+            return Failure("Package entry point does not match the requested AMARE executable.");
+        }
         if (!Directory.Exists(request.AppDir))
         {
             return Failure("AMARE application directory does not exist.");
@@ -69,6 +81,12 @@ public static class PortableUpdateEngine
         if (!File.Exists(Path.Combine(request.AppDir, request.EntryPoint)))
         {
             return Failure("AMARE executable is missing from the application directory.");
+        }
+        if (!UpdateDownloadPolicy.HasSufficientFreeSpace(
+                request.DataDir,
+                UpdateDownloadPolicy.RequiredFreeBytes(new FileInfo(request.PackagePath).Length * 3)))
+        {
+            return Failure("Not enough disk space to stage and back up the update.");
         }
         using var updateLock = TryAcquireUpdateLock(request.DataDir);
         if (updateLock == null)
@@ -83,8 +101,10 @@ public static class PortableUpdateEngine
                 $"Update {request.Version} is not newer than installed version {currentVersion}.");
         }
         var existing = PortableUpdateStateStore.Load(request.DataDir);
-        if (existing != null && (existing.IsInProgress
-            || existing.Status is PortableUpdateStatus.RollingBack or PortableUpdateStatus.Failed)
+        if (existing != null
+            && existing.RecoveryAttempts < MaxRecoveryAttempts
+            && (existing.IsInProgress
+                || existing.Status is PortableUpdateStatus.RollingBack or PortableUpdateStatus.Failed)
             && Directory.Exists(existing.BackupDir))
         {
             return Failure("An interrupted update exists. Recover it before installing another update.");
@@ -113,18 +133,25 @@ public static class PortableUpdateEngine
             HealthMarkerPath: marker,
             StartedUnixMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             UpdatedUnixMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Error: null);
+            Error: null,
+            RecoveryAttempts: 0);
         PortableUpdateStateStore.Save(request.DataDir, state);
 
         try
         {
             if (!await WaitForParentExitAsync(request.ParentProcessId, cancellationToken))
             {
-                return Failure("Timed out waiting for the running AMARE process to exit.", state);
+                return FailBeforeMutation(state,
+                    "Timed out waiting for the running AMARE process to exit.");
             }
             Directory.CreateDirectory(workRoot);
             PortableUpdatePackage.ExtractValidated(request.PackagePath, staging, manifest);
+            EnsureReplaceable(staging, request.AppDir, request.EntryPoint);
             CopyDirectory(request.AppDir, backup, overwrite: true);
+            if (!File.Exists(Path.Combine(backup, request.EntryPoint)))
+            {
+                throw new IOException("The update backup is incomplete; the current executable was not copied.");
+            }
             state = state with { Status = PortableUpdateStatus.Applying };
             PortableUpdateStateStore.Save(request.DataDir, state);
 
@@ -179,6 +206,10 @@ public static class PortableUpdateEngine
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            if (state.Status == PortableUpdateStatus.Preparing)
+            {
+                return FailBeforeMutation(state, exception.Message);
+            }
             var rollback = await RollbackAsync(
                 state, request.LaunchApp && request.RelaunchAfterRollback, cancellationToken);
             return new PortableUpdateResult(false, rollback.RolledBack,
@@ -188,12 +219,33 @@ public static class PortableUpdateEngine
         }
         catch (OperationCanceledException)
         {
+            if (state.Status == PortableUpdateStatus.Preparing)
+            {
+                return FailBeforeMutation(state, "Update cancelled before any application files were changed.");
+            }
             var rollback = await RollbackAsync(
                 state, request.LaunchApp && request.RelaunchAfterRollback, CancellationToken.None);
             return new PortableUpdateResult(false, rollback.RolledBack,
                 "Update cancelled. " + (rollback.RolledBack ? "Previous version restored." : "Rollback failed."),
                 PortableUpdateStateStore.PathFor(request.DataDir), backup, rollback.Status);
         }
+    }
+
+    private static PortableUpdateResult FailBeforeMutation(PortableUpdateState state, string message)
+    {
+        TryDeleteDirectory(state.StagingDir);
+        TryDeleteDirectory(state.BackupDir);
+        TryDeleteEmptyDirectory(Path.Combine(state.DataDir, "updates", "work"));
+        var failed = state with
+        {
+            Status = PortableUpdateStatus.Failed,
+            UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Error = message
+        };
+        PortableUpdateStateStore.Save(state.DataDir, failed);
+        return new PortableUpdateResult(false, false,
+            $"{message} No application files were changed.",
+            PortableUpdateStateStore.PathFor(state.DataDir), state.BackupDir, failed.Status);
     }
 
     public static async Task<PortableUpdateResult> RecoverAsync(
@@ -237,6 +289,19 @@ public static class PortableUpdateEngine
                 "Update backup is missing; automatic recovery is not possible.",
                 PortableUpdateStateStore.PathFor(dataDirectory), state.BackupDir, state.Status);
         }
+        if (state.RecoveryAttempts >= MaxRecoveryAttempts)
+        {
+            var blocked = state with
+            {
+                Status = PortableUpdateStatus.Failed,
+                UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                Error = $"Recovery attempt limit ({MaxRecoveryAttempts}) reached. " +
+                        "The previous version backup was kept."
+            };
+            PortableUpdateStateStore.Save(dataDirectory, blocked);
+            return new PortableUpdateResult(false, false, blocked.Error,
+                PortableUpdateStateStore.PathFor(dataDirectory), state.BackupDir, blocked.Status);
+        }
         var rollback = await RollbackAsync(state, launchApp, cancellationToken);
         return new PortableUpdateResult(rollback.RolledBack, rollback.RolledBack,
             rollback.RolledBack ? null : rollback.Error,
@@ -272,11 +337,13 @@ public static class PortableUpdateEngine
         CancellationToken cancellationToken)
     {
         await Task.CompletedTask;
+        var attempts = state.RecoveryAttempts + 1;
         var rolling = state with
         {
             Status = PortableUpdateStatus.RollingBack,
             UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Error = null
+            Error = null,
+            RecoveryAttempts = attempts
         };
         PortableUpdateStateStore.Save(state.DataDir, rolling);
         try
@@ -285,7 +352,18 @@ public static class PortableUpdateEngine
             {
                 throw new DirectoryNotFoundException("Backup directory is missing.");
             }
-            CopyDirectory(state.BackupDir, state.AppDir, overwrite: true);
+            var backupEntry = Path.Combine(state.BackupDir, state.EntryPoint);
+            if (!File.Exists(backupEntry))
+            {
+                throw new FileNotFoundException(
+                    "Rollback backup is incomplete; the previous executable is missing.");
+            }
+            RemoveStagedNewFiles(state);
+            CopyDirectoryReplacing(state.BackupDir, state.AppDir, state.EntryPoint);
+            if (!File.Exists(Path.Combine(state.AppDir, state.EntryPoint)))
+            {
+                throw new IOException("Rollback did not restore the previous executable.");
+            }
             var rolledBack = rolling with
             {
                 Status = PortableUpdateStatus.RolledBack,
@@ -312,22 +390,97 @@ public static class PortableUpdateEngine
         }
     }
 
+    private static void EnsureReplaceable(string staging, string appDirectory, string entryPoint)
+    {
+        foreach (var file in Directory.EnumerateFiles(staging, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(staging, file);
+            var target = Path.GetFullPath(Path.Combine(appDirectory, relative));
+            var appRoot = Path.GetFullPath(appDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (!target.StartsWith(appRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException($"Update file would escape the application directory: {relative}");
+            }
+            if (!File.Exists(target)) continue;
+            try
+            {
+                using var stream = new FileStream(
+                    target, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    $"AMARE file is in use and cannot be replaced: {relative}", exception);
+            }
+        }
+    }
+
     private static void ApplyStaging(string staging, string appDirectory, string entryPoint)
     {
         var entry = Path.GetFullPath(Path.Combine(staging, entryPoint));
         foreach (var file in Directory.EnumerateFiles(staging, "*", SearchOption.AllDirectories))
         {
             if (Path.GetFullPath(file).Equals(entry, StringComparison.OrdinalIgnoreCase)) continue;
-            var relative = Path.GetRelativePath(staging, file);
-            var target = Path.Combine(appDirectory, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(file, target, overwrite: true);
+            CopyIntoPlace(file, Path.GetRelativePath(staging, file), appDirectory);
         }
         if (File.Exists(entry))
         {
-            var targetEntry = Path.Combine(appDirectory, entryPoint);
-            Directory.CreateDirectory(Path.GetDirectoryName(targetEntry)!);
-            File.Copy(entry, targetEntry, overwrite: true);
+            CopyIntoPlace(entry, entryPoint, appDirectory);
+        }
+    }
+
+    private static void CopyIntoPlace(string source, string relative, string appDirectory)
+    {
+        var target = Path.GetFullPath(Path.Combine(appDirectory, relative));
+        var appRoot = Path.GetFullPath(appDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        if (!target.StartsWith(appRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"Update file would escape the application directory: {relative}");
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var temporary = target + ".amare-new-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.Copy(source, temporary, overwrite: false);
+            File.Move(temporary, target, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteFile(temporary);
+        }
+    }
+
+    private static void CopyDirectoryReplacing(string source, string destination, string lastFile)
+    {
+        var last = Path.GetFullPath(Path.Combine(source, lastFile));
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            if (Path.GetFullPath(file).Equals(last, StringComparison.OrdinalIgnoreCase)) continue;
+            CopyIntoPlace(file, Path.GetRelativePath(source, file), destination);
+        }
+        if (File.Exists(last))
+        {
+            CopyIntoPlace(last, lastFile, destination);
+        }
+    }
+
+    private static void RemoveStagedNewFiles(PortableUpdateState state)
+    {
+        if (!Directory.Exists(state.StagingDir) || !Directory.Exists(state.AppDir)) return;
+        var appRoot = Path.GetFullPath(state.AppDir)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        foreach (var file in Directory.EnumerateFiles(state.StagingDir, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(state.StagingDir, file);
+            if (File.Exists(Path.Combine(state.BackupDir, relative))) continue;
+            var target = Path.GetFullPath(Path.Combine(state.AppDir, relative));
+            if (!target.StartsWith(appRoot, StringComparison.OrdinalIgnoreCase)) continue;
+            TryDeleteFile(target);
         }
     }
 
@@ -348,6 +501,7 @@ public static class PortableUpdateEngine
             return false;
         }
         if (process == null) return false;
+        var healthy = false;
         try
         {
             var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Max(5, request.HealthTimeoutSeconds));
@@ -355,6 +509,7 @@ public static class PortableUpdateEngine
             {
                 if (File.Exists(marker))
                 {
+                    healthy = true;
                     return true;
                 }
                 if (process.HasExited)
@@ -369,7 +524,7 @@ public static class PortableUpdateEngine
         {
             try
             {
-                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                if (!healthy && !process.HasExited) process.Kill(entireProcessTree: true);
             }
             catch
             {
@@ -521,6 +676,18 @@ public static class PortableUpdateEngine
         catch
         {
             // Best effort; recovery can remove stale work directories later.
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // A temporary replace file is safe to clean next time.
         }
     }
 

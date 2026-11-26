@@ -29,7 +29,8 @@ public sealed record PortableUpdateState(
     string HealthMarkerPath,
     long StartedUnixMs,
     long UpdatedUnixMs,
-    string? Error)
+    string? Error,
+    int RecoveryAttempts = 0)
 {
     public bool IsInProgress => Status is PortableUpdateStatus.Preparing
         or PortableUpdateStatus.Applying
@@ -96,6 +97,7 @@ public static class PortableUpdateRecovery
     {
         var state = Load(dataDirectory);
         return state != null
+            && state.RecoveryAttempts < PortableUpdateEngine.MaxRecoveryAttempts
             && (state.IsInProgress || state.Status is PortableUpdateStatus.RollingBack
                 or PortableUpdateStatus.Failed)
             && Directory.Exists(state.BackupDir);
@@ -105,6 +107,12 @@ public static class PortableUpdateRecovery
     {
         var state = Load(dataDirectory);
         if (state == null) return null;
+        if (state.RecoveryAttempts >= PortableUpdateEngine.MaxRecoveryAttempts
+            && state.Status is PortableUpdateStatus.RollingBack or PortableUpdateStatus.Failed)
+        {
+            return $"Update {state.Version} could not be recovered after " +
+                   $"{state.RecoveryAttempts} attempts. The previous version backup was kept.";
+        }
         return state.Status switch
         {
             PortableUpdateStatus.Applying or PortableUpdateStatus.Applied
@@ -122,7 +130,11 @@ public static class PortableUpdateRecovery
             var marker = Environment.GetEnvironmentVariable(PortableUpdateEngine.HealthMarkerEnvironmentVariable);
             if (!string.IsNullOrWhiteSpace(marker))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+                var markerDirectory = Path.GetDirectoryName(marker);
+                if (!string.IsNullOrWhiteSpace(markerDirectory))
+                {
+                    Directory.CreateDirectory(markerDirectory);
+                }
                 File.WriteAllText(marker, $"healthy {currentVersion} {DateTimeOffset.UtcNow:O}");
             }
             var state = Load(dataDirectory);

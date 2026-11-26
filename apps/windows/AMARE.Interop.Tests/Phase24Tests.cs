@@ -111,9 +111,9 @@ internal static class Phase24Tests
         var payload = Encoding.UTF8.GetBytes("portable-update-payload");
         var hash = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
         var update = new AvailableUpdate(
-            "0.18.0", "v0.18.0", "release", "notes", false, "https://example.invalid",
-            new ReleaseAsset("AMARE-0.18.0-win-x64.zip", "https://packages.invalid/update.zip", payload.Length),
-            new ReleaseAsset("AMARE-0.18.0-win-x64.zip.sha256", "https://packages.invalid/update.zip.sha256", 80));
+            "0.18.0", "v0.18.0", "release", "notes", false, "https://github.com/amare/test",
+            new ReleaseAsset("AMARE-0.18.0-win-x64.zip", "https://github.com/amare/test/update.zip", payload.Length),
+            new ReleaseAsset("AMARE-0.18.0-win-x64.zip.sha256", "https://github.com/amare/test/update.zip.sha256", 80));
         using var handler = new FakeHandler(request =>
         {
             var path = request.RequestUri!.AbsolutePath;
@@ -130,7 +130,7 @@ internal static class Phase24Tests
 
         var badUpdate = update with
         {
-            Checksum = new ReleaseAsset("checksums.txt", "https://packages.invalid/bad.sha256", 80)
+            Checksum = new ReleaseAsset("checksums.txt", "https://github.com/amare/test/bad.sha256", 80)
         };
         using var badHandler = new FakeHandler(request =>
         {

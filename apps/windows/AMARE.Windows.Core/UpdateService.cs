@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Amare.Windows.Core;
@@ -45,6 +46,11 @@ public enum UpdateChannel
     Prerelease,
 }
 
+/// <summary>
+/// SemVer 2.0 precedence with a practical Windows extension for four-part
+/// file versions (major.minor.patch.revision). Prerelease identifiers are
+/// compared by the SemVer rules, not as case-insensitive strings.
+/// </summary>
 public static class SemanticVersion
 {
     public static int Compare(string left, string right)
@@ -57,40 +63,178 @@ public static class SemanticVersion
         if (number != 0) return number;
         number = a.Patch.CompareTo(b.Patch);
         if (number != 0) return number;
+        number = a.Revision.CompareTo(b.Revision);
+        if (number != 0) return number;
         if (a.Pre == null && b.Pre == null) return 0;
         if (a.Pre == null) return 1;
         if (b.Pre == null) return -1;
-        return string.Compare(a.Pre, b.Pre, StringComparison.OrdinalIgnoreCase);
+        var leftParts = a.Pre.Split('.');
+        var rightParts = b.Pre.Split('.');
+        for (var index = 0; index < Math.Min(leftParts.Length, rightParts.Length); index++)
+        {
+            number = CompareIdentifier(leftParts[index], rightParts[index]);
+            if (number != 0) return number;
+        }
+        return leftParts.Length.CompareTo(rightParts.Length);
     }
 
-    public static bool TryParse(string? value, out (int Major, int Minor, int Patch, string? Pre) version)
+    public static bool TryParse(
+        string? value,
+        out (int Major, int Minor, int Patch, int Revision, string? Pre) version)
     {
         version = default;
         if (string.IsNullOrWhiteSpace(value)) return false;
-        var text = value.Trim().TrimStart('v', 'V');
-        var buildSplit = text.Split('+', 2)[0];
-        var pre = (string?)null;
-        var dash = buildSplit.IndexOf('-');
-        if (dash >= 0)
-        {
-            pre = buildSplit[(dash + 1)..];
-            buildSplit = buildSplit[..dash];
-        }
-        var parts = buildSplit.Split('.');
-        if (parts.Length < 2
-            || !int.TryParse(parts[0], out var major)
-            || !int.TryParse(parts[1], out var minor)
-            || (parts.Length > 2 && !int.TryParse(parts[2], out _)))
+        var text = value.Trim();
+        if (text.Length > 0 && (text[0] == 'v' || text[0] == 'V')) text = text[1..];
+        if (text.Length == 0) return false;
+
+        var buildSplit = text.Split('+', 2);
+        if (buildSplit.Length == 2 && !IsValidIdentifierList(buildSplit[1], allowLeadingZeroNumeric: true))
         {
             return false;
         }
-        var patch = parts.Length > 2 ? int.Parse(parts[2]) : 0;
-        version = (major, minor, patch, pre);
+        var coreAndPre = buildSplit[0];
+        var pre = (string?)null;
+        var dash = coreAndPre.IndexOf('-');
+        if (dash >= 0)
+        {
+            pre = coreAndPre[(dash + 1)..];
+            coreAndPre = coreAndPre[..dash];
+            if (!IsValidIdentifierList(pre, allowLeadingZeroNumeric: false)) return false;
+        }
+
+        var parts = coreAndPre.Split('.');
+        if (parts.Length is < 2 or > 4) return false;
+        var numbers = new int[4];
+        for (var index = 0; index < parts.Length; index++)
+        {
+            if (parts[index].Length == 0 || !parts[index].All(char.IsAsciiDigit)) return false;
+            if (!int.TryParse(parts[index], out numbers[index]) || numbers[index] < 0) return false;
+        }
+        if (parts.Length == 4 && pre != null) return false; // Windows revision is not SemVer.
+        version = (numbers[0], numbers[1], numbers[2], numbers[3], pre);
         return true;
     }
 
-    private static (int Major, int Minor, int Patch, string? Pre) Parse(string value) =>
-        TryParse(value, out var parsed) ? parsed : (0, 0, 0, null);
+    private static bool IsValidIdentifierList(string value, bool allowLeadingZeroNumeric)
+    {
+        if (value.Length == 0) return false;
+        foreach (var identifier in value.Split('.'))
+        {
+            if (identifier.Length == 0) return false;
+            if (!identifier.All(ch => char.IsAsciiLetterOrDigit(ch) || ch == '-')) return false;
+            if (!allowLeadingZeroNumeric
+                && identifier.All(char.IsAsciiDigit)
+                && identifier.Length > 1
+                && identifier[0] == '0')
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int CompareIdentifier(string left, string right)
+    {
+        var leftNumeric = left.All(char.IsAsciiDigit);
+        var rightNumeric = right.All(char.IsAsciiDigit);
+        if (leftNumeric && rightNumeric)
+        {
+            var trimmedLeft = left.TrimStart('0');
+            var trimmedRight = right.TrimStart('0');
+            if (trimmedLeft.Length == 0) trimmedLeft = "0";
+            if (trimmedRight.Length == 0) trimmedRight = "0";
+            var number = trimmedLeft.Length.CompareTo(trimmedRight.Length);
+            if (number != 0) return number;
+            return string.CompareOrdinal(trimmedLeft, trimmedRight);
+        }
+        if (leftNumeric) return -1;
+        if (rightNumeric) return 1;
+        return string.CompareOrdinal(left, right);
+    }
+
+    private static (int Major, int Minor, int Patch, int Revision, string? Pre) Parse(string value) =>
+        TryParse(value, out var parsed) ? parsed : (0, 0, 0, 0, null);
+}
+
+/// <summary>
+/// Download and package safety limits shared by the UI, the downloader and
+/// the apply helper. These are integrity/robustness limits, not publisher
+/// authentication.
+/// </summary>
+public static class UpdateDownloadPolicy
+{
+    public const long MaxPackageBytes = 1L * 1024 * 1024 * 1024;
+    public const long MaxChecksumBytes = 64 * 1024;
+    public const int MaxArchiveEntries = 20_000;
+    public const long MaxUncompressedBytes = 8L * 1024 * 1024 * 1024;
+    public const long MinimumFreeSpaceBytes = 64L * 1024 * 1024;
+
+    private static readonly string[] AllowedAssetHostSuffixes =
+    [
+        "github.com",
+        "githubusercontent.com"
+    ];
+
+    public static bool TryGetSecureUri(string? value, out Uri uri)
+    {
+        uri = null!;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return false;
+        if (!parsed.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.IsNullOrWhiteSpace(parsed.Host)) return false;
+        if (!string.IsNullOrEmpty(parsed.UserInfo)) return false;
+        if (IPAddress.TryParse(parsed.Host, out _)) return false;
+        if (!IsAllowedAssetHost(parsed.Host)) return false;
+        uri = parsed;
+        return true;
+    }
+
+    public static bool IsAllowedAssetHost(string host)
+    {
+        var normalized = host.TrimEnd('.').ToLowerInvariant();
+        foreach (var suffix in AllowedAssetHostSuffixes)
+        {
+            if (normalized.Equals(suffix, StringComparison.Ordinal)
+                || normalized.EndsWith("." + suffix, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static bool IsSafeFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (name.Length > 255) return false;
+        if (name.IndexOfAny(['/', '\\', ':', '\0']) >= 0) return false;
+        if (name is "." or "..") return false;
+        return name == Path.GetFileName(name);
+    }
+
+    public static long RequiredFreeBytes(long declaredSize)
+    {
+        if (declaredSize <= 0) return MinimumFreeSpaceBytes;
+        var tenPercent = declaredSize / 10;
+        return declaredSize + Math.Max(MinimumFreeSpaceBytes, tenPercent);
+    }
+
+    public static bool HasSufficientFreeSpace(string directory, long requiredBytes)
+    {
+        try
+        {
+            var full = Path.GetFullPath(directory);
+            var root = Path.GetPathRoot(full);
+            if (string.IsNullOrEmpty(root)) return false;
+            var drive = new DriveInfo(root);
+            return drive.AvailableFreeSpace >= requiredBytes;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 public sealed class GitHubReleaseClient
@@ -141,11 +285,26 @@ public sealed class GitHubReleaseClient
                 .ToArray();
             return SelectUpdate(currentVersion, channel, releases);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return new UpdateCheckResult(false, false, currentVersion, null, "Update check was cancelled.");
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (OperationCanceledException)
+        {
+            return new UpdateCheckResult(false, false, currentVersion, null,
+                "Update check timed out. Check your network connection and try again.");
+        }
+        catch (HttpRequestException exception)
+        {
+            return new UpdateCheckResult(false, false, currentVersion, null,
+                $"Network error while checking for updates: {exception.Message}");
+        }
+        catch (JsonException exception)
+        {
+            return new UpdateCheckResult(false, false, currentVersion, null,
+                $"Update server returned an invalid response: {exception.Message}");
+        }
+        catch (Exception exception)
         {
             return new UpdateCheckResult(false, false, currentVersion, null,
                 $"Update check failed: {exception.Message}");
@@ -167,9 +326,13 @@ public sealed class GitHubReleaseClient
         {
             return new UpdateCheckResult(true, false, currentVersion, null, null);
         }
-        var package = candidate.Assets.FirstOrDefault(asset =>
+        var assets = candidate.Assets
+            .Where(asset => UpdateDownloadPolicy.IsSafeFileName(asset.Name)
+                && UpdateDownloadPolicy.TryGetSecureUri(asset.DownloadUrl, out _))
+            .ToArray();
+        var package = assets.FirstOrDefault(asset =>
             asset.Name.EndsWith("-win-x64.zip", StringComparison.OrdinalIgnoreCase))
-            ?? candidate.Assets.FirstOrDefault(asset =>
+            ?? assets.FirstOrDefault(asset =>
                 asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
                 && !asset.Name.Contains("msix", StringComparison.OrdinalIgnoreCase));
         if (package == null)
@@ -177,7 +340,7 @@ public sealed class GitHubReleaseClient
             return new UpdateCheckResult(true, true, currentVersion, null,
                 "The latest release does not contain a portable Windows ZIP.");
         }
-        var checksum = candidate.Assets.FirstOrDefault(asset =>
+        var checksum = assets.FirstOrDefault(asset =>
             asset.Name.Equals(package.Name + ".sha256", StringComparison.OrdinalIgnoreCase)
             || asset.Name.EndsWith("checksums.txt", StringComparison.OrdinalIgnoreCase));
         return new UpdateCheckResult(true, true, currentVersion, new AvailableUpdate(
@@ -225,10 +388,12 @@ public sealed class GitHubReleaseClient
 public sealed class UpdateDownloader
 {
     private readonly HttpClient _http;
+    private readonly long _maxDownloadBytes;
 
-    public UpdateDownloader(HttpClient? http = null)
+    public UpdateDownloader(HttpClient? http = null, long maxDownloadBytes = UpdateDownloadPolicy.MaxPackageBytes)
     {
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        _maxDownloadBytes = maxDownloadBytes > 0 ? maxDownloadBytes : UpdateDownloadPolicy.MaxPackageBytes;
     }
 
     public async Task<UpdateDownloadResult> DownloadAsync(
@@ -242,7 +407,40 @@ public sealed class UpdateDownloader
             return new UpdateDownloadResult(false, null, null, 0,
                 "Release does not provide a SHA-256 checksum; update is blocked.");
         }
+        if (!UpdateDownloadPolicy.TryGetSecureUri(update.Package.DownloadUrl, out _))
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                "Update package URL must be an HTTPS GitHub release URL.");
+        }
+        if (!UpdateDownloadPolicy.TryGetSecureUri(update.Checksum.DownloadUrl, out _))
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                "Update checksum URL must be an HTTPS GitHub release URL.");
+        }
+        if (!UpdateDownloadPolicy.IsSafeFileName(update.Package.Name))
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                "Update package name is not a safe file name.");
+        }
+        if (update.Package.Size <= 0)
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                "Release does not provide a usable package size.");
+        }
+        if (update.Package.Size > _maxDownloadBytes)
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                $"Update package exceeds the {_maxDownloadBytes:N0} byte download limit.");
+        }
+        var requiredSpace = UpdateDownloadPolicy.RequiredFreeBytes(update.Package.Size);
+        if (!UpdateDownloadPolicy.HasSufficientFreeSpace(destinationDirectory, requiredSpace))
+        {
+            return new UpdateDownloadResult(false, null, null, 0,
+                "Not enough disk space to download and stage the update.");
+        }
+
         string? partPath = null;
+        string? finalPath = null;
         try
         {
             var expected = await ReadChecksumAsync(update.Checksum.DownloadUrl, cancellationToken);
@@ -252,30 +450,46 @@ public sealed class UpdateDownloader
                     "Could not read a valid SHA-256 checksum from the release.");
             }
             Directory.CreateDirectory(destinationDirectory);
-            var fileName = Path.GetFileName(update.Package.Name);
-            var finalPath = Path.Combine(destinationDirectory, fileName);
-            partPath = finalPath + ".part";
+            finalPath = Path.Combine(destinationDirectory, update.Package.Name);
+            partPath = finalPath + "." + Guid.NewGuid().ToString("N") + ".part";
             using var response = await _http.GetAsync(
                 update.Package.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
+            if (response.RequestMessage?.RequestUri is { } finalUri
+                && !UpdateDownloadPolicy.TryGetSecureUri(finalUri.ToString(), out _))
+            {
+                return new UpdateDownloadResult(false, null, null, 0,
+                    "Update download was redirected to a non-HTTPS or untrusted host.");
+            }
+            if (response.Content.Headers.ContentLength is { } declaredLength
+                && (declaredLength > _maxDownloadBytes || declaredLength != update.Package.Size))
+            {
+                return new UpdateDownloadResult(false, null, null, 0,
+                    "Downloaded file size does not match the release metadata.");
+            }
             var total = response.Content.Headers.ContentLength ?? update.Package.Size;
             await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-            await using (var target = File.Create(partPath))
+            await using (var target = new FileStream(
+                partPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
                 var buffer = new byte[81920];
                 long received = 0;
                 int read;
                 while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
                 {
-                    await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     received += read;
+                    if (received > _maxDownloadBytes || received > update.Package.Size)
+                    {
+                        throw new InvalidDataException(
+                            $"Update package exceeds the {_maxDownloadBytes:N0} byte download limit or the declared size.");
+                    }
+                    await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     progress?.Invoke(received, total);
                 }
             }
             var info = new FileInfo(partPath);
-            if (update.Package.Size > 0 && info.Length != update.Package.Size)
+            if (info.Length != update.Package.Size)
             {
-                File.Delete(partPath);
                 return new UpdateDownloadResult(false, null, null, info.Length,
                     "Downloaded file size does not match the release metadata.");
             }
@@ -287,11 +501,11 @@ public sealed class UpdateDownloader
             if (!CryptographicOperations.FixedTimeEquals(
                 Convert.FromHexString(actual), Convert.FromHexString(expected)))
             {
-                File.Delete(partPath);
                 return new UpdateDownloadResult(false, null, actual, info.Length,
                     "SHA-256 mismatch; downloaded file was deleted.");
             }
             File.Move(partPath, finalPath, overwrite: true);
+            partPath = null;
             return new UpdateDownloadResult(true, finalPath, actual, info.Length, null);
         }
         catch (OperationCanceledException)
@@ -299,10 +513,15 @@ public sealed class UpdateDownloader
             TryDeleteFile(partPath);
             return new UpdateDownloadResult(false, null, null, 0, "Download cancelled.");
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or FormatException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException
+            or FormatException or InvalidDataException or UnauthorizedAccessException)
         {
             TryDeleteFile(partPath);
             return new UpdateDownloadResult(false, null, null, 0, $"Download failed: {exception.Message}");
+        }
+        finally
+        {
+            TryDeleteFile(partPath);
         }
     }
 
@@ -320,7 +539,23 @@ public sealed class UpdateDownloader
 
     private async Task<string?> ReadChecksumAsync(string url, CancellationToken cancellationToken)
     {
-        var text = await _http.GetStringAsync(url, cancellationToken);
+        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        if (response.RequestMessage?.RequestUri is { } finalUri
+            && !UpdateDownloadPolicy.TryGetSecureUri(finalUri.ToString(), out _))
+        {
+            return null;
+        }
+        if (response.Content.Headers.ContentLength is { } length
+            && length > UpdateDownloadPolicy.MaxChecksumBytes)
+        {
+            return null;
+        }
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
+        var buffer = new char[UpdateDownloadPolicy.MaxChecksumBytes];
+        var read = await reader.ReadBlockAsync(buffer, cancellationToken);
+        var text = new string(buffer, 0, read);
         foreach (var token in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
             if (token.Length == 64 && token.All(Uri.IsHexDigit)) return token.ToLowerInvariant();

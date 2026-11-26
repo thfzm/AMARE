@@ -62,12 +62,12 @@ internal static class Phase23Tests
     {
         var assets = new List<ReleaseAsset>
         {
-            new(assetName, $"https://example.invalid/{assetName}", 1234)
+            new(assetName, $"https://github.com/amare/test/{assetName}", 1234)
         };
         if (includeChecksum)
         {
-            assets.Add(new ReleaseAsset(assetName + ".sha256", $"https://example.invalid/{assetName}.sha256", 65));
+            assets.Add(new ReleaseAsset(assetName + ".sha256", $"https://github.com/amare/test/{assetName}.sha256", 65));
         }
-        return new ReleaseInfo(tag, tag, "notes", prerelease, false, "https://example.invalid/release", assets);
+        return new ReleaseInfo(tag, tag, "notes", prerelease, false, "https://github.com/amare/test/release", assets);
     }
 }

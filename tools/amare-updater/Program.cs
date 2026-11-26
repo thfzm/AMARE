@@ -48,7 +48,10 @@ internal static class Program
             EntryPoint: Value(options, "entry") ?? "AMARE.Windows.exe",
             ParentProcessId: int.TryParse(Value(options, "parent-pid"), out var parentPid) ? parentPid : 0,
             LaunchApp: !Has(options, "no-launch"),
-            HealthMarkerPath: Value(options, "health-marker"));
+            HealthMarkerPath: Value(options, "health-marker"),
+            HealthTimeoutSeconds: int.TryParse(Value(options, "health-timeout"), out var timeout)
+                ? Math.Max(1, timeout)
+                : 30);
         var result = await PortableUpdateEngine.ApplyAsync(request);
         Log(options, result.Succeeded ? "success" : "failure", result.Error ?? result.Status ?? "");
         if (!result.Succeeded)
@@ -146,7 +149,7 @@ internal static class Program
     private static int Usage(string message)
     {
         Console.Error.WriteLine(message);
-        Console.Error.WriteLine("Usage: AMARE.Updater apply --package <zip> --app-dir <dir> --data-dir <dir> --version <semver> --sha256 <hash> [--parent-pid N] [--no-launch]");
+        Console.Error.WriteLine("Usage: AMARE.Updater apply --package <zip> --app-dir <dir> --data-dir <dir> --version <semver> --sha256 <hash> [--parent-pid N] [--health-timeout S] [--no-launch]");
         Console.Error.WriteLine("       AMARE.Updater recover --data-dir <dir> [--parent-pid N] [--no-launch]");
         return 2;
     }

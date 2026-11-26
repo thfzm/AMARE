@@ -299,6 +299,7 @@ Invoke-Step "csharp_rust_interop" {
 if ($SkipWinUI) {
     Add-SkippedStep "winui_restore" "UNVERIFIED" "Skipped by -SkipWinUI"
     Add-SkippedStep "winui_build" "UNVERIFIED" "Skipped by -SkipWinUI"
+    Add-SkippedStep "portable_updater_e2e" "SKIPPED" "Skipped because the WinUI application build is unavailable."
 } else {
     Invoke-Step "winui_restore" {
         dotnet restore apps/windows/AMARE.Windows/AMARE.Windows.csproj -p:Platform=x64
@@ -344,6 +345,17 @@ if ($SkipWinUI) {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $forensicsOut)) {
             throw "HandleForensics self-test did not produce a snapshot."
         }
+    }
+    Invoke-Step "portable_updater_e2e" {
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
+        $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe was not produced by the updater build." }
+        & pwsh -NoProfile -File (Join-Path (Get-Location) "tools\verify-portable-updater.ps1") `
+            -OutputDir $OutputDir -AppSource $exe.Directory.FullName -UpdaterExe $updater -Version $Version
+        # Invoke-Step records the child exit code as this step's result. Do not
+        # throw here so the unified verification report is still produced.
     }
     Invoke-PackageStep "winui_package" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |

@@ -63,6 +63,8 @@ public sealed partial class MainWindow : Window
     private bool _fullScreen;
     private double _zoomFactor = 1.0;
     private bool _updateCheckRunning;
+    private bool _updateDownloadRunning;
+    private CancellationTokenSource? _updateDownloadCancellation;
     private UpdatePreferences _updatePreferences = new(true, UpdateChannel.Stable, 0);
     private AiApiSettings _aiApiSettings = new();
     private string _readerNonce = Guid.NewGuid().ToString("N");
@@ -2301,6 +2303,10 @@ public sealed partial class MainWindow : Window
         AddMenu(menu, L10n.T("menu.askAi"), "", () => _ = AskApiAiAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenu(menu, L10n.T("menu.checkUpdates"), "", () => _ = CheckForUpdatesAsync(true));
+        if (_updateDownloadRunning)
+        {
+            AddMenu(menu, L10n.T("menu.cancelUpdateDownload"), "", CancelUpdateDownload);
+        }
         if (PortableUpdateRecovery.NeedsRecovery(_appDataRoot))
         {
             AddMenu(menu, L10n.T("menu.recoverUpdate"), "", () => _ = RecoverInterruptedUpdateAsync());
@@ -2486,69 +2492,108 @@ public sealed partial class MainWindow : Window
 
     private async Task DownloadUpdateAsync(AvailableUpdate update)
     {
-        var destination = Path.Combine(_appDataRoot, "updates", update.Version);
-        StatusText.Text = L10n.T("updates.downloading", update.Version);
-        var result = await _updateDownloader.DownloadAsync(
-            update, destination,
-            (received, total) => StatusText.Text = total > 0
-                ? $"Downloading AMARE {update.Version}: {received * 100 / total}%"
-                : $"Downloading AMARE {update.Version}: {received:N0} bytes");
-        if (!result.Succeeded || result.FilePath == null)
+        if (_updateDownloadRunning)
         {
-            StatusText.Text = result.Error ?? L10n.T("updates.downloadFailed");
-            await ShowMessageAsync(L10n.T("updates.checkTitle"), result.Error ?? L10n.T("updates.downloadFailed"));
+            StatusText.Text = L10n.T("updates.downloadBusy");
             return;
         }
-        var validation = PortableUpdatePackage.Validate(result.FilePath, update.Version, "win-x64");
-        if (!validation.Valid)
+        _updateDownloadRunning = true;
+        using var cancellation = new CancellationTokenSource();
+        _updateDownloadCancellation = cancellation;
+        try
         {
-            try { File.Delete(result.FilePath); } catch { }
-            StatusText.Text = validation.Error ?? L10n.T("updates.packageInvalid");
-            await ShowMessageAsync(L10n.T("updates.checkTitle"), validation.Error ?? L10n.T("updates.packageInvalid"));
-            return;
+            var destination = Path.Combine(_appDataRoot, "updates", update.Version);
+            StatusText.Text = L10n.T("updates.downloading", update.Version);
+            var result = await _updateDownloader.DownloadAsync(
+                update, destination,
+                (received, total) => StatusText.Text = total > 0
+                    ? L10n.T("updates.downloadProgress", update.Version, received * 100 / total)
+                    : L10n.T("updates.downloadProgressBytes", update.Version, received),
+                cancellation.Token);
+            if (cancellation.IsCancellationRequested)
+            {
+                StatusText.Text = L10n.T("updates.downloadCancelled");
+                return;
+            }
+            if (!result.Succeeded || result.FilePath == null)
+            {
+                StatusText.Text = result.Error ?? L10n.T("updates.downloadFailed");
+                await ShowMessageAsync(L10n.T("updates.checkTitle"), result.Error ?? L10n.T("updates.downloadFailed"));
+                return;
+            }
+            var validation = PortableUpdatePackage.Validate(
+                result.FilePath, update.Version, "win-x64", "AMARE.Windows.exe");
+            if (!validation.Valid)
+            {
+                try { File.Delete(result.FilePath); } catch { }
+                StatusText.Text = validation.Error ?? L10n.T("updates.packageInvalid");
+                await ShowMessageAsync(L10n.T("updates.checkTitle"), validation.Error ?? L10n.T("updates.packageInvalid"));
+                return;
+            }
+            StatusText.Text = L10n.T("updates.verified");
+            if (AppPaths.IsPackaged)
+            {
+                await ShowMessageAsync("MSIX update",
+                    "This AMARE build is installed as an MSIX package. Portable file replacement is disabled. " +
+                    "Install a newer signed MSIX package through Windows; no automatic MSIX updater is available yet.");
+                await Launcher.LaunchFolderAsync(
+                    await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
+                return;
+            }
+            var dialog = new ContentDialog
+            {
+                Title = "Update verified",
+                Content = $"SHA-256 and package manifest verified.\n{update.Package.Name}\n" +
+                          $"Staged at:\n{result.FilePath}\n\n" +
+                          "AMARE will close, back up the current app files, apply the update, " +
+                          "and restore the previous version if the new version fails to start. " +
+                          "User data in %LOCALAPPDATA%\\AMARE is preserved.",
+                PrimaryButtonText = "Install and restart",
+                SecondaryButtonText = "Open folder",
+                CloseButtonText = "Later",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = RootGrid.XamlRoot
+            };
+            var choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.Secondary)
+            {
+                await Launcher.LaunchFolderAsync(
+                    await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
+                return;
+            }
+            if (choice != ContentDialogResult.Primary) return;
+            var appDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!PortableUpdateLauncher.TryStartApply(
+                result.FilePath, _appDataRoot, appDirectory, update.Version, result.Sha256!, out var helperError))
+            {
+                await ShowMessageAsync("Update helper", helperError ?? "The update helper could not be started.");
+                return;
+            }
+            StatusText.Text = "Applying update. AMARE will close and restart automatically.";
+            Close();
+            Application.Current.Exit();
         }
-        StatusText.Text = L10n.T("updates.verified");
-        if (AppPaths.IsPackaged)
+        catch (OperationCanceledException)
         {
-            await ShowMessageAsync("MSIX update",
-                "This AMARE build is installed as an MSIX package. Portable file replacement is disabled. " +
-                "Install a newer signed MSIX package through Windows; no automatic MSIX updater is available yet.");
-            await Launcher.LaunchFolderAsync(
-                await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
-            return;
+            StatusText.Text = L10n.T("updates.downloadCancelled");
         }
-        var dialog = new ContentDialog
+        finally
         {
-            Title = "Update verified",
-            Content = $"SHA-256 and package manifest verified.\n{update.Package.Name}\n" +
-                      $"Staged at:\n{result.FilePath}\n\n" +
-                      "AMARE will close, back up the current app files, apply the update, " +
-                      "and restore the previous version if the new version fails to start. " +
-                      "User data in %LOCALAPPDATA%\\AMARE is preserved.",
-            PrimaryButtonText = "Install and restart",
-            SecondaryButtonText = "Open folder",
-            CloseButtonText = "Later",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = RootGrid.XamlRoot
-        };
-        var choice = await dialog.ShowAsync();
-        if (choice == ContentDialogResult.Secondary)
-        {
-            await Launcher.LaunchFolderAsync(
-                await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(result.FilePath)!));
-            return;
+            _updateDownloadRunning = false;
+            _updateDownloadCancellation = null;
         }
-        if (choice != ContentDialogResult.Primary) return;
-        var appDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (!PortableUpdateLauncher.TryStartApply(
-            result.FilePath, _appDataRoot, appDirectory, update.Version, result.Sha256!, out var helperError))
+    }
+
+    private void CancelUpdateDownload()
+    {
+        try
         {
-            await ShowMessageAsync("Update helper", helperError ?? "The update helper could not be started.");
-            return;
+            _updateDownloadCancellation?.Cancel();
         }
-        StatusText.Text = "Applying update. AMARE will close and restart automatically.";
-        Close();
-        Application.Current.Exit();
+        catch
+        {
+            // The download may have completed between the menu opening and the click.
+        }
     }
 
     private async Task ShowDiagnosticsAsync()
@@ -2665,7 +2710,7 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenUrlAsync(string url)
     {
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        if (UpdateDownloadPolicy.TryGetSecureUri(url, out var uri))
         {
             await Launcher.LaunchUriAsync(uri);
         }
