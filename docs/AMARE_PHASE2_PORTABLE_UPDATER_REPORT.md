@@ -6,7 +6,7 @@
 - 기준 제품/테스트 HEAD: **`e1b9cbf`**
 - 기준 문서 HEAD: **`3d44411`**
 - 최종 제품/테스트 HEAD: **`fcf1ded`**
-- 최종 문서 HEAD: **`85ab0ee`** (이 보고서, design, audit/plan/security/testing 문서 포함)
+- 문서 내용 HEAD: **`85ab0ee`** (이 보고서, design, audit/plan/security/testing 문서 포함)
 - DB schema 변경: **없음**
 - MSIX/코드 서명/공개 Release/업로드: **없음**
 - SHA-256의 의미: **파일 무결성**. 배포자 인증/서명이 아니다.
@@ -39,7 +39,9 @@ feature/phase-2-vault-webview-integration
 
 feature/phase-2-portable-updater (신규)
   3736ff2  Harden portable updater and add package E2E
-  <docs>   Document Phase 2.5 portable updater E2E and rollback
+  1881aa9  Fix portable updater E2E path and backup fixtures
+  fcf1ded  Select matching checksum entry from checksums.txt
+  85ab0ee  Document Phase 2.5 portable updater E2E and rollback
 ```
 
 - 기존 branch와 GPUI 소스/증거는 삭제하거나 변경하지 않았다.
