@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.2 Actual AI API)
-- 기준: `feature/phase-2-ai-api`, 제품/테스트 `a8d1747`
+- 최신 갱신: 2026-11-26 (Phase 2.3 Settings & Localization)
+- 기준: `feature/phase-2-settings-localization`, 제품/테스트 `e548a1f`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -12,9 +12,11 @@
 > Phase 2.1.1 audit/reconciliation은
 > [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md),
 > Phase 2.2 actual AI API는
-> [`AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`](AMARE_PHASE2_ACTUAL_AI_API_REPORT.md)에
+> [`AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`](AMARE_PHASE2_ACTUAL_AI_API_REPORT.md),
+> Phase 2.3 Settings/localization은
+> [`AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`](AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1/2.1.1/2.2 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~2.3 갱신을 함께 표시한다.
 
 ---
 
@@ -46,14 +48,14 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **74/74** (Phase 2.2, 기존 73 + AI key save/delete) |
-| Windows 통합 검증 (최신) | **179 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (195 total, package 단계 skip) |
-| C#↔Rust interop (최신) | **110/110** (Phase 2.2) |
+| WinUI UI smoke (최신) | **76/76** (Phase 2.3, 기존 74 + settings categories + restart persistence) |
+| Windows 통합 검증 (최신) | **182 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (198 total, package 단계 skip) |
+| C#↔Rust interop (최신) | **113/113** (Phase 2.3) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.2, `a8d1747`) |
+| Linux CI | SUCCESS (Phase 2.3, `e548a1f`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -107,7 +109,7 @@ WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 13 | Find in Page | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 14 | 사이트 권한 | **`IMPLEMENTED_AND_VERIFIED` (CI)** | `PARTIALLY_IMPLEMENTED` | P1 |
-| 15 | 설정 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
+| 15 | 설정/현지화 | `IMPLEMENTED_AND_VERIFIED` (Settings/localization; Windows 11 실기기 UNVERIFIED) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 16 | 자동 업데이트 | `IMPLEMENTED_BUT_UNVERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 17 | 성능/진단 | `IMPLEMENTED_AND_VERIFIED` | `PARTIALLY_IMPLEMENTED` | P2 |
 | 18 | 창 관리/Windows 통합 | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
@@ -531,13 +533,42 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ---
 
-### 4.15 설정
+### 4.15 설정 / 현지화 — **Phase 2.3**
 
-**WinUI — `IMPLEMENTED_AND_VERIFIED`**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (CI)**
 
-- 테마(system/light/dark), 검색 엔진, 세션 복원, 업데이트 확인.
-- UI smoke `settings_dialog`, `settings_shortcut_actions` PASS.
-- Rust `settings.*` + profile별 저장, atomic validation 테스트 PASS.
+- 카테고리: Application, General, Appearance, Privacy & Security, AI,
+  Downloads, Updates. 복잡한 sidebar 없이 scrollable dialog + heading.
+- 실제 연결:
+  - language (app-wide, restart)
+  - search engine / restore session / theme / save history (profile)
+  - login autofill/save prompt (profile, `login_*` keys)
+  - site permissions / Vault / clear WebView passwords
+  - AI enable/mode/model/key/test/delete (Phase 2.2)
+  - download folder (app-wide, 실제 DownloadStarting 사용)
+  - update check/channel/check now (app-wide)
+- 구현되지 않은 UI font/size, tab density, default browser, home/new-tab,
+  tracking/telemetry, download prompt는 UI에 노출하지 않는다.
+- 저장:
+  - profile SQLite settings
+  - `app-preferences.json` (language/download)
+  - `update-preferences.json`
+  - `ai-api-settings.json` + Windows Credential Manager
+  - DB schema 변경 없음
+- localization:
+  - `L10n` **253 keyed + 82 static** English/Korean string
+  - fallback: Korean → English → key
+  - `LocalizationUi`가 static XAML/tooltip/automation name과 dialog를 번역
+  - language 변경은 restart 후 적용
+- 검증:
+  - UI **76/76** (`settings_categories_and_scope`,
+    `settings_persistence_restart`)
+  - interop **113/113** (`localization_resource_completeness`,
+    `localization_fallback_and_language_switch`, `app_preferences_roundtrip`)
+  - Windows **182/0/8/8**, Linux SUCCESS
+- UNVERIFIED: 실제 Windows 11 Korean IME/DPI/layout, 언어 restart UI 자동화,
+  강제 save failure UI, multiwindow profile live sync, 일부 legacy status 문자열.
+- 상세: [`AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`](AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md).
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
@@ -546,8 +577,9 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 **격차**
 
-- WinUI 설정은 최소 수준이다. 다운로드 경로/홈/개인정보/권한/언어 항목이 없다.
-- 한국어 UI는 Phase 2/3에서 다룬다.
+- UI font/size, tab density, default browser, home/new-tab behavior,
+  tracking/telemetry, download prompt는 아직 구현하지 않았고 노출하지 않는다.
+- 실제 Windows 11 Korean IME/DPI/layout는 UNVERIFIED다.
 
 ---
 
@@ -740,5 +772,11 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   오류 UI를 구현하고 CI로 검증했다. 실제 OpenAI endpoint 호출은 API key가
   없어 UNVERIFIED다. 상세:
   `docs/AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`.
+- Settings/현지화(P1)는 Phase 2.3에서 General/Appearance/Privacy/AI/Downloads/
+  Updates를 실제 기능과 연결하고, 253 keyed + 82 static Korean/English
+  resource와 restart persistence를 검증했다. UI font/size, tab density,
+  default browser, home/new-tab, tracking은 구현하지 않았고 노출하지 않았다.
+  실제 Windows 11 Korean IME/DPI/layout는 UNVERIFIED다. 상세:
+  `docs/AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.

@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.2 Actual AI API)
-- 기준: `feature/phase-2-ai-api`, 제품/테스트 `a8d1747`
+- 최신 갱신: 2026-11-26 (Phase 2.3 Settings & Localization)
+- 기준: `feature/phase-2-settings-localization`, 제품/테스트 `e548a1f`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -164,6 +164,19 @@
   quota 응답, UI Mock flow, late-response race, Windows 11
 - 상세: `docs/AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`
 
+### Phase 2.3 진행 상태
+
+- **Settings 감사/연결/localization 완료** (`e548a1f`)
+- General/Appearance/Privacy/AI/Downloads/Updates, scope 표시
+- language (app-wide/restart), download folder, update channel, history/login
+  toggles, site permissions/Vault 연결
+- 253 keyed + 82 static Korean/English strings, fallback
+- settings restart persistence UI test, settings category UI test
+- UI **76/76**, interop **113/113**, Windows **182/0/8/8**, Linux SUCCESS
+- UNVERIFIED: Windows 11 Korean IME/DPI/layout, 언어 restart UI, 강제 save
+  failure, multiwindow profile live sync
+- 상세: `docs/AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -180,6 +193,9 @@
 - **Phase 2.2 완료(CI/contract)**: AI API — OpenAI Responses provider,
   Mock/Actual, Credential Manager key, page context consent, SSE/cancel/errors.
   실제 endpoint E2E는 API key가 없어 UNVERIFIED.
+- **Phase 2.3 완료(CI)**: Settings/현지화 — General/Appearance/Privacy/AI/
+  Downloads/Updates 연결, Korean/English resource, restart persistence.
+  Windows 11 Korean IME/DPI/layout는 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
@@ -235,7 +251,7 @@
 - First-click 6/6 최신 재실행
 - Backup/Restore UI
 - 기본 브라우저 등록
-- 한국어 UI/IME
+- 한국어 UI/IME — **Korean/English resource DONE (2.3); IME/DPI UNVERIFIED**
 
 ### P2 — 품질/자동화
 
@@ -363,7 +379,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 |---|---|---:|
 | 2-1 사이트 권한 | `PermissionRequested`, per-profile store, 허용/차단/초기화 | **DONE (Phase 2.1, CI)** |
 | 2-2 AI 패널/API | 실제 서비스 로그인/격리, 실제 API 1회, 키 삭제 | **Actual API DONE (CI); real E2E UNVERIFIED** |
-| 2-3 설정/한국어 | 다운로드/홈/개인정보/권한/언어, 리소스 문자열 | 2–4일 |
+| 2-3 설정/한국어 | 다운로드/개인정보/권한/언어, 리소스 문자열 | **Core Settings/localization DONE (2.3); Windows 11 layout UNVERIFIED** |
 | 2-4 업데이터 E2E | Portable ZIP 적용/롤백/health marker/데이터 보존 | 3–5일 |
 | 2-5 Reader/Find 보완 | 실제 사이트 표본, IME 중 Find | 1–2일 |
 | 2-6 Backup/Restore | 사용자 백업/복구 UI, 검증/체크섬 | 2–3일 |
@@ -464,7 +480,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
 | 1 | Windows 11에서 정상 실행, 치명적 크래시 없음 | 실기기 + soak |
 | 2 | 주요 웹사이트 브라우징 | 실제 사이트 표본 |
 | 3 | 탭/멀티윈도우 정상 | UI smoke + 실기기 |
-| 4 | 주소창/한국어 IME 정상 | 실기기 입력 |
+| 4 | 주소창/한국어 IME 정상 | 실기기 입력 (localization DONE, IME UNVERIFIED) |
 | 5 | 북마크/방문 기록 유지 | 재시작 후 확인 |
 | 6 | 다운로드 정상 | 실제 파일 다운로드 |
 | 7 | 세션 복원/충돌 복구 | 2·3창 + 강제 종료 |
