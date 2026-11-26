@@ -528,8 +528,8 @@ public sealed partial class MainWindow
                 ("engine", SettingValueDto.Text(engine.Id)),
                 ("restore_session", SettingValueDto.Boolean(restore)),
                 ("save_history", SettingValueDto.Boolean(saveHistory)),
-                ("password_autofill_enabled", SettingValueDto.Boolean(autofill)),
-                ("password_save_prompt_enabled", SettingValueDto.Boolean(savePrompt))
+                ("credential_autofill_enabled", SettingValueDto.Boolean(autofill)),
+                ("credential_save_prompt_enabled", SettingValueDto.Boolean(savePrompt))
             });
         }
         catch (Exception exception)

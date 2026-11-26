@@ -614,8 +614,8 @@ public sealed partial class MainWindow : Window
             _restoreSession = await ReadBooleanSettingAsync("restore_session", true);
             _themeId = (await ReadTextSettingAsync("theme", "system")).ToLowerInvariant();
             _saveHistory = await ReadBooleanSettingAsync("save_history", true);
-            _passwordAutofillEnabled = await ReadBooleanSettingAsync("password_autofill_enabled", true);
-            _passwordSavePromptEnabled = await ReadBooleanSettingAsync("password_save_prompt_enabled", true);
+            _passwordAutofillEnabled = await ReadBooleanSettingAsync("credential_autofill_enabled", true);
+            _passwordSavePromptEnabled = await ReadBooleanSettingAsync("credential_save_prompt_enabled", true);
             ApplyTheme(_themeId);
         }
         catch (Exception exception)
