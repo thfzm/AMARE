@@ -285,6 +285,14 @@ Invoke-Step "csharp_core_build" {
 Invoke-Step "updater_build" {
     dotnet publish tools/amare-updater/AMARE.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o "$OutputDir\updater-publish"
 }
+Invoke-Step "backup_build" {
+    cargo build --release -p amare-services --bin amare-backup --target x86_64-pc-windows-msvc
+    $backupExe = Join-Path (Get-Location) "target\x86_64-pc-windows-msvc\release\amare-backup.exe"
+    if (-not (Test-Path $backupExe)) { throw "amare-backup.exe was not produced." }
+    $backupOut = Join-Path $OutputDir "backup-publish"
+    New-Item -ItemType Directory -Force -Path $backupOut | Out-Null
+    Copy-Item $backupExe (Join-Path $backupOut "AMARE.Backup.exe") -Force
+}
 
 $vcvars = Join-Path $vsInstallPath "VC\Auxiliary\Build\vcvars64.bat"
 Invoke-Step "c_header" {
@@ -293,6 +301,7 @@ Invoke-Step "c_header" {
 
 $env:PATH = "$(Join-Path (Get-Location) 'target\debug');$env:PATH"
 Invoke-Step "csharp_rust_interop" {
+    $env:AMARE_BACKUP_HELPER = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
     dotnet run --project apps/windows/AMARE.Interop.Tests/AMARE.Interop.Tests.csproj
 }
 
@@ -346,14 +355,24 @@ if ($SkipWinUI) {
             throw "HandleForensics self-test did not produce a snapshot."
         }
     }
+    Invoke-Step "backup_helper_stage" {
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
+        Copy-Item $backup (Join-Path $exe.Directory.FullName "AMARE.Backup.exe") -Force
+    }
     Invoke-Step "portable_updater_e2e" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
         $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
         if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe was not produced by the updater build." }
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
         & pwsh -NoProfile -File (Join-Path (Get-Location) "tools\verify-portable-updater.ps1") `
-            -OutputDir $OutputDir -AppSource $exe.Directory.FullName -UpdaterExe $updater -Version $Version
+            -OutputDir $OutputDir -AppSource $exe.Directory.FullName -UpdaterExe $updater -BackupExe $backup -Version $Version
         # Invoke-Step records the child exit code as this step's result. Do not
         # throw here so the unified verification report is still produced.
     }
@@ -368,6 +387,9 @@ if ($SkipWinUI) {
         $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
         if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe was not produced by the updater build." }
         Copy-Item $updater (Join-Path $stage "AMARE.Updater.exe") -Force
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
+        Copy-Item $backup (Join-Path $stage "AMARE.Backup.exe") -Force
         [System.IO.File]::WriteAllText((Join-Path $stage "VERSION"), "$Version`n", [System.Text.UTF8Encoding]::new($false))
         $updateManifest = [ordered]@{
             schema = 1
@@ -377,7 +399,7 @@ if ($SkipWinUI) {
             entryPoint = "AMARE.Windows.exe"
             runtime = "win-x64-self-contained"
             channel = "portable"
-            requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe")
+            requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe", "AMARE.Backup.exe")
         }
         Write-Utf8Json (Join-Path $stage "amare-update.json") $updateManifest
         $notes = Join-Path (Get-Location) "docs\releases\AMARE-$Version.md"

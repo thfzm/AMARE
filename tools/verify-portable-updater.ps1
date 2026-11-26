@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputDir,
     [Parameter(Mandatory = $true)][string]$AppSource,
     [Parameter(Mandatory = $true)][string]$UpdaterExe,
-    [Parameter(Mandatory = $true)][string]$Version
+    [Parameter(Mandatory = $true)][string]$Version,
+    [string]$BackupExe
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 if (-not (Test-Path $AppSource)) { throw "AppSource does not exist: $AppSource" }
 if (-not (Test-Path $UpdaterExe)) { throw "UpdaterExe does not exist: $UpdaterExe" }
+if ($BackupExe -and -not (Test-Path $BackupExe)) { throw "BackupExe does not exist: $BackupExe" }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $checks = New-Object System.Collections.Generic.List[object]
@@ -83,10 +85,18 @@ function New-PortablePackage([string]$EntrySource, [string]$ZipPath, [string]$St
     New-Item -ItemType Directory -Force -Path $StagePath | Out-Null
     Copy-Item (Join-Path $AppSource "*") -Destination $StagePath -Recurse -Force
     Copy-Item $UpdaterExe (Join-Path $StagePath "AMARE.Updater.exe") -Force
+    if ($BackupExe) {
+        Copy-Item $BackupExe (Join-Path $StagePath "AMARE.Backup.exe") -Force
+    }
     if ($EntrySource) {
         Copy-Item $EntrySource (Join-Path $StagePath "AMARE.Windows.exe") -Force
     }
     Write-Utf8 (Join-Path $StagePath "VERSION") "$Version`n"
+    $requiredFiles = if ($BackupExe) {
+        @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe", "AMARE.Backup.exe")
+    } else {
+        @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe")
+    }
     $manifest = [ordered]@{
         schema = 1
         product = "AMARE"
@@ -95,7 +105,7 @@ function New-PortablePackage([string]$EntrySource, [string]$ZipPath, [string]$St
         entryPoint = "AMARE.Windows.exe"
         runtime = "win-x64-self-contained"
         channel = "portable"
-        requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe")
+        requiredFiles = $requiredFiles
     }
     Write-Utf8 (Join-Path $StagePath "amare-update.json") ($manifest | ConvertTo-Json -Depth 5)
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
@@ -132,6 +142,7 @@ try {
     Add-Check "zip_contains_entry_and_helper" {
         if (-not (Test-Path (Join-Path $stage "AMARE.Windows.exe"))) { throw "AMARE.Windows.exe missing" }
         if (-not (Test-Path (Join-Path $stage "AMARE.Updater.exe"))) { throw "AMARE.Updater.exe missing" }
+        if ($BackupExe -and -not (Test-Path (Join-Path $stage "AMARE.Backup.exe"))) { throw "AMARE.Backup.exe missing" }
         if ($fileList -notcontains "amare-update.json") { throw "manifest missing" }
     }
 

@@ -474,13 +474,7 @@ impl VaultService {
         payload: &[u8],
         password: &str,
     ) -> Result<VaultBackupSummary, VaultError> {
-        let data = decode_backup(payload, password)?;
-        Ok(VaultBackupSummary {
-            format: data.format,
-            generation: data.generation,
-            entry_count: data.entries.len(),
-            tombstone_count: data.tombstones.len(),
-        })
+        validate_export(payload, password)
     }
 
     pub fn import_backup(&self, payload: &[u8], password: &str) -> Result<VaultStatus, VaultError> {
@@ -719,6 +713,18 @@ fn validate_data(mut data: VaultData) -> Result<VaultData, VaultError> {
     data.entries.sort_by_key(|entry| entry.id);
     data.tombstones.sort_by_key(|tombstone| tombstone.id);
     Ok(data)
+}
+
+/// Validate a password-protected Vault export without touching DPAPI keys or
+/// the profile database. Used before a restore is allowed to mutate data.
+pub fn validate_export(payload: &[u8], password: &str) -> Result<VaultBackupSummary, VaultError> {
+    let data = decode_backup(payload, password)?;
+    Ok(VaultBackupSummary {
+        format: data.format,
+        generation: data.generation,
+        entry_count: data.entries.len(),
+        tombstone_count: data.tombstones.len(),
+    })
 }
 
 fn decode_backup(payload: &[u8], password: &str) -> Result<VaultData, VaultError> {

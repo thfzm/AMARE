@@ -447,6 +447,7 @@ internal static class Program
             Check("site_permissions_profile_isolation", SitePermissionsProfileIsolation);
             Check("site_permissions_audit_failure_fail_closed", SitePermissionsAuditFailure);
             Check("settings_persistence_restart", SettingsPersistenceRestart);
+            Check("backup_create_verify_dialog", BackupCreateVerifyDialog);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -3715,6 +3716,52 @@ internal static class Program
         WaitFor(() => FindByName("Settings") is null,
             TimeSpan.FromSeconds(10), "settings restore close");
         return "history/update channel persisted across restart";
+    }
+
+    private static string BackupCreateVerifyDialog()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"amare-backup-ui-{Guid.NewGuid():N}.amarebak");
+        try
+        {
+            OpenSettings();
+            Invoke(FindById("SettingsBackupRestoreButton")
+                ?? throw new InvalidOperationException("SettingsBackupRestoreButton missing"));
+            WaitFor(() => FindById("BackupPathBox") is not null,
+                TimeSpan.FromSeconds(10), "backup dialog");
+            SetValue(FindById("BackupPathBox")!, path);
+            SetToggle("BackupIncludeVaultBox", false);
+            Invoke(FindById("BackupCreateButton")
+                ?? throw new InvalidOperationException("BackupCreateButton missing"));
+            WaitFor(() => File.Exists(path) && new FileInfo(path).Length > 0,
+                TimeSpan.FromSeconds(60), "backup file");
+            WaitFor(() => ReadValue("BackupStatusText").Contains(
+                    "created", StringComparison.OrdinalIgnoreCase),
+                TimeSpan.FromSeconds(60), "backup created status");
+            Invoke(FindById("BackupVerifyButton")
+                ?? throw new InvalidOperationException("BackupVerifyButton missing"));
+            WaitFor(() => ReadValue("BackupStatusText").Contains(
+                    "Valid", StringComparison.OrdinalIgnoreCase),
+                TimeSpan.FromSeconds(60), "backup verified status");
+            InvokeDialogButton("Profile backup & restore", "Close");
+            WaitFor(() => FindByName("Profile backup & restore") is null,
+                TimeSpan.FromSeconds(10), "backup dialog close");
+            return "backup create/verify dialog produced a valid single-profile backup";
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            try { if (File.Exists(path + ".sha256")) File.Delete(path + ".sha256"); } catch { }
+        }
+    }
+
+    private static string ReadValue(string id)
+    {
+        var element = FindById(id);
+        if (element is not null && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+        {
+            return ((ValuePattern)pattern).Current.Value ?? "";
+        }
+        return element?.Current.Name ?? "";
     }
 
     private static string SitePermissionsPopup()

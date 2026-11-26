@@ -543,6 +543,7 @@ public sealed partial class MainWindow : Window
         Directory.CreateDirectory(_appDataRoot);
         LoadUpdatePreferences();
         LoadAiApiSettings();
+        await RecoverInterruptedRestoreAsync();
         _native = AmareNative.Create(Path.Combine(_appDataRoot, "data"));
         _profiles = new ProfileClient(_native);
         _settings = new SettingsClient(_native);
@@ -595,6 +596,7 @@ public sealed partial class MainWindow : Window
         StatusText.Text = recoveryMessage == null
             ? "Ready"
             : recoveryMessage + " Use the browser menu → Recover interrupted update.";
+        ShowPendingRestoreResult();
         if (_updatePreferences.CheckOnStartup)
         {
             _ = CheckForUpdatesAsync(false);

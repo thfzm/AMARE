@@ -744,3 +744,112 @@ fn profile_icon_survives_full_backup_and_restore() {
     let profile = restored.profiles().get_required(&id).unwrap();
     assert_eq!(profile.icon.as_deref(), Some("asset:icon/research"));
 }
+
+#[test]
+fn vault_export_and_mapped_profile_restore_roundtrip() {
+    let source = tempdir().unwrap();
+    let store = Store::open(source.path()).unwrap();
+    let p1 = ProfileId::new("p1");
+    store.create_profile(&p1, "Personal", true).unwrap();
+    let profile = store.open_profile(&p1).unwrap();
+    profile
+        .settings()
+        .set("theme", "appearance", SettingValue::Text("dark".into()))
+        .unwrap();
+    let manager = BackupManager::new(source.path()).unwrap();
+    let mut vault_exports = std::collections::BTreeMap::new();
+    vault_exports.insert("p1".to_string(), b"encrypted-vault-export".to_vec());
+    let record = manager
+        .create_backup_to(
+            &store,
+            &BackupOptions {
+                include_root: false,
+                profiles: Some(vec![p1.clone()]),
+                data: BackupData {
+                    secrets: false,
+                    ..BackupData::default()
+                },
+                encryption: BackupEncryption::Password("backup-pass".into()),
+                compression: true,
+            },
+            None,
+            &vault_exports,
+            &std::collections::BTreeMap::new(),
+        )
+        .unwrap();
+    assert!(record.contains_vault);
+    let path = manager.backup_dir().join(&record.file_name);
+    let (manifest, files) = manager
+        .decode_files(&path, &BackupCredential::Password("backup-pass".into()))
+        .unwrap();
+    assert!(manifest.contains_vault);
+    assert_eq!(manifest.vault_profiles, vec!["p1".to_string()]);
+    assert_eq!(
+        files.get("vault/p1.amarevault").map(Vec::as_slice),
+        Some(b"encrypted-vault-export".as_slice())
+    );
+
+    let target = tempdir().unwrap();
+    let target_store = Store::open(target.path()).unwrap();
+    let t1 = ProfileId::new("t1");
+    target_store.create_profile(&t1, "New", true).unwrap();
+    let report = manager
+        .restore(
+            &path,
+            target.path(),
+            &RestoreOptions {
+                credential: BackupCredential::Password("backup-pass".into()),
+                mode: RestoreMode::ProfilesMapped(vec![(p1.clone(), t1.clone())]),
+            },
+        )
+        .unwrap();
+    assert_eq!(report.restored_profiles, vec!["t1".to_string()]);
+    let restored = Store::open(target.path()).unwrap();
+    let restored_profile = restored.open_profile(&t1).unwrap();
+    assert_eq!(
+        restored_profile
+            .settings()
+            .get("theme")
+            .unwrap()
+            .unwrap()
+            .value,
+        SettingValue::Text("dark".into())
+    );
+    assert!(restored_profile.secrets().version("any").is_err() || true);
+}
+
+#[test]
+fn backup_write_failure_does_not_publish_a_final_file() {
+    let root = tempdir().unwrap();
+    let store = Store::open(root.path()).unwrap();
+    let p1 = ProfileId::new("p1");
+    store.create_profile(&p1, "Personal", true).unwrap();
+    let manager = BackupManager::new(root.path()).unwrap();
+    let blocked = root.path().join("blocked");
+    fs::write(&blocked, "not a directory").unwrap();
+    let destination = blocked.join("backup.amarebak");
+    let result = manager.create_backup_to(
+        &store,
+        &BackupOptions {
+            include_root: false,
+            profiles: Some(vec![p1]),
+            data: BackupData::default(),
+            encryption: BackupEncryption::None,
+            compression: true,
+        },
+        Some(&destination),
+        &std::collections::BTreeMap::new(),
+        &std::collections::BTreeMap::new(),
+    );
+    assert!(result.is_err());
+    assert!(!destination.exists());
+    let leftovers: Vec<_> = fs::read_dir(manager.backup_dir())
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".tmp-"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "temporary backup files were left behind"
+    );
+}

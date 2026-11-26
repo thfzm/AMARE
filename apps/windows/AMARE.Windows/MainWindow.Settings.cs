@@ -301,6 +301,7 @@ public sealed partial class MainWindow
 
         var managePermissions = false;
         var manageVault = false;
+        var manageBackup = false;
         var clearWebPasswords = false;
         var checkUpdates = false;
         var permissionsButton = new Button
@@ -315,6 +316,12 @@ public sealed partial class MainWindow
             HorizontalAlignment = HorizontalAlignment.Left
         };
         AutomationProperties.SetAutomationId(vaultButton, "SettingsOpenVaultButton");
+        var backupButton = new Button
+        {
+            Content = L10n.T("settings.backupRestore"),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        AutomationProperties.SetAutomationId(backupButton, "SettingsBackupRestoreButton");
         var clearWebButton = new Button
         {
             Content = L10n.T("settings.clearWebPasswords"),
@@ -333,6 +340,11 @@ public sealed partial class MainWindow
         vaultButton.Click += (_, _) =>
         {
             manageVault = true;
+            settingsDialog?.Hide();
+        };
+        backupButton.Click += (_, _) =>
+        {
+            manageBackup = true;
             settingsDialog?.Hide();
         };
         clearWebButton.Click += (_, _) =>
@@ -395,6 +407,8 @@ public sealed partial class MainWindow
         });
         stack.Children.Add(permissionsButton);
         stack.Children.Add(vaultButton);
+        Heading(L10n.T("backup.title"), L10n.T("settings.scopeProfile"));
+        stack.Children.Add(backupButton);
         stack.Children.Add(clearWebButton);
         Heading(L10n.T("settings.ai"), L10n.T("settings.scopeApp"));
         stack.Children.Add(aiEnabledBox);
@@ -448,6 +462,11 @@ public sealed partial class MainWindow
         if (manageVault)
         {
             await OpenVaultPanelAsync();
+            return;
+        }
+        if (manageBackup)
+        {
+            await ShowBackupRestoreAsync();
             return;
         }
         if (clearWebPasswords)

@@ -30,7 +30,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-pub const BACKUP_FORMAT_VERSION: u32 = 1;
+pub const BACKUP_FORMAT_VERSION: u32 = 2;
+pub const MIN_SUPPORTED_BACKUP_FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"AMAREBAK";
 const CONTAINER_VERSION: u16 = 1;
 const FLAG_ENCRYPTED: u8 = 1;
@@ -63,6 +64,8 @@ pub enum BackupError {
     InvalidFormat(String),
     #[error("unsupported backup/container version: {0}")]
     UnsupportedVersion(u32),
+    #[error("unsupported database schema version: {0}")]
+    UnsupportedSchema(u32),
     #[error("backup integrity check failed: {0}")]
     Integrity(String),
     #[error("backup password/key is required")]
@@ -91,6 +94,8 @@ pub enum BackupScope {
 pub enum BackupFileKind {
     RootDb,
     ProfileDb,
+    VaultExport,
+    AppFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +126,10 @@ pub struct BackupManifest {
     pub compression: String,
     pub encryption: String,
     pub contains_secrets: bool,
+    #[serde(default)]
+    pub contains_vault: bool,
+    #[serde(default)]
+    pub vault_profiles: Vec<String>,
     pub consistency: String,
     pub files: Vec<BackupFile>,
 }
@@ -138,6 +147,8 @@ pub struct BackupRecord {
     pub profiles: Vec<String>,
     pub data_kinds: Vec<String>,
     pub contains_secrets: bool,
+    #[serde(default)]
+    pub contains_vault: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,12 +216,15 @@ impl Default for BackupOptions {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "profiles", rename_all = "snake_case")]
 pub enum RestoreMode {
     /// Replace the root DB and all profile DBs from a Full backup.
     Full,
     /// Replace only the selected profile DBs; the target root/profiles must exist.
     Profiles(Vec<ProfileId>),
+    /// Restore each source profile into a target profile (for restore-as-new).
+    ProfilesMapped(Vec<(ProfileId, ProfileId)>),
 }
 
 #[derive(Debug, Clone)]
@@ -273,6 +287,20 @@ impl BackupManager {
         store: &Store,
         options: &BackupOptions,
     ) -> Result<BackupRecord, BackupError> {
+        self.create_backup_to(store, options, None, &BTreeMap::new(), &BTreeMap::new())
+    }
+
+    /// Create a backup at an explicit destination, optionally embedding
+    /// already-encrypted Vault exports keyed by profile id. Vault exports must
+    /// come from `VaultService::export_backup`; DPAPI key files are never read.
+    pub fn create_backup_to(
+        &self,
+        store: &Store,
+        options: &BackupOptions,
+        destination: Option<&Path>,
+        vault_exports: &BTreeMap<String, Vec<u8>>,
+        app_files: &BTreeMap<String, Vec<u8>>,
+    ) -> Result<BackupRecord, BackupError> {
         if store.root_dir() != self.root {
             return Err(BackupError::InvalidFormat(
                 "store root does not match backup manager root".into(),
@@ -299,11 +327,20 @@ impl BackupManager {
             return Err(BackupError::NoProfiles);
         }
 
+        cleanup_stale_backup_temp(&self.backup_dir);
         let started = now_ms();
         let id = backup_id(started);
         let temp_dir = self.backup_dir.join(format!(".tmp-{id}"));
-        let temp_file = self.backup_dir.join(format!(".tmp-{id}.amarebak"));
-        let final_file = self.backup_dir.join(format!("{id}.{BACKUP_EXTENSION}"));
+        let final_file = destination
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.backup_dir.join(format!("{id}.{BACKUP_EXTENSION}")));
+        let temp_file = if destination.is_some() {
+            let parent = final_file.parent().unwrap_or(&self.backup_dir);
+            fs::create_dir_all(parent)?;
+            parent.join(format!(".tmp-{id}.amarebak"))
+        } else {
+            self.backup_dir.join(format!(".tmp-{id}.amarebak"))
+        };
         let result = (|| -> Result<BackupRecord, BackupError> {
             fs::create_dir_all(&temp_dir)?;
             let mut manifest_profiles = Vec::new();
@@ -337,8 +374,56 @@ impl BackupManager {
             } else {
                 BackupScope::Profiles
             };
-            let data_kinds = selected_data_kinds(options);
-            let contains_secrets = options.data.secrets && !manifest_profiles.is_empty();
+            let mut data_kinds = selected_data_kinds(options);
+            let mut vault_profiles = Vec::new();
+            for (profile_id, payload) in vault_exports {
+                validate_profile_id(profile_id)
+                    .map_err(|error| BackupError::InvalidFormat(error.to_string()))?;
+                let selected_profile = manifest_profiles
+                    .iter()
+                    .any(|profile| &profile.id == profile_id);
+                if !selected_profile {
+                    return Err(BackupError::ProfileNotFound(profile_id.clone()));
+                }
+                if payload.len() as u64 > MAX_FILE_BYTES {
+                    return Err(BackupError::InvalidFormat(
+                        "vault export exceeds the size limit".into(),
+                    ));
+                }
+                let rel = format!("vault/{profile_id}.amarevault");
+                let dest = temp_dir.join(&rel);
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&dest, payload)?;
+                files.push((dest, rel, BackupFileKind::VaultExport));
+                vault_profiles.push(profile_id.clone());
+            }
+            if !vault_profiles.is_empty() {
+                data_kinds.push("vault_export".into());
+            }
+            if !app_files.is_empty() {
+                data_kinds.push("application_files".into());
+            }
+            for (path, payload) in app_files {
+                safe_app_file_path(path)?;
+                if payload.len() as u64 > MAX_FILE_BYTES {
+                    return Err(BackupError::InvalidFormat(
+                        "application file exceeds the size limit".into(),
+                    ));
+                }
+                let rel = format!("app/{path}");
+                safe_manifest_path(&rel)?;
+                let dest = temp_dir.join(&rel);
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&dest, payload)?;
+                files.push((dest, rel, BackupFileKind::AppFile));
+            }
+            let contains_vault = !vault_profiles.is_empty();
+            let contains_secrets =
+                (options.data.secrets && !manifest_profiles.is_empty()) || contains_vault;
             let (manifest_files, file_bytes) = build_file_index(files)?;
             let manifest = BackupManifest {
                 format_version: BACKUP_FORMAT_VERSION,
@@ -351,6 +436,8 @@ impl BackupManager {
                 compression: if options.compression { "gzip" } else { "none" }.into(),
                 encryption: encryption_label(&options.encryption).into(),
                 contains_secrets,
+                contains_vault,
+                vault_profiles,
                 consistency: "SQLite Backup API per database; root and profile snapshots are sequential, not a cross-database transaction.".into(),
                 files: manifest_files,
             };
@@ -383,8 +470,11 @@ impl BackupManager {
                     .collect(),
                 data_kinds: manifest.data_kinds.clone(),
                 contains_secrets: manifest.contains_secrets,
+                contains_vault: manifest.contains_vault,
             };
-            write_meta(&self.backup_dir, &record)?;
+            if final_file.parent() == Some(self.backup_dir.as_path()) {
+                write_meta(&self.backup_dir, &record)?;
+            }
             fs::write(sidecar_path(&final_file, "sha256"), format!("{sha256}\n"))?;
             Ok(record)
         })();
@@ -392,7 +482,9 @@ impl BackupManager {
         let _ = fs::remove_file(&temp_file);
         if result.is_err() {
             let _ = fs::remove_file(&final_file);
-            let _ = remove_meta(&self.backup_dir, &final_file);
+            if final_file.parent() == Some(self.backup_dir.as_path()) {
+                let _ = remove_meta(&self.backup_dir, &final_file);
+            }
             let _ = fs::remove_file(sidecar_path(&final_file, "sha256"));
         }
         result
@@ -433,11 +525,56 @@ impl BackupManager {
         Ok(decoded.manifest)
     }
 
+    /// Decode a verified backup and return its manifest and file bytes.
+    /// Used by the restore helper to obtain encrypted Vault exports.
+    pub fn decode_files(
+        &self,
+        path: impl AsRef<Path>,
+        credential: &BackupCredential,
+    ) -> Result<(BackupManifest, BTreeMap<String, Vec<u8>>), BackupError> {
+        let path = path.as_ref();
+        let bytes = read_container(path)?;
+        verify_sidecar_sha(path, &bytes)?;
+        let decoded = decode_container(&bytes, credential)?;
+        Ok((decoded.manifest, decoded.files))
+    }
+
+    /// Undo a completed restore using the recovery directory returned by
+    /// `restore`. The recovery directory is kept on failure.
+    pub fn revert_restore(
+        &self,
+        target_root: impl AsRef<Path>,
+        recovery: impl AsRef<Path>,
+        mode: &RestoreMode,
+    ) -> Result<(), BackupError> {
+        rollback_restore(target_root.as_ref(), recovery.as_ref(), mode)
+    }
+
     pub fn restore(
         &self,
         backup: impl AsRef<Path>,
         target_root: impl AsRef<Path>,
         options: &RestoreOptions,
+    ) -> Result<RestoreReport, BackupError> {
+        let target_root = target_root.as_ref();
+        self.restore_with_paths(
+            backup,
+            target_root,
+            options,
+            &restore_staging_path(target_root),
+            &recovery_path(target_root),
+        )
+    }
+
+    /// Restore with caller-provided staging/recovery paths. The caller can
+    /// journal these paths so an interrupted restore can be rolled back.
+    pub fn restore_with_paths(
+        &self,
+        backup: impl AsRef<Path>,
+        target_root: impl AsRef<Path>,
+        options: &RestoreOptions,
+        staging: &Path,
+        recovery: &Path,
     ) -> Result<RestoreReport, BackupError> {
         let backup = backup.as_ref();
         let target_root = target_root.as_ref();
@@ -447,10 +584,9 @@ impl BackupManager {
         let manifest = decoded.manifest;
         validate_manifest(&manifest)?;
 
-        let staging = restore_staging_path(target_root);
-        fs::create_dir_all(&staging)?;
+        fs::create_dir_all(staging)?;
         for (path, data) in &decoded.files {
-            let dest = safe_join(&staging, path)?;
+            let dest = safe_join(staging, path)?;
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -471,13 +607,13 @@ impl BackupManager {
                     )));
                 }
                 if root_check.schema_version.unwrap_or(0) > ROOT_SCHEMA_VERSION {
-                    return Err(BackupError::UnsupportedVersion(
+                    return Err(BackupError::UnsupportedSchema(
                         root_check.schema_version.unwrap_or(0),
                     ));
                 }
-                let migrated = Store::open(&staging)?;
+                let migrated = Store::open(staging)?;
                 if migrated.schema_version()? > ROOT_SCHEMA_VERSION {
-                    return Err(BackupError::UnsupportedVersion(migrated.schema_version()?));
+                    return Err(BackupError::UnsupportedSchema(migrated.schema_version()?));
                 }
             }
             for profile in &manifest.profiles {
@@ -491,14 +627,14 @@ impl BackupManager {
                     )));
                 }
                 if check.schema_version.unwrap_or(0) > PROFILE_SCHEMA_VERSION {
-                    return Err(BackupError::UnsupportedVersion(
+                    return Err(BackupError::UnsupportedSchema(
                         check.schema_version.unwrap_or(0),
                     ));
                 }
                 let profile_store =
                     ProfileStore::open_at(&path, ProfileId::new(profile.id.clone()))?;
                 if profile_store.schema_version()? > PROFILE_SCHEMA_VERSION {
-                    return Err(BackupError::UnsupportedVersion(
+                    return Err(BackupError::UnsupportedSchema(
                         profile_store.schema_version()?,
                     ));
                 }
@@ -506,18 +642,20 @@ impl BackupManager {
             Ok(())
         })();
         if let Err(error) = validation {
-            let _ = fs::remove_dir_all(&staging);
+            let _ = fs::remove_dir_all(staging);
             return Err(error);
         }
 
-        let recovery = recovery_path(target_root);
         let result = match &options.mode {
-            RestoreMode::Full => restore_full(target_root, &staging, &recovery, &manifest),
+            RestoreMode::Full => restore_full(target_root, staging, recovery, &manifest),
             RestoreMode::Profiles(ids) => {
-                restore_profiles(target_root, &staging, &recovery, ids, &manifest)
+                restore_profiles(target_root, staging, recovery, ids, &manifest)
+            }
+            RestoreMode::ProfilesMapped(map) => {
+                restore_profiles_mapped(target_root, staging, recovery, map, &manifest)
             }
         };
-        let _ = fs::remove_dir_all(&staging);
+        let _ = fs::remove_dir_all(staging);
         match result {
             Ok(profiles) => {
                 // Revalidate the live target before reporting success. If this
@@ -525,7 +663,7 @@ impl BackupManager {
                 let verification = (|| -> Result<(), BackupError> {
                     let store = Store::open(target_root)?;
                     if store.schema_version()? > ROOT_SCHEMA_VERSION {
-                        return Err(BackupError::UnsupportedVersion(store.schema_version()?));
+                        return Err(BackupError::UnsupportedSchema(store.schema_version()?));
                     }
                     for id in &profiles {
                         let path = target_root.join("profiles").join(id).join("amare.db");
@@ -539,7 +677,7 @@ impl BackupManager {
                     Ok(())
                 })();
                 if let Err(error) = verification {
-                    let _ = rollback_restore(target_root, &recovery, &options.mode, &manifest);
+                    let _ = rollback_restore(target_root, recovery, &options.mode);
                     return Err(error);
                 }
                 Ok(RestoreReport {
@@ -550,7 +688,7 @@ impl BackupManager {
                         .to_string(),
                     restored_profiles: profiles,
                     recovery_dir: if recovery.exists() {
-                        Some(recovery)
+                        Some(recovery.to_path_buf())
                     } else {
                         None
                     },
@@ -825,7 +963,9 @@ fn decode_payload(raw: &[u8]) -> Result<DecodedBackup, BackupError> {
         ));
     }
     let manifest: BackupManifest = serde_json::from_slice(&raw[4..manifest_end])?;
-    if manifest.format_version != BACKUP_FORMAT_VERSION {
+    if !(MIN_SUPPORTED_BACKUP_FORMAT_VERSION..=BACKUP_FORMAT_VERSION)
+        .contains(&manifest.format_version)
+    {
         return Err(BackupError::UnsupportedVersion(manifest.format_version));
     }
     validate_manifest(&manifest)?;
@@ -856,7 +996,9 @@ fn decode_payload(raw: &[u8]) -> Result<DecodedBackup, BackupError> {
 }
 
 fn validate_manifest(manifest: &BackupManifest) -> Result<(), BackupError> {
-    if manifest.format_version != BACKUP_FORMAT_VERSION {
+    if !(MIN_SUPPORTED_BACKUP_FORMAT_VERSION..=BACKUP_FORMAT_VERSION)
+        .contains(&manifest.format_version)
+    {
         return Err(BackupError::UnsupportedVersion(manifest.format_version));
     }
     if manifest.files.is_empty() {
@@ -918,6 +1060,26 @@ fn validate_manifest(manifest: &BackupManifest) -> Result<(), BackupError> {
             )));
         }
     }
+    for profile in &manifest.vault_profiles {
+        validate_profile_id(profile)
+            .map_err(|error| BackupError::InvalidFormat(error.to_string()))?;
+        if !manifest.profiles.iter().any(|entry| &entry.id == profile) {
+            return Err(BackupError::InvalidFormat(format!(
+                "vault profile {profile} is not in the profile list"
+            )));
+        }
+        let expected = format!("vault/{profile}.amarevault");
+        if !manifest.files.iter().any(|file| file.path == expected) {
+            return Err(BackupError::InvalidFormat(format!(
+                "missing vault export for profile {profile}"
+            )));
+        }
+    }
+    if manifest.contains_vault != !manifest.vault_profiles.is_empty() {
+        return Err(BackupError::InvalidFormat(
+            "contains_vault does not match vault_profiles".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -949,9 +1111,45 @@ fn safe_manifest_path(path: &str) -> Result<(), BackupError> {
             }
         }
     }
+    if let Some(name) = path.strip_prefix("app/") {
+        if matches!(
+            name,
+            "downloads.json"
+                | "app-preferences.json"
+                | "update-preferences.json"
+                | "ai-api-settings.json"
+        ) {
+            return Ok(());
+        }
+    }
+    let mut parts = path.split('/');
+    if parts.next() == Some("vault") {
+        if let Some(name) = parts.next() {
+            if let Some(id) = name.strip_suffix(".amarevault") {
+                validate_profile_id(id)
+                    .map_err(|error| BackupError::InvalidFormat(error.to_string()))?;
+                if parts.next().is_none() {
+                    return Ok(());
+                }
+            }
+        }
+    }
     Err(BackupError::InvalidFormat(format!(
         "unexpected backup path: {path}"
     )))
+}
+
+fn safe_app_file_path(path: &str) -> Result<(), BackupError> {
+    if path.is_empty()
+        || path.contains('/')
+        || path.contains('\\')
+        || path.contains(':')
+        || path == "."
+        || path == ".."
+    {
+        return Err(BackupError::UnsafePath(path.to_string()));
+    }
+    Ok(())
 }
 
 fn safe_join(root: &Path, path: &str) -> Result<PathBuf, BackupError> {
@@ -1076,6 +1274,25 @@ fn encryption_label(encryption: &BackupEncryption) -> &'static str {
     }
 }
 
+fn cleanup_stale_backup_temp(backup_dir: &Path) {
+    let Ok(entries) = fs::read_dir(backup_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with(".tmp-") {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            let _ = fs::remove_dir_all(path);
+        } else {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 fn backup_id(started: i64) -> String {
     let sequence = BACKUP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
@@ -1177,7 +1394,6 @@ fn rollback_restore(
     target_root: &Path,
     recovery: &Path,
     mode: &RestoreMode,
-    _manifest: &BackupManifest,
 ) -> Result<(), BackupError> {
     match mode {
         RestoreMode::Full => {
@@ -1206,6 +1422,16 @@ fn rollback_restore(
             for id in ids {
                 let target = target_root.join("profiles").join(id.as_str());
                 let old = recovery.join("profiles").join(id.as_str());
+                let _ = fs::remove_dir_all(&target);
+                if old.exists() {
+                    fs::rename(old, target)?;
+                }
+            }
+        }
+        RestoreMode::ProfilesMapped(map) => {
+            for (_, target_id) in map {
+                let target = target_root.join("profiles").join(target_id.as_str());
+                let old = recovery.join("profiles").join(target_id.as_str());
                 let _ = fs::remove_dir_all(&target);
                 if old.exists() {
                     fs::rename(old, target)?;
@@ -1332,6 +1558,57 @@ fn restore_profiles(
     Ok(ids.iter().map(|id| id.as_str().to_string()).collect())
 }
 
+fn restore_profiles_mapped(
+    target_root: &Path,
+    staging: &Path,
+    recovery: &Path,
+    map: &[(ProfileId, ProfileId)],
+    manifest: &BackupManifest,
+) -> Result<Vec<String>, BackupError> {
+    if map.is_empty() {
+        return Err(BackupError::NoProfiles);
+    }
+    fs::create_dir_all(recovery.join("profiles"))?;
+    let mut moved = Vec::new();
+    let result = (|| -> Result<(), BackupError> {
+        for (source_id, target_id) in map {
+            validate_profile_id(source_id.as_str())?;
+            validate_profile_id(target_id.as_str())?;
+            if !manifest
+                .profiles
+                .iter()
+                .any(|profile| profile.id == source_id.as_str())
+            {
+                return Err(BackupError::ProfileNotFound(source_id.to_string()));
+            }
+            let target = target_root.join("profiles").join(target_id.as_str());
+            if !target.exists() {
+                return Err(BackupError::ProfileNotFound(target_id.to_string()));
+            }
+            let source = staging.join("profiles").join(source_id.as_str());
+            if !source.exists() {
+                return Err(BackupError::ProfileNotFound(source_id.to_string()));
+            }
+            let old = recovery.join("profiles").join(target_id.as_str());
+            fs::rename(&target, &old)?;
+            moved.push((old, target.clone()));
+            fs::rename(&source, &target)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        for (old, target) in moved.into_iter().rev() {
+            let _ = fs::remove_dir_all(&target);
+            let _ = fs::rename(old, target);
+        }
+        return Err(error);
+    }
+    Ok(map
+        .iter()
+        .map(|(_, target_id)| target_id.as_str().to_string())
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1348,6 +1625,8 @@ mod tests {
             compression: "none".into(),
             encryption: "none".into(),
             contains_secrets: false,
+            contains_vault: false,
+            vault_profiles: vec![],
             consistency: "test".into(),
             files,
         }
