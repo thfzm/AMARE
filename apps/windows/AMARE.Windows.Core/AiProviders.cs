@@ -742,7 +742,7 @@ internal static class AiResponseParser
             && error.TryGetProperty("code", out var codeValue)
             ? codeValue.GetString()
             : null;
-        var kind = code is "insufficient_quota" or "billing_hard_limit_reached"
+        var kind = IsQuotaCode(code)
             ? AiErrorKind.Quota
             : status switch
             {
@@ -754,6 +754,14 @@ internal static class AiResponseParser
             };
         return new AiException(kind, AiRedaction.Redact(message ?? "AI API error."), status);
     }
+
+    private static bool IsQuotaCode(string? code) => code is
+        "insufficient_quota" or
+        "billing_hard_limit_reached" or
+        "credit_balance_exhausted" or
+        "organization_spend_limit_exceeded" or
+        "project_spend_limit_exceeded" or
+        "organization_usage_limit_exceeded";
 
     private static int? ReadInt(JsonElement root, params string[] names)
     {
@@ -878,7 +886,7 @@ internal static class AiHttp
             // Non-JSON error body; keep the sanitized text.
         }
         var status = (int)response.StatusCode;
-        var kind = code is "insufficient_quota" or "billing_hard_limit_reached"
+        var kind = IsQuotaCode(code)
             ? AiErrorKind.Quota
             : status switch
             {
@@ -900,6 +908,14 @@ internal static class AiHttp
             retryAfter,
             requestId);
     }
+
+    private static bool IsQuotaCode(string? code) => code is
+        "insufficient_quota" or
+        "billing_hard_limit_reached" or
+        "credit_balance_exhausted" or
+        "organization_spend_limit_exceeded" or
+        "project_spend_limit_exceeded" or
+        "organization_usage_limit_exceeded";
 
     private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
     {

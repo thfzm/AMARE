@@ -91,6 +91,31 @@ internal static class Phase32Tests
             Require(error.Kind == AiErrorKind.Quota, error.Kind.ToString());
         }
 
+        using (var handler = new CaptureHandler((_, _) => Task.FromResult(Json(
+                   (HttpStatusCode)429,
+                   """{"error":{"message":"credits","code":"credit_balance_exhausted"}}"""))))
+        {
+            var service = AiAssistantService.Create(settings, "sk-test-key", handler);
+            Require(Throws<AiException>(() =>
+                service.CompleteAsync(Request("hi")).GetAwaiter().GetResult()).Kind
+                == AiErrorKind.Quota, "credit quota mapping");
+        }
+
+        using (var handler = new CaptureHandler((_, _) =>
+               {
+                   var response = Json(HttpStatusCode.ServiceUnavailable,
+                       """{"error":{"message":"overloaded","code":"server_is_overloaded"}}""");
+                   response.Headers.Add("retry-after", "5");
+                   return Task.FromResult(response);
+               }))
+        {
+            var service = AiAssistantService.Create(settings, "sk-test-key", handler);
+            var error = Throws<AiException>(() =>
+                service.CompleteAsync(Request("hi")).GetAwaiter().GetResult());
+            Require(error.Kind == AiErrorKind.Server && error.RetryAfter?.TotalSeconds == 5,
+                "503 overload mapping");
+        }
+
         using (var handler = new CaptureHandler((_, _) =>
                Task.FromResult(Json(HttpStatusCode.InternalServerError, """{"error":"server"}"""))))
         {
