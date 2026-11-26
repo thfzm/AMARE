@@ -8,7 +8,7 @@ public sealed partial class MainWindow
 {
     private const string TestLegacyPermissionEnv = "AMARE_TEST_LEGACY_PERMISSION";
     private static readonly TimeSpan PermissionAuditRetryDelay = TimeSpan.FromSeconds(30);
-    private static readonly object PermissionAuditGate = new();
+    private static readonly object PermissionAuditSync = new();
     private static readonly Dictionary<string, PermissionAuditEntry> PermissionAudits =
         new(StringComparer.Ordinal);
     private static readonly HashSet<string> PermissionAuditSeeded =
@@ -51,7 +51,7 @@ public sealed partial class MainWindow
         var client = _vaultClient;
 
         Task<PermissionAuditResult> task;
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             if (PermissionAudits.TryGetValue(auditKey, out var existing))
             {
@@ -134,7 +134,7 @@ public sealed partial class MainWindow
                 $"{exception.GetType().Name}:0x{exception.HResult:X8}");
         }
 
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             if (PermissionAudits.TryGetValue(auditKey, out var entry)
                 && entry.Generation == generation)
@@ -310,7 +310,7 @@ public sealed partial class MainWindow
         {
             return;
         }
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             if (!PermissionAuditSeeded.Add(auditKey))
             {
@@ -367,7 +367,7 @@ public sealed partial class MainWindow
 
     private static WebViewPermissionAuditState PermissionAuditStateFor(string auditKey)
     {
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             return PermissionAudits.TryGetValue(auditKey, out var entry)
                 ? entry.State
@@ -377,7 +377,7 @@ public sealed partial class MainWindow
 
     private static string PermissionAuditSummary(string auditKey)
     {
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             if (!PermissionAudits.TryGetValue(auditKey, out var entry))
             {
@@ -401,7 +401,7 @@ public sealed partial class MainWindow
 
     private static void ForgetPermissionAudit(string auditKey)
     {
-        lock (PermissionAuditGate)
+        lock (PermissionAuditSync)
         {
             PermissionAudits.Remove(auditKey);
             PermissionAuditSeeded.Remove(auditKey);
