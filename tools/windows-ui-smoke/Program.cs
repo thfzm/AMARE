@@ -428,6 +428,14 @@ internal static class Program
             Check("vault_fill_explicit_and_no_submit", VaultFillExplicit);
             Check("vault_forged_message_rejected", VaultForgedMessageRejected);
             Check("vault_capture_locked_rejected", VaultCaptureLockedRejected);
+            Check("vault_capture_settings_off", VaultCaptureSettingsOff);
+            Check("vault_fill_settings_off", VaultFillSettingsOff);
+            Check("vault_fill_locked_rejected", VaultFillLockedRejected);
+            Check("vault_capture_cross_action_rejected", VaultCrossActionRejected);
+            Check("vault_capture_cross_frame_rejected", VaultCrossFrameRejected);
+            Check("vault_fill_other_origin_rejected", VaultFillOtherOriginRejected);
+            Check("vault_fill_hidden_field_rejected", VaultHiddenFieldRejected);
+            Check("vault_duplicate_not_overwritten", VaultDuplicateNotOverwritten);
             Check("vault_ui_idle_lock", VaultIdleLock);
             Check("site_permissions_legacy_audit", SitePermissionsLegacyAudit);
             Check("site_permissions_one_time_decisions", SitePermissionsDenyOnce);
@@ -2981,6 +2989,213 @@ internal static class Program
         {
             CloseActiveTabAndWait(beforeTabs);
             EnsureVaultUnlockedForBrowsing();
+        }
+    }
+
+    private static void SetSettingsToggle(string id, bool value)
+    {
+        OpenSettings();
+        SetToggle(id, value);
+        InvokeDialogButton("Settings", "Save");
+        WaitFor(() => FindByName("Settings") is null,
+            TimeSpan.FromSeconds(10), "settings toggle save close");
+    }
+
+    private static string VaultCaptureSettingsOff()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        SetSettingsToggle("SettingsPasswordSaveBox", false);
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=1&user=save-off-user");
+            Thread.Sleep(3200);
+            Require(FindByName("Save password?") is null,
+                "save prompt appeared while login_save_prompt_enabled was OFF");
+            Require(VaultEntryCountForTest() == before,
+                "save-off capture changed the Vault");
+            return "login_save_prompt_enabled OFF blocks capture and storage";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+            SetSettingsToggle("SettingsPasswordSaveBox", true);
+        }
+    }
+
+    private static string VaultFillSettingsOff()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        SetSettingsToggle("SettingsPasswordAutofillBox", false);
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=0");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Fill password for this site…");
+            WaitFor(() => StatusTextContains("disabled"),
+                TimeSpan.FromSeconds(8), "autofill-off status");
+            Require(FindByName("Fill password") is null,
+                "fill dialog appeared while login_autofill_enabled was OFF");
+            AssertPageDoesNotContain("filled:");
+            return "login_autofill_enabled OFF blocks explicit fill";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+            SetSettingsToggle("SettingsPasswordAutofillBox", true);
+        }
+    }
+
+    private static string VaultFillLockedRejected()
+    {
+        OpenVault();
+        WaitVaultStatus("Unlocked");
+        Invoke(FindById("VaultLockButton")
+            ?? throw new InvalidOperationException("VaultLockButton missing"));
+        WaitVaultStatus("Locked");
+        if (FindById("VaultCloseButton") is { } close)
+        {
+            Invoke(close);
+        }
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=0");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Fill password for this site…");
+            WaitFor(() => StatusTextContains("Unlock the Vault"),
+                TimeSpan.FromSeconds(8), "locked fill status");
+            Require(FindByName("Fill password") is null,
+                "fill dialog appeared while the Vault was locked");
+            AssertPageDoesNotContain("filled:");
+            return "explicit fill is rejected while the Vault is locked";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+            EnsureVaultUnlockedForBrowsing();
+        }
+    }
+
+    private static string VaultCrossActionRejected()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login-cross-action.html");
+            AssertPageContains("AMARE Cross Action Login");
+            Thread.Sleep(2500);
+            Require(FindByName("Save password?") is null,
+                "cross-origin form action produced a save prompt");
+            Require(VaultEntryCountForTest() == before,
+                "cross-origin form action changed the Vault");
+            return "cross-origin form action capture is rejected";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultCrossFrameRejected()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login-cross-frame.html");
+            AssertPageContains("AMARE Cross Frame Login");
+            Thread.Sleep(2600);
+            Require(FindByName("Save password?") is null,
+                "cross-origin iframe login produced a save prompt");
+            Require(VaultEntryCountForTest() == before,
+                "cross-origin iframe login changed the Vault");
+            return "cross-origin iframe login capture is rejected";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultFillOtherOriginRejected()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitAddress("https://amare-vault-alt.test/login.html?auto=0");
+            AssertPageContains("AMARE Vault Login");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Fill password for this site…");
+            WaitFor(() => StatusTextContains("No saved account matches"),
+                TimeSpan.FromSeconds(8), "other-origin fill status");
+            Require(FindByName("Fill password") is null,
+                "fill dialog listed an entry for another origin");
+            AssertPageDoesNotContain("filled:");
+            return "fill rejects another origin with the same path";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultHiddenFieldRejected()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login-hidden.html");
+            AssertPageContains("AMARE Hidden Password Login");
+            Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+            InvokeMenu("Fill password for this site…");
+            WaitFor(() => StatusTextContains("No single eligible login form"),
+                TimeSpan.FromSeconds(8), "hidden field fill status");
+            Require(FindByName("Fill password") is null,
+                "fill dialog appeared for hidden/disabled password fields");
+            AssertPageDoesNotContain("filled:");
+            return "hidden/disabled password fields are rejected";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
+    }
+
+    private static string VaultDuplicateNotOverwritten()
+    {
+        EnsureVaultUnlockedForBrowsing();
+        var before = VaultEntryCountForTest();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            SubmitVaultTestUrl("login.html?auto=1&user=vault-user");
+            WaitFor(() => FindByName("Save password?") is not null,
+                TimeSpan.FromSeconds(20), "duplicate save dialog");
+            InvokeDialogButton("Save password?", "Save");
+            WaitFor(() => StatusTextContains("already saved"),
+                TimeSpan.FromSeconds(20), "duplicate not overwritten status");
+            Require(VaultEntryCountForTest() == before, "duplicate capture changed the Vault");
+            return "duplicate exact-origin/account is not overwritten";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
         }
     }
 

@@ -24,6 +24,7 @@ public sealed partial class MainWindow
     private string? _vaultClientProfile;
     private ulong _vaultClientGeneration;
     private VaultUiState _vaultState = VaultUiState.Closed;
+    private long _vaultLockEpoch;
     private bool _vaultOpen;
     private bool _vaultBusy;
     private bool _suppressVaultSelection;
@@ -529,6 +530,7 @@ public sealed partial class MainWindow
 
     private async Task LockVaultAsync(bool broadcast, string reason)
     {
+        Interlocked.Increment(ref _vaultLockEpoch);
         if (_vaultClient is not null && _context is not null)
         {
             try

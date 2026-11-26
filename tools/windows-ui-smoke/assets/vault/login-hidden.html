@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Hidden Password Login</title></head>
+<body>
+<h1>AMARE Hidden Password Login</h1>
+<div id="status">waiting</div>
+<form id="login" action="login-hidden.html" method="post" onsubmit="event.preventDefault()">
+  <label>Username <input id="username" name="username" type="text" autocomplete="username"></label>
+  <input id="hidden-password" name="hidden-password" type="password" autocomplete="current-password" style="display:none">
+  <input id="disabled-password" name="disabled-password" type="password" autocomplete="current-password" disabled>
+  <button type="submit">Sign in</button>
+</form>
+</body>
+</html>

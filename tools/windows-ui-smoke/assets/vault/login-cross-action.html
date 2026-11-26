@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AMARE Cross Action Login</title></head>
+<body>
+<h1>AMARE Cross Action Login</h1>
+<div id="status">waiting</div>
+<form id="login" action="https://amare-vault-alt.test/login.html" method="post"
+      onsubmit="event.preventDefault(); document.getElementById('status').textContent = 'submitted';">
+  <label>Username <input id="username" name="username" type="text" autocomplete="username"></label>
+  <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+  <button type="submit">Sign in</button>
+</form>
+<script>
+window.addEventListener('load', () => {
+  document.getElementById('username').value = 'cross-action-user';
+  document.getElementById('password').value = 'Cross-Action-Test-Password';
+  setTimeout(() => document.getElementById('login').requestSubmit(), 900);
+});
+</script>
+</body>
+</html>

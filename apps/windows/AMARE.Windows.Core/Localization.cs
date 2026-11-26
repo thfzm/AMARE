@@ -269,6 +269,7 @@ public static class L10n
 
         // Vault / downloads / updates common labels
         ["vault.autofillDisabled"] = ("Password autofill is disabled in Settings.", "설정에서 비밀번호 자동 입력이 비활성화되어 있습니다."),
+        ["vault.savePromptsDisabled"] = ("Login save prompts are disabled in Settings. Nothing was saved.", "설정에서 로그인 저장 제안이 비활성화되어 있습니다. 아무것도 저장하지 않았습니다."),
         ["vault.notInitialized"] = ("Not initialized", "초기화되지 않음"),
         ["vault.create"] = ("Create your password vault", "비밀번호 보관함 만들기"),
         ["vault.lockedCount"] = ("Locked · {0} revisions", "잠김 · {0}개 버전"),

@@ -334,6 +334,11 @@ public sealed partial class MainWindow
             StatusText.Text = "Password detected. Unlock the Vault before saving it.";
             return;
         }
+        var vaultEpoch = _vaultLockEpoch;
+        if (!_passwordSavePromptEnabled)
+        {
+            return;
+        }
         if (!host.VaultState.TryAcceptLoginCandidate(json, source, out var candidate))
         {
             AppLog.Info("WebView login candidate rejected by document trust state");
@@ -379,8 +384,13 @@ public sealed partial class MainWindow
                 return;
             }
 
-            if (!VaultContextStillValid(host, core, vault, context, profileId, candidate.Generation,
-                    candidate.Origin, candidate.DocumentUrl))
+            if (!_passwordSavePromptEnabled)
+            {
+                StatusText.Text = L10n.T("vault.savePromptsDisabled");
+                return;
+            }
+            if (!VaultContextStillValid(host, core, vault, context, profileId, vaultEpoch,
+                    candidate.Generation, candidate.Origin, candidate.DocumentUrl))
             {
                 AppLog.Info("WebView save rejected: context changed before approval");
                 StatusText.Text = "The page changed before the password was saved. Nothing was saved.";
@@ -416,8 +426,9 @@ public sealed partial class MainWindow
             }
             try
             {
-                if (!VaultContextStillValid(host, core, vault, context, profileId, candidate.Generation,
-                        candidate.Origin, candidate.DocumentUrl)
+                if (!_passwordSavePromptEnabled
+                    || !VaultContextStillValid(host, core, vault, context, profileId, vaultEpoch,
+                        candidate.Generation, candidate.Origin, candidate.DocumentUrl)
                     || !string.Equals(secret.Username, candidate.Username, StringComparison.Ordinal)
                     || string.IsNullOrWhiteSpace(secret.Username)
                     || secret.Username.Length > WebViewVaultTabState.MaxUsernameLength
@@ -526,6 +537,7 @@ public sealed partial class MainWindow
                 StatusText.Text = "Unlock the Vault before filling a password.";
                 return;
             }
+            var vaultEpoch = _vaultLockEpoch;
 
             if (!TryBeginVaultCommand(host, WebViewVaultCommandKind.Detect,
                     null, out var detectOperation, out var detectCompletion)
@@ -542,6 +554,11 @@ public sealed partial class MainWindow
                 || descriptor.Generation != host.VaultState.Generation)
             {
                 StatusText.Text = "No single eligible login form was found on this page.";
+                return;
+            }
+            if (!_passwordAutofillEnabled || _vaultLockEpoch != vaultEpoch)
+            {
+                StatusText.Text = L10n.T("vault.autofillDisabled");
                 return;
             }
 
@@ -563,6 +580,11 @@ public sealed partial class MainWindow
             if (exact.Count == 0)
             {
                 StatusText.Text = $"No saved account matches {origin.Value} exactly.";
+                return;
+            }
+            if (!_passwordAutofillEnabled || _vaultLockEpoch != vaultEpoch)
+            {
+                StatusText.Text = L10n.T("vault.autofillDisabled");
                 return;
             }
 
@@ -608,7 +630,8 @@ public sealed partial class MainWindow
                 return;
             }
 
-            if (!VaultContextStillValid(host, core, vault, context, profileId,
+            if (!_passwordAutofillEnabled
+                || !VaultContextStillValid(host, core, vault, context, profileId, vaultEpoch,
                     descriptor.Generation, origin, descriptor.DocumentUrl))
             {
                 StatusText.Text = "The page changed before fill. Nothing was filled.";
@@ -635,7 +658,8 @@ public sealed partial class MainWindow
             {
                 if (!WebOrigin.TryParse(secret.Origin, out var secretOrigin)
                     || secretOrigin != origin
-                    || !VaultContextStillValid(host, core, vault, context, profileId,
+                    || !_passwordAutofillEnabled
+                    || !VaultContextStillValid(host, core, vault, context, profileId, vaultEpoch,
                         descriptor.Generation, origin, descriptor.DocumentUrl))
                 {
                     StatusText.Text = "The page changed before fill. Nothing was filled.";
@@ -683,11 +707,14 @@ public sealed partial class MainWindow
         AmareVaultClient vault,
         ProfileContextDto context,
         string profileId,
+        long vaultEpoch,
         long generation,
         WebOrigin origin,
         string documentUrl)
     {
         return !host.Closed
+               && _vaultState == VaultUiState.Unlocked
+               && _vaultLockEpoch == vaultEpoch
                && ReferenceEquals(host.View.CoreWebView2, core)
                && ReferenceEquals(_vaultClient, vault)
                && _context == context
