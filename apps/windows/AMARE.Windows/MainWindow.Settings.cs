@@ -540,6 +540,9 @@ public sealed partial class MainWindow
             return;
         }
 
+        var previousApp = _appPreferences;
+        var previousUpdate = _updatePreferences;
+        var previousAi = _aiApiSettings;
         _themeId = theme;
         _engineId = engine.Id;
         _restoreSession = restore;
@@ -548,7 +551,6 @@ public sealed partial class MainWindow
         _passwordSavePromptEnabled = savePrompt;
         _aiApiSettings = aiSettings with { KeyRejected = newAiKey.Length > 0 ? false : _aiKeyRejected };
         _aiKeyRejected = _aiApiSettings.KeyRejected;
-        var languageChanged = !string.Equals(_appPreferences.Language, language, StringComparison.OrdinalIgnoreCase);
         _appPreferences = _appPreferences with
         {
             Language = language,
@@ -562,6 +564,19 @@ public sealed partial class MainWindow
         var appSaved = SaveAppPreferences();
         var updateSaved = SaveUpdatePreferences();
         var aiSaved = SaveAiApiSettings();
+        if (!appSaved)
+        {
+            _appPreferences = previousApp;
+        }
+        if (!updateSaved)
+        {
+            _updatePreferences = previousUpdate;
+        }
+        if (!aiSaved)
+        {
+            _aiApiSettings = previousAi;
+            _aiKeyRejected = previousAi.KeyRejected;
+        }
         ApplyThemeToAllWindows(theme);
         _initializingSettings = true;
         SearchEngineBox.SelectedItem = engine;
@@ -571,6 +586,8 @@ public sealed partial class MainWindow
             StatusText.Text = L10n.T("settings.partialSave");
             return;
         }
+        var languageChanged = !string.Equals(
+            previousApp.Language, _appPreferences.Language, StringComparison.OrdinalIgnoreCase);
         StatusText.Text = languageChanged
             ? L10n.T("settings.languageRestart")
             : L10n.T("settings.saved");
