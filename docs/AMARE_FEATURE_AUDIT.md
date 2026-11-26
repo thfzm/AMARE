@@ -1,18 +1,20 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1 사이트 권한 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.1.1 Legacy Permission Reconciliation)
-- 기준: `fix/phase-2-webview-permission-reconciliation`, 제품/테스트 `d41ee59`
+- 최신 갱신: 2026-11-26 (Phase 2.2 Actual AI API)
+- 기준: `feature/phase-2-ai-api`, 제품/테스트 `a8d1747`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
 > Phase 2.1 상세는
 > [`AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`](AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md),
 > Phase 2.1.1 audit/reconciliation은
-> [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md)에
+> [`AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`](AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md),
+> Phase 2.2 actual AI API는
+> [`AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`](AMARE_PHASE2_ACTUAL_AI_API_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1/2.1.1 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1/2.1.1/2.2 갱신을 함께 표시한다.
 
 ---
 
@@ -44,14 +46,14 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **73/73** (Phase 2.1.1, 기존 64 + site permissions 9) |
-| Windows 통합 검증 (최신) | **172 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (188 total, package 단계 skip) |
-| C#↔Rust interop (최신) | **103/103** (Phase 2.1.1) |
+| WinUI UI smoke (최신) | **74/74** (Phase 2.2, 기존 73 + AI key save/delete) |
+| Windows 통합 검증 (최신) | **179 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (195 total, package 단계 skip) |
+| C#↔Rust interop (최신) | **110/110** (Phase 2.2) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.1.1, `d41ee59`) |
+| Linux CI | SUCCESS (Phase 2.2, `a8d1747`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -101,7 +103,7 @@ WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 | 8 | 비밀번호 저장/자동완성 | `PARTIALLY_IMPLEMENTED` (저장/UI, 자동완성 미구현) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 9 | Vault 보안 | `IMPLEMENTED_AND_VERIFIED` (관리 UI/CI) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 10 | AI Web Panel | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
-| 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
+| 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` (CI/contract; real E2E UNVERIFIED) | `NOT_IMPLEMENTED` | P1 |
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 13 | Find in Page | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 14 | 사이트 권한 | **`IMPLEMENTED_AND_VERIFIED` (CI)** | `PARTIALLY_IMPLEMENTED` | P1 |
@@ -405,21 +407,40 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ---
 
-### 4.11 AI API 모드
+### 4.11 AI API 모드 — **Phase 2.2 Actual API**
 
-**WinUI — `IMPLEMENTED_AND_VERIFIED` (계약/모의)**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (CI / HTTP contract)**
 
-- `AiApiClient`: 요청 구성, 응답 파싱, SSE, cancel.
-- interop: 401/429/network 오류, redaction, provider 선택, cancel PASS.
-- `api_ai_settings_dialog`, `api_ai_no_key` UI smoke PASS.
-- API 키는 Windows Credential Manager에만 저장하고 로그/설정 파일에 쓰지 않는다.
+- OpenAI official **Responses API** provider (`POST /v1/responses`)와
+  OpenAI-compatible Chat Completions provider를 분리했다.
+- `IAiProvider`/`AiAssistantService`가 provider, API key, mode, 오류, 취소를
+  담당한다. UI에 endpoint/JSON/HTTP를 직접 넣지 않는다.
+- Mock (`MockAiProvider`, no network) / Actual mode를 Settings에서 선택한다.
+  기본값은 기존 key 사용자 동작을 보존하기 위해 Actual API다.
+- API key는 Windows Credential Manager에만 저장한다.
+  - `CredWriteW`/`CredReadW`/`CredDeleteW`
+  - settings JSON/SQLite/log/WebView에 key를 쓰지 않는다.
+  - 설정 화면에서는 masking, blank=keep, rejected 상태를 표시한다.
+- Page context는 dialog checkbox 기본 **OFF**이며, 사용자가 check한 경우에만
+  현재 tab의 title/URL/article text를 untrusted data로 전송한다.
+- 401/403, 429/rate limit, quota code, 5xx/503 overload, timeout, network,
+  malformed response를 구분한다. `Retry-After`/`x-request-id`를 파싱한다.
+- SSE streaming, cancel, Stop/Retry/Clear conversation, generation guard를
+  구현했다.
+- AI WebView는 기존 separate profile + deny-all을 유지하며 API key bridge가
+  없다.
+- 검증: UI **74/74**, interop **110/110**, Windows **179/0/8/8**, Linux SUCCESS.
+- UNVERIFIED: 실제 API key가 없어 실제 `/v1/responses` E2E는 미실행.
+  UI Mock flow, 실제 401/429/quota 응답, late-response race, Windows 11.
+- 상세: [`AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`](AMARE_PHASE2_ACTUAL_AI_API_REPORT.md).
 
 **GPUI — `NOT_IMPLEMENTED`**
 
 **격차**
 
-- 실제 OpenAI/제공자 API 호출은 키가 없어 CI에서 UNVERIFIED다.
-- 개인용 완료 전 1회 실제 호출과 오류/취소/키 삭제를 실기기에서 확인해야 한다.
+- 실제 OpenAI endpoint 호출은 사용자 API key가 있는 별도 환경에서 1회
+  E2E로 확인해야 한다.
+- 실제 rate-limit/quota/과금 오류와 usage header 표시는 후속 검증이다.
 
 ---
 
@@ -714,5 +735,10 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   UNVERIFIED로 남긴다.
   상세: `docs/AMARE_PHASE2_SITE_PERMISSIONS_REPORT.md`,
   `docs/AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`.
+- AI API 모드(P1)는 Phase 2.2에서 OpenAI Responses provider, Mock/Actual,
+  Windows Credential Manager key 저장, page context 명시 동의, SSE/cancel/
+  오류 UI를 구현하고 CI로 검증했다. 실제 OpenAI endpoint 호출은 API key가
+  없어 UNVERIFIED다. 상세:
+  `docs/AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.

@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1 사이트 권한 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.1.1 Legacy Permission Reconciliation)
-- 기준: `fix/phase-2-webview-permission-reconciliation`, 제품/테스트 `d41ee59`
+- 최신 갱신: 2026-11-26 (Phase 2.2 Actual AI API)
+- 기준: `feature/phase-2-ai-api`, 제품/테스트 `a8d1747`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -149,6 +149,21 @@
   strict lifecycle race, 구버전 WebView2 runtime
 - 상세: `docs/AMARE_PHASE2_SITE_PERMISSION_RECONCILIATION_REPORT.md`
 
+### Phase 2.2 진행 상태
+
+- **Actual AI API 기반 구현 및 CI 검증 완료** (`a8d1747`)
+- OpenAI Responses API provider + OpenAI-compatible Chat provider + Mock provider
+- Settings: Enabled / Mock·Actual / model / key / test / delete
+- API key: Windows Credential Manager (`CredWrite/Read/Delete`)
+- page context checkbox 기본 OFF, current tab title/URL/article only
+- SSE streaming, cancel, Retry, Clear conversation, 401/429/quota/5xx/timeout/
+  network 오류 UI
+- AI WebView 별도 profile/deny-all 유지, API key bridge 없음
+- UI **74/74**, interop **110/110**, Windows **179/0/8/8**, Linux SUCCESS
+- UNVERIFIED: 실제 API key를 사용한 `/v1/responses` E2E, 실제 rate limit/
+  quota 응답, UI Mock flow, late-response race, Windows 11
+- 상세: `docs/AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -162,6 +177,9 @@
   store(schema v6), FFI ABI2, 설정 UI, iframe/AI/Reader/popup 정책, 그리고
   legacy WebView2 permission startup audit/reset. 실제 Windows 11과
   cross-process/strict race는 UNVERIFIED.
+- **Phase 2.2 완료(CI/contract)**: AI API — OpenAI Responses provider,
+  Mock/Actual, Credential Manager key, page context consent, SSE/cancel/errors.
+  실제 endpoint E2E는 API key가 없어 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
@@ -210,7 +228,7 @@
 ### P1 — 개인용 핵심 기능/배포
 
 - ~~사이트 권한~~ — **RESOLVED (Phase 2.1, CI)**
-- AI 패널 실제 서비스/세션 격리
+- AI 패널 실제 서비스/세션 격리 — **Actual API provider DONE (2.2); real E2E/web service UNVERIFIED**
 - 업데이트 설치 end-to-end
 - WinUI/GPUI 데이터 루트 불일치
 - WinUI 멀티윈도우 독립 navigation
@@ -344,7 +362,7 @@ classification: PRODUCT_DEFECT | TEST_AUTOMATION_BUG | ENVIRONMENT_LIMITATION | 
 | 작업 | 내용 | 예상 |
 |---|---|---:|
 | 2-1 사이트 권한 | `PermissionRequested`, per-profile store, 허용/차단/초기화 | **DONE (Phase 2.1, CI)** |
-| 2-2 AI 패널/API | 실제 서비스 로그인/격리, 실제 API 1회, 키 삭제 | 2–4일 |
+| 2-2 AI 패널/API | 실제 서비스 로그인/격리, 실제 API 1회, 키 삭제 | **Actual API DONE (CI); real E2E UNVERIFIED** |
 | 2-3 설정/한국어 | 다운로드/홈/개인정보/권한/언어, 리소스 문자열 | 2–4일 |
 | 2-4 업데이터 E2E | Portable ZIP 적용/롤백/health marker/데이터 보존 | 3–5일 |
 | 2-5 Reader/Find 보완 | 실제 사이트 표본, IME 중 Find | 1–2일 |
@@ -451,7 +469,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
 | 6 | 다운로드 정상 | 실제 파일 다운로드 |
 | 7 | 세션 복원/충돌 복구 | 2·3창 + 강제 종료 |
 | 8 | 비밀번호 저장/자동완성 보안 | unit + 실기기 |
-| 9 | AI Web Panel 정상 | 실제 서비스 |
+| 9 | AI Web Panel 정상 | 실제 서비스 + API provider contract (Phase 2.2); real API E2E UNVERIFIED |
 | 10 | Reader/Find 정상 | UI smoke + 실기기 |
 | 11 | 사이트 권한 설정 가능 | UI smoke 73/73 + Store/FFI + legacy audit (Phase 2.1/2.1.1); 실제 Windows 11은 UNVERIFIED |
 | 12 | 설정/데이터 보존 | 업데이트 전후 비교 |
