@@ -13,8 +13,6 @@ public sealed partial class MainWindow
     private bool _saveHistory = true;
     private bool _passwordAutofillEnabled = true;
     private bool _passwordSavePromptEnabled = true;
-    private string _uiFont = "Segoe UI";
-    private double _uiFontSize = 16;
 
     private string AppPreferencesPath => Path.Combine(_appDataRoot, "app-preferences.json");
 
@@ -73,22 +71,6 @@ public sealed partial class MainWindow
         var fallback = Path.Combine(_appDataRoot, "downloads");
         Directory.CreateDirectory(fallback);
         return fallback;
-    }
-
-    private void ApplyUiAppearance()
-    {
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(_uiFont))
-            {
-                RootGrid.FontFamily = new FontFamily(_uiFont);
-            }
-            RootGrid.FontSize = Math.Clamp(_uiFontSize, 12, 20);
-        }
-        catch (Exception exception)
-        {
-            AppLog.Warn($"UI font could not be applied: {exception.GetType().Name}");
-        }
     }
 
     private void ApplyThemeToAllWindows(string theme)
@@ -171,26 +153,6 @@ public sealed partial class MainWindow
             IsChecked = _passwordSavePromptEnabled
         };
         AutomationProperties.SetAutomationId(savePromptBox, "SettingsPasswordSaveBox");
-        var fontBox = new TextBox
-        {
-            Text = _uiFont,
-            PlaceholderText = "Segoe UI"
-        };
-        AutomationProperties.SetAutomationId(fontBox, "SettingsFontBox");
-        var fontSizeValue = new TextBlock { Text = _uiFontSize.ToString("0") };
-        var fontSizeBox = new Slider
-        {
-            Minimum = 12,
-            Maximum = 20,
-            StepFrequency = 1,
-            Value = Math.Clamp(_uiFontSize, 12, 20),
-            MinWidth = 220
-        };
-        AutomationProperties.SetAutomationId(fontSizeBox, "SettingsFontSizeBox");
-        fontSizeBox.ValueChanged += (_, args) =>
-        {
-            fontSizeValue.Text = args.NewValue.ToString("0");
-        };
         var downloadBox = new TextBox
         {
             Text = _appPreferences.DownloadDirectory,
@@ -392,13 +354,6 @@ public sealed partial class MainWindow
         Heading(L10n.T("settings.appearance"), L10n.T("settings.scopeProfile"));
         stack.Children.Add(new TextBlock { Text = L10n.T("settings.theme") });
         stack.Children.Add(themeBox);
-        stack.Children.Add(new TextBlock { Text = L10n.T("settings.uiFont") });
-        stack.Children.Add(fontBox);
-        stack.Children.Add(new TextBlock { Text = L10n.T("settings.uiFontSize") });
-        var fontPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        fontPanel.Children.Add(fontSizeBox);
-        fontPanel.Children.Add(fontSizeValue);
-        stack.Children.Add(fontPanel);
         Heading(L10n.T("settings.privacy"), L10n.T("settings.scopeProfile"));
         stack.Children.Add(historyBox);
         stack.Children.Add(autofillBox);
@@ -528,8 +483,6 @@ public sealed partial class MainWindow
         var saveHistory = historyBox.IsChecked == true;
         var autofill = autofillBox.IsChecked == true;
         var savePrompt = savePromptBox.IsChecked == true;
-        var font = fontBox.Text.Trim().Length == 0 ? "Segoe UI" : fontBox.Text.Trim();
-        var fontSize = (int)Math.Round(fontSizeBox.Value);
         var channel = channelBox.SelectedIndex == 1 ? UpdateChannel.Prerelease : UpdateChannel.Stable;
         var aiSettings = new AiApiSettings(
             aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
@@ -548,9 +501,7 @@ public sealed partial class MainWindow
                 ("restore_session", SettingValueDto.Boolean(restore)),
                 ("save_history", SettingValueDto.Boolean(saveHistory)),
                 ("password_autofill_enabled", SettingValueDto.Boolean(autofill)),
-                ("password_save_prompt_enabled", SettingValueDto.Boolean(savePrompt)),
-                ("ui_font", SettingValueDto.Text(font)),
-                ("ui_font_size", SettingValueDto.Integer(fontSize))
+                ("password_save_prompt_enabled", SettingValueDto.Boolean(savePrompt))
             });
         }
         catch (Exception exception)
@@ -566,8 +517,6 @@ public sealed partial class MainWindow
         _saveHistory = saveHistory;
         _passwordAutofillEnabled = autofill;
         _passwordSavePromptEnabled = savePrompt;
-        _uiFont = font;
-        _uiFontSize = fontSize;
         _aiApiSettings = aiSettings with { KeyRejected = newAiKey.Length > 0 ? false : _aiKeyRejected };
         _aiKeyRejected = _aiApiSettings.KeyRejected;
         var languageChanged = !string.Equals(_appPreferences.Language, language, StringComparison.OrdinalIgnoreCase);
@@ -585,7 +534,6 @@ public sealed partial class MainWindow
         var updateSaved = SaveUpdatePreferences();
         var aiSaved = SaveAiApiSettings();
         ApplyThemeToAllWindows(theme);
-        ApplyUiAppearance();
         _initializingSettings = true;
         SearchEngineBox.SelectedItem = engine;
         _initializingSettings = false;

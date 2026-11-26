@@ -621,12 +621,7 @@ public sealed partial class MainWindow : Window
             _passwordAutofillEnabled = autofill.Value.AsBoolean();
             var savePrompt = await _settings.GetAsync(_context, "password_save_prompt_enabled");
             _passwordSavePromptEnabled = savePrompt.Value.AsBoolean();
-            var uiFont = await _settings.GetAsync(_context, "ui_font");
-            _uiFont = uiFont.Value.AsText();
-            var uiFontSize = await _settings.GetAsync(_context, "ui_font_size");
-            _uiFontSize = Math.Clamp(uiFontSize.Value.AsInteger(), 12, 20);
             ApplyTheme(_themeId);
-            ApplyUiAppearance();
         }
         catch (Exception exception)
         {
