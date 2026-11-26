@@ -81,27 +81,44 @@ internal static class Probes
         var folder = Path.Combine(root, "permission-reconciliation");
         var (_, view) = await WebViewHelpers.CreateViewAsync(host, folder);
         const string origin = "https://amare-permission-probe.test";
+        var kinds = new[]
+        {
+            CoreWebView2PermissionKind.Microphone,
+            CoreWebView2PermissionKind.Camera,
+            CoreWebView2PermissionKind.Geolocation,
+            CoreWebView2PermissionKind.Notifications,
+            CoreWebView2PermissionKind.OtherSensors,
+            CoreWebView2PermissionKind.ClipboardRead,
+            CoreWebView2PermissionKind.MultipleAutomaticDownloads,
+            CoreWebView2PermissionKind.FileReadWrite,
+            CoreWebView2PermissionKind.Autoplay,
+            CoreWebView2PermissionKind.LocalFonts,
+            CoreWebView2PermissionKind.MidiSystemExclusiveMessages,
+            CoreWebView2PermissionKind.WindowManagement,
+            CoreWebView2PermissionKind.PersistentStorage,
+        };
         try
         {
             var profile = view.CoreWebView2.Profile;
-            await profile.SetPermissionStateAsync(
-                CoreWebView2PermissionKind.Notifications,
-                origin,
-                CoreWebView2PermissionState.Allow);
-            await profile.SetPermissionStateAsync(
-                CoreWebView2PermissionKind.Geolocation,
-                origin,
-                CoreWebView2PermissionState.Deny);
+            var blocked = new List<string>();
+            foreach (var kind in kinds)
+            {
+                try
+                {
+                    await profile.SetPermissionStateAsync(
+                        kind, origin, CoreWebView2PermissionState.Allow);
+                }
+                catch (Exception exception)
+                {
+                    blocked.Add($"{kind}:{exception.GetType().Name}");
+                }
+            }
 
             var before = (await profile.GetNonDefaultPermissionSettingsAsync()).ToList();
-            var allowSeen = before.Any(setting =>
-                setting.PermissionKind == CoreWebView2PermissionKind.Notifications
+            var seen = kinds.Count(kind => before.Any(setting =>
+                setting.PermissionKind == kind
                 && setting.PermissionState == CoreWebView2PermissionState.Allow
-                && MatchesOrigin(setting.PermissionOrigin, origin));
-            var denySeen = before.Any(setting =>
-                setting.PermissionKind == CoreWebView2PermissionKind.Geolocation
-                && setting.PermissionState == CoreWebView2PermissionState.Deny
-                && MatchesOrigin(setting.PermissionOrigin, origin));
+                && MatchesOrigin(setting.PermissionOrigin, origin)));
 
             foreach (var setting in before)
             {
@@ -111,21 +128,22 @@ internal static class Probes
                     CoreWebView2PermissionState.Default);
             }
             var after = (await profile.GetNonDefaultPermissionSettingsAsync()).ToList();
-            var passed = allowSeen && denySeen && after.Count == 0;
+            var passed = blocked.Count == 0 && seen == kinds.Length && after.Count == 0;
             return Result(
                 "webview2_permission_reconciliation",
                 passed ? ProbeStatus.Pass : ProbeStatus.Fail,
                 true,
                 passed
-                    ? $"legacy allow/deny settings were removed via SetPermissionStateAsync(Default); before={before.Count} after=0"
-                    : $"permission reconciliation failed: allowSeen={allowSeen} denySeen={denySeen} " +
-                      $"before={before.Count} after={after.Count}",
+                    ? $"all {kinds.Length} named permission kinds accepted a legacy allow and were reset; before={before.Count} after=0"
+                    : $"permission reconciliation failed: seen={seen}/{kinds.Length} " +
+                      $"blocked=[{string.Join(",", blocked)}] before={before.Count} after={after.Count}",
                 new
                 {
+                    kinds = kinds.Length,
+                    seen,
+                    blocked,
                     beforeCount = before.Count,
-                    afterCount = after.Count,
-                    allowSeen,
-                    denySeen
+                    afterCount = after.Count
                 });
         }
         catch (Exception exception)
