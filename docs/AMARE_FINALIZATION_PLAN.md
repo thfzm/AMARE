@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.4 Vault WebView Integration)
-- 기준: `feature/phase-2-vault-webview-integration`, 제품/테스트 `e1b9cbf`
+- 최신 갱신: 2026-11-27 (Phase 2.5 Portable Updater E2E & Rollback)
+- 기준: `feature/phase-2-portable-updater`, 제품/테스트 `fcf1ded`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -189,6 +189,23 @@
   force-kill/async close race, multiwindow lock의 실제 OS 조건
 - 상세: `docs/AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`
 
+### Phase 2.5 진행 상태
+
+- **Portable ZIP updater E2E/rollback hardening 완료** (`fcf1ded`)
+- SemVer numeric prerelease ordering, Stable/Prerelease channel
+- HTTPS/GitHub host, download size, disk space, SHA-256, manifest/entry point,
+  ZIP traversal/symlink/duplicate/dangerous executable 정책
+- staging 실패 격리, atomic replace, backup entry 검증, 손상 backup 미적용
+- recovery attempt 최대 3회, 무한 rollback/restart loop 방지
+- profiles/Vault DB·key/site permissions/settings/bookmarks/history/downloads/
+  Windows Credential Manager AI key 보존 검증
+- Windows CI: portable ZIP/helper apply, duplicate, wrong hash, locked file,
+  launch rollback, crash recovery, attempt limit 실제 process 검증
+- UNVERIFIED: 실제 Windows 11 실기기, 실제 공개 GitHub Releases asset,
+  전원 손실 조건, publisher signature
+- 상세: `docs/AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`,
+  `docs/PORTABLE_UPDATER_DESIGN.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -211,6 +228,10 @@
 - **Phase 2.4 완료(CI)**: Vault/WebView2 — login settings wiring, lock epoch,
   exact-origin capture/fill, cross-origin/iframe/hidden/duplicate/settings OFF
   security tests. 실제 Windows 11/OS lock은 UNVERIFIED.
+- **Phase 2.5 완료(CI)**: Portable Updater — SemVer/channel, HTTPS/size/disk/
+  hash/manifest/ZIP 정책, staging/apply/rollback/recovery, recovery cap,
+  portable ZIP/helper E2E, user data/Vault/Credential Manager 보존. 실제
+  Windows 11/공개 Release/전원 손실은 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,

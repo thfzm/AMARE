@@ -258,12 +258,20 @@ GPUI 데이터를 가져올 필요가 있는지 결정해야 한다. 기본 방�
 - 배포 우선순위: **Portable ZIP first**, MSIX는 보조.
 - 현재 WinUI 패키지: `WindowsPackageType=None`, `WindowsAppSDKSelfContained=true`,
   `x64;ARM64`.
-- 업데이트 확인: GitHub Releases API (`thfzm/AMARE`), stable/pre-release 채널.
-- 다운로드: SHA-256 필수. checksum이 없으면 자동 다운로드 차단.
-- 적용: `PortableUpdateEngine`이 backup → replace → health marker → rollback을 수행.
-- 테스트: apply preserves data, rollback, crash recovery, launch failure rollback,
-  manifest/version/traversal 거부, health marker timeout, corrupt state PASS.
-- 아직 없는 것: 실제 Windows installer, 서명, MSIX 설치 성공 경로.
+- 업데이트 확인: GitHub Releases API (`thfzm/AMARE`), stable/pre-release 채널,
+  SemVer 2.0 prerelease ordering.
+- 다운로드: HTTPS + GitHub host, 최대 크기/disk 여유, SHA-256 필수.
+  checksum이 없으면 자동 다운로드 차단.
+- 검증: manifest schema/product/version/architecture/entry point, ZIP
+  traversal/symlink/duplicate/위험 script·installer·nested executable 거부.
+- 적용: `PortableUpdateEngine`이 backup → atomic replace → health marker →
+  rollback을 수행. recovery 시도는 최대 3회.
+- 데이터: profiles, Vault DB/key, site permissions, settings, bookmarks,
+  history, downloads, Credential Manager AI key는 update 대상이 아니다.
+- 테스트: Phase24 + Phase34 + Windows portable ZIP/helper E2E (`tools/verify-portable-updater.ps1`).
+- 아직 없는 것: publisher signature, 실제 Windows 11 실기기 E2E,
+  실제 공개 Release asset E2E, MSIX 설치 성공 경로.
+- SHA-256은 무결성만 의미하며 배포자 인증이 아니다.
 - `winui_msix_install`은 `0x80073D2C`로 **UNVERIFIED/BLOCKED**.
 - 0.93은 제품 코드 변경이 없어 **새 패키지를 만들지 않았다.**
 

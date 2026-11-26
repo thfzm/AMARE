@@ -51,6 +51,15 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 ## 5. 현재 상태 (2026-11-05, Windows Runner)
 
+> **Phase 2.5 (2026-11-27) 추가:** portable ZIP/helper E2E를
+> `tools/verify-portable-updater.ps1`로 추가했다. 실제 WinUI build output과
+> `AMARE.Updater.exe`로 ZIP을 만들고 apply/duplicate/wrong-hash/locked-file/
+> launch-rollback/crash-recovery/recovery-limit을 실제 process로 검증한다.
+> MSIX/서명/공개 Release는 생성하지 않는다. 결과는
+> `docs/AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`와
+> `artifacts/windows/portable-updater-e2e.json`에 기록한다. 실제 Windows 11
+> 실기기/공개 asset/전원 손실은 UNVERIFIED다.
+
 - Windows 자동 검증 하네스: `tools/verify-windows.ps1` + `tools/windows-verify/`
 - Rust tests: **PASS**
 - C# interop/core tests: **70/70 PASS** (bookmarks/history native round-trip, address suggestions, Reader builder 포함)

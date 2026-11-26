@@ -31,7 +31,7 @@
 - AI 대화/작업 기억/출처
 - Agent 실행 기록/승인
 - 프로필/워크스페이스 데이터
-- 업데이트 서명 키/배포 파이프라인
+- 업데이트 배포 파이프라인 (publisher 서명 키는 아직 없음; SHA-256은 무결성만)
 
 ### 위협 행위자
 
@@ -309,16 +309,30 @@
 
 ## 9. 업데이트 보안
 
-1. GitHub Releases API로 최신 정식 버전 확인.
-2. 릴리스 매니페스트(버전/채널/파일/해시/서명) 다운로드.
-3. Ed25519/minisign 서명 검증 + SHA-256 체크섬.
-4. Windows: Authenticode 서명 검증. Android: APK 서명/패키지명/버전 코드 검증.
-5. 롤백 방지(현재 버전보다 낮은 버전 거부, 단 사용자 확인 예외).
-6. 사용자 승인 후 설치. 자동 설치는 선택.
-7. 실패 시 현재 버전으로 계속 실행.
-8. 서명 키는 오프라인/HSM/제한된 CI 시크릿으로 관리. 키 회전 절차 문서화.
+### 9.1 현재 Windows Portable ZIP 구현 (Phase 2.5)
 
-**금지:** 서명 없이 다운로드한 실행 파일을 실행, HTTP 업데이트, 체크섬 생략.
+1. GitHub Releases API로 stable/prerelease release 확인, SemVer 2.0 precedence 사용.
+2. package/checksum URL은 HTTPS + GitHub host만 허용하고 redirect 최종 URL도 재검증.
+3. package 최대 1 GiB, checksum 최대 64 KiB, destination disk 여유 공간 확인.
+4. SHA-256 sidecar가 없거나 hash가 다르면 다운로드/적용을 차단.
+5. manifest schema 1, product, version, architecture, root entry point를 검증.
+6. ZIP traversal/symlink/duplicate/위험 script·installer·nested executable을 거부.
+7. 검증된 package만 staging하고, app directory backup 후 atomic replace.
+8. health marker 실패/timeout, apply 실패, crash 시 이전 version으로 rollback.
+9. 손상 backup은 적용하지 않고 보존하며, recovery 시도는 최대 3회.
+10. user data directory는 update 대상이 아니며 Vault DB/key, site permissions,
+    settings, downloads, Credential Manager AI key를 보존한다.
+
+### 9.2 서명에 대한 명시
+
+- 현재 Windows portable updater에는 **publisher signature 검증이 연결되어 있지 않다.**
+- SHA-256은 파일 무결성만 의미하며 배포자 인증이 아니다.
+- `docs/SECURITY_DESIGN.md`의 서명/Authenticode 항목은 **향후 목표**이며 현재
+  구현으로 주장하지 않는다.
+- 가짜 인증서/서명 검증 가장, MSIX 서명, 공개 Release 업로드는 금지한다.
+
+**금지:** HTTP/임의 URL 업데이트, checksum 생략, 검증 전 기존 설치 파일 덮어쓰기,
+서명 검증을 구현한 것처럼 표현하기.
 
 ---
 
@@ -378,7 +392,8 @@
 
 - 프롬프트 인젝션 코퍼스 회귀 테스트.
 - 권한 우회 테스트(스코프/대상/origin/TTL).
-- 업데이트 서명/체크섬/롤백 테스트.
+- 업데이트 checksum/manifest/ZIP/staging/apply/rollback/recovery 테스트.
+- publisher signature 검증은 아직 없으며, 도입 시 별도 키 관리/검증 계획이 필요하다.
 - 백업 암호화/복구 테스트.
 - 비밀번호 보관함 암호화/자동 잠금/재인증 테스트.
 - 내부 페이지 CSP/XSS 테스트.

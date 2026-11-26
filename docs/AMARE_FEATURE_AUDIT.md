@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.4 Vault WebView Integration)
-- 기준: `feature/phase-2-vault-webview-integration`, 제품/테스트 `e1b9cbf`
+- 최신 갱신: 2026-11-27 (Phase 2.5 Portable Updater E2E & Rollback)
+- 기준: `feature/phase-2-portable-updater`, 제품/테스트 `fcf1ded`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -16,9 +16,11 @@
 > Phase 2.3 Settings/localization은
 > [`AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`](AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md),
 > Phase 2.4 Vault/WebView2는
-> [`AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`](AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md)에
+> [`AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`](AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md),
+> Phase 2.5 Portable Updater는
+> [`AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`](AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1~2.4 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~2.5 갱신을 함께 표시한다.
 
 ---
 
@@ -50,14 +52,14 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **84/84** (Phase 2.4, 기존 76 + Vault settings/lock/security 8) |
-| Windows 통합 검증 (최신) | **182 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (198 total, package 단계 skip) |
-| C#↔Rust interop (최신) | **113/113** (Phase 2.4) |
+| WinUI UI smoke (최신) | **84/84** (Phase 2.5 회귀) |
+| Windows 통합 검증 (최신) | **195 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (211 total, portable E2E 11/11 포함) |
+| C#↔Rust interop (최신) | **125/125** (Phase 2.5) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.4, `e1b9cbf`) |
+| Linux CI | SUCCESS (Phase 2.5, `fcf1ded`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -112,7 +114,7 @@ WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 | 13 | Find in Page | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
 | 14 | 사이트 권한 | **`IMPLEMENTED_AND_VERIFIED` (CI)** | `PARTIALLY_IMPLEMENTED` | P1 |
 | 15 | 설정/현지화 | `IMPLEMENTED_AND_VERIFIED` (Settings/localization; Windows 11 실기기 UNVERIFIED) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
-| 16 | 자동 업데이트 | `IMPLEMENTED_BUT_UNVERIFIED` | `NOT_IMPLEMENTED` | P1 |
+| 16 | 자동 업데이트 | `IMPLEMENTED_AND_VERIFIED` (portable ZIP CI E2E; real Windows 11 UNVERIFIED) | `NOT_IMPLEMENTED` | P1 |
 | 17 | 성능/진단 | `IMPLEMENTED_AND_VERIFIED` | `PARTIALLY_IMPLEMENTED` | P2 |
 | 18 | 창 관리/Windows 통합 | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 
@@ -595,23 +597,33 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ### 4.16 자동 업데이트
 
-**WinUI — `IMPLEMENTED_BUT_UNVERIFIED`**
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (portable ZIP CI E2E; real Windows 11 UNVERIFIED)**
 
 - `GitHubReleaseClient`, stable/pre-release 선택, SHA-256 필수.
 - `PortableUpdateEngine`: apply, rollback, health marker, crash recovery.
-- interop: apply preserves data, rollback, launch failure rollback, manifest/version/
-  traversal 거부, concurrent helper 거부, health timeout, corrupt state PASS.
+- Phase 2.5에서 SemVer prerelease numeric ordering, HTTPS/GitHub host, 최대 크기/
+  disk 여유, entry point 일치, 위험 executable/script 정책을 추가했다.
+- pre-apply 실패는 app을 변경하지 않고 staging을 정리하며, rollback은 손상 backup을
+  적용하지 않고 backup을 보존한다.
+- recovery 시도 횟수는 최대 3회로 제한해 무한 rollback/restart loop를 막는다.
+- portable ZIP/helper E2E가 Windows CI에서 실제 process로 apply/duplicate/
+  wrong-hash/locked-file/launch-rollback/crash-recovery/attempt-limit을 검증한다.
+- user data 보존: profiles, Vault DB/key, site permissions, settings, bookmarks,
+  history, downloads, Windows Credential Manager AI key.
 - UI smoke `update_check_dialog` PASS.
-- **실제 Windows installer/설치 성공 경로는 없다.**
-- `webview2:windows_installer_update_flow`는 UNVERIFIED다.
-- MSIX는 unsigned라 설치가 BLOCKED다.
+- **실제 Windows 11 실기기, 실제 공개 GitHub Releases asset, 전원 손실 조건은 UNVERIFIED.**
+- MSIX는 unsigned라 설치가 BLOCKED이며, Phase 2.5에서 MSIX/서명/공개 Release를
+  생성하지 않았다.
+- 상세: `docs/AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`,
+  `docs/PORTABLE_UPDATER_DESIGN.md`.
 
 **GPUI — `NOT_IMPLEMENTED`**
 
 **판정**
 
-- “확인/다운로드/적용 엔진”은 강하지만, “설치/복구 end-to-end”는 아직 아니다.
-- Portable ZIP 업데이트를 1차 경로로 확정하고 검증해야 한다.
+- 확인/다운로드/검증/staging/apply/rollback/recovery의 portable ZIP E2E가 CI에서
+  검증되었다.
+- 남은 핵심은 실제 Windows 11 실기기와 실제 공개 배포 asset 검증이다.
 
 ---
 
@@ -685,7 +697,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 |---|---|---|---|
 | P1-1 | 사이트 권한 UI 없음 | Phase 2.1에서 WebView2 consent + per-profile store + 설정 UI 구현 | **RESOLVED (CI)**; 실기기/일부 race는 UNVERIFIED |
 | P1-2 | AI 패널 실제 서비스/세션 격리 미검증 | UI smoke는 패널 open만 확인 | 실제 서비스 로그인/쿠키/격리 확인 |
-| P1-3 | 업데이트 설치 end-to-end 없음 | installer flow UNVERIFIED, MSIX BLOCKED | Portable ZIP 업데이트 E2E |
+| P1-3 | 업데이트 설치 end-to-end 없음 | Phase 2.5 portable ZIP/helper E2E PASS (CI) | **RESOLVED (CI)**; 실제 Windows 11/공개 Release UNVERIFIED |
 | P1-4 | WinUI/GPUI 데이터 루트 불일치 | `%LOCALAPPDATA%` vs `%APPDATA%` | 자동 공유 금지, 필요 시 import |
 | P1-5 | WinUI 멀티윈도우 독립 navigation 미검증 | 0.93 A/B는 GPUI 대상 | WinUI A/B fixture test 추가 |
 | P1-6 | GPUI 11~13 FAIL | 3회 반복 | 동결 대상, 결과만 보존 |
