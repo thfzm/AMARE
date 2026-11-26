@@ -2366,6 +2366,7 @@ public sealed partial class MainWindow : Window
             {
                 _aiApiSettings = JsonSerializer.Deserialize<AiApiSettings>(
                     File.ReadAllText(AiApiSettingsPath)) ?? _aiApiSettings;
+                _aiKeyRejected = _aiApiSettings.KeyRejected;
             }
         }
         catch (Exception exception)
@@ -2776,10 +2777,13 @@ public sealed partial class MainWindow : Window
                 aiTestStatus.Text = await TestAiConnectionAsync(settings, key);
                 aiKeyRejected = settings.Mode == AiExecutionMode.Actual
                                 && aiTestStatus.Text.StartsWith("The OpenAI API key was rejected", StringComparison.Ordinal);
-                _aiKeyRejected = aiKeyRejected;
-                if (aiTestStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
+                if (aiKeyRejected)
                 {
-                    _aiKeyRejected = false;
+                    SetAiKeyRejected(true);
+                }
+                else if (aiTestStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
+                {
+                    SetAiKeyRejected(false);
                 }
             }
             catch (Exception exception)
@@ -2793,7 +2797,7 @@ public sealed partial class MainWindow : Window
             if (AiCredentialStore.Delete())
             {
                 aiExistingKey = null;
-                _aiKeyRejected = false;
+                SetAiKeyRejected(false);
                 aiKeyStatus.Text = "API key deleted.";
                 aiTestStatus.Text = "Stored key deleted.";
             }
@@ -2879,13 +2883,15 @@ public sealed partial class MainWindow : Window
                 await ShowMessageAsync("AI settings", "Windows Credential Manager could not store the key.");
                 return;
             }
-            _aiKeyRejected = false;
+            var keyChanged = newAiKey.Length > 0;
+            _aiKeyRejected = keyChanged ? false : _aiKeyRejected;
             _aiApiSettings = new AiApiSettings(
                 aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
                 _aiApiSettings.BaseUrl,
                 _aiApiSettings.Provider,
                 aiEnabledBox.IsChecked == true,
-                aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
+                aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual,
+                KeyRejected: _aiKeyRejected);
             SaveAiApiSettings();
             AppLog.Info($"AI settings saved mode={_aiApiSettings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");
             ApplyTheme(theme);

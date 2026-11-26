@@ -74,6 +74,17 @@ public sealed partial class MainWindow
         }
     }
 
+    private void SetAiKeyRejected(bool rejected)
+    {
+        _aiKeyRejected = rejected;
+        if (_aiApiSettings.KeyRejected == rejected)
+        {
+            return;
+        }
+        _aiApiSettings = _aiApiSettings with { KeyRejected = rejected };
+        SaveAiApiSettings();
+    }
+
     private async Task<AiPageContext?> CaptureAiPageContextAsync()
     {
         var host = ActiveHost;
@@ -375,7 +386,7 @@ public sealed partial class MainWindow
                 AppLog.Warn($"AI request failed kind={exception.Kind}");
                 if (exception.Kind == AiErrorKind.InvalidKey)
                 {
-                    _aiKeyRejected = true;
+                    SetAiKeyRejected(true);
                 }
                 status.Text = exception.UserMessage;
                 Append($"[request failed] {exception.UserMessage}");
@@ -510,10 +521,13 @@ public sealed partial class MainWindow
                 testStatus.Text = await TestAiConnectionAsync(settings, key);
                 keyRejected = settings.Mode == AiExecutionMode.Actual
                               && testStatus.Text.StartsWith("The OpenAI API key was rejected", StringComparison.Ordinal);
-                _aiKeyRejected = keyRejected;
-                if (testStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
+                if (keyRejected)
                 {
-                    _aiKeyRejected = false;
+                    SetAiKeyRejected(true);
+                }
+                else if (testStatus.Text.StartsWith("Connection OK", StringComparison.Ordinal))
+                {
+                    SetAiKeyRejected(false);
                 }
             }
             catch (Exception exception)
@@ -527,7 +541,7 @@ public sealed partial class MainWindow
         {
             if (AiCredentialStore.Delete())
             {
-                _aiKeyRejected = false;
+                SetAiKeyRejected(false);
                 keyStatus.Text = "API key deleted.";
                 testStatus.Text = "Stored key deleted.";
             }
@@ -593,13 +607,15 @@ public sealed partial class MainWindow
             await ShowMessageAsync("API AI settings", "Windows Credential Manager could not store the key.");
             return;
         }
-        _aiKeyRejected = false;
+        var keyChanged = newKey.Length > 0;
+        _aiKeyRejected = keyChanged ? false : _aiKeyRejected;
         var settings = new AiApiSettings(
             modelBox.Text.Trim().Length == 0 ? selectedProvider.DefaultModel : modelBox.Text.Trim(),
             baseUrlBox.Text.Trim().Length == 0 ? selectedProvider.BaseUrl : baseUrlBox.Text.Trim(),
             selectedProvider.Id,
             enabledBox.IsChecked == true,
-            modeCombo.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
+            modeCombo.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual,
+            KeyRejected: _aiKeyRejected);
         _aiApiSettings = settings;
         SaveAiApiSettings();
         AppLog.Info($"AI settings saved mode={settings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");

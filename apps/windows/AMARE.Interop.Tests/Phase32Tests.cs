@@ -315,15 +315,20 @@ internal static class Phase32Tests
     {
         var settings = new AiApiSettings(
             "gpt-6-luna", "https://api.openai.com/v1", AiProviderCatalog.OpenAiId,
-            Enabled: false, Mode: AiExecutionMode.Mock);
+            Enabled: false, Mode: AiExecutionMode.Mock, KeyRejected: true);
         var roundtrip = JsonSerializer.Deserialize<AiApiSettings>(
             JsonSerializer.Serialize(settings));
-        Require(roundtrip?.Enabled == false && roundtrip.Mode == AiExecutionMode.Mock,
+        Require(roundtrip is
+                {
+                    Enabled: false,
+                    Mode: AiExecutionMode.Mock,
+                    KeyRejected: true
+                },
             "settings roundtrip");
         Require(AiApiClient.DefaultModel == "gpt-6-luna", "default model");
         var oldJson = JsonSerializer.Deserialize<AiApiSettings>(
             """{"Model":"gpt-test","BaseUrl":"https://api.example/v1","Provider":"openai"}""");
-        Require(oldJson is { Enabled: true, Mode: AiExecutionMode.Actual },
+        Require(oldJson is { Enabled: true, Mode: AiExecutionMode.Actual, KeyRejected: false },
             "old settings defaults");
         Require(AiProviderCatalog.Resolve("openai").Protocol == AiProtocol.Responses,
             "OpenAI Responses protocol");

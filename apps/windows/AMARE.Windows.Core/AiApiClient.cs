@@ -10,7 +10,8 @@ public sealed record AiApiSettings(
     string BaseUrl = "https://api.openai.com/v1",
     string Provider = AiProviderCatalog.OpenAiId,
     bool Enabled = true,
-    AiExecutionMode Mode = AiExecutionMode.Actual);
+    AiExecutionMode Mode = AiExecutionMode.Actual,
+    bool KeyRejected = false);
 
 public enum AiProtocol
 {
