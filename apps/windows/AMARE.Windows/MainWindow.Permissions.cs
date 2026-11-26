@@ -124,6 +124,15 @@ public sealed partial class MainWindow
         {
             return CoreWebView2PermissionState.Deny;
         }
+        if (!PermissionAuditGate.CanServePermissionRequests(
+                PermissionAuditStateFor(_profileId)))
+        {
+            // The startup reconciliation has not verified that legacy WebView2
+            // persisted permissions no longer bypass the AMARE store. Never
+            // serve a prompt/allow until that audit is Reconciled.
+            AppLog.Warn("Site permission denied: legacy WebView2 permission audit is not reconciled");
+            return CoreWebView2PermissionState.Deny;
+        }
         var kind = PermissionKindName(args.PermissionKind);
         AppLog.Info($"Site permission requested kind={args.PermissionKind} userInitiated={args.IsUserInitiated}");
         if (kind is null
@@ -452,6 +461,14 @@ public sealed partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12
         });
+        var auditText = new TextBlock
+        {
+            Text = PermissionAuditSummary(_profileId),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12
+        };
+        AutomationProperties.SetAutomationId(auditText, "SitePermissionAuditState");
+        stack.Children.Add(auditText);
         stack.Children.Add(filterBox);
         stack.Children.Add(list);
         stack.Children.Add(buttons);

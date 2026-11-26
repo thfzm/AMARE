@@ -322,6 +322,11 @@ internal static class Program
         if (Directory.Exists(vaultAssets))
         {
             Environment.SetEnvironmentVariable("AMARE_TEST_VAULT_ROOT", vaultAssets);
+            // Seed the legacy WebView2 profile path exactly once per app start.
+            // The startup audit must remove this Allow before the page is shown.
+            Environment.SetEnvironmentVariable(
+                "AMARE_TEST_LEGACY_PERMISSION",
+                "notifications|https://amare-vault.test|allow");
         }
         try
         {
@@ -422,6 +427,7 @@ internal static class Program
             Check("vault_forged_message_rejected", VaultForgedMessageRejected);
             Check("vault_capture_locked_rejected", VaultCaptureLockedRejected);
             Check("vault_ui_idle_lock", VaultIdleLock);
+            Check("site_permissions_legacy_audit", SitePermissionsLegacyAudit);
             Check("site_permissions_one_time_decisions", SitePermissionsDenyOnce);
             Check("site_permissions_always_allow_and_settings", SitePermissionsAlwaysAllowAndSettings);
             Check("site_permissions_block_always", SitePermissionsBlockAlways);
@@ -3014,6 +3020,35 @@ internal static class Program
     {
         Require(FindByName("Permission request") is null,
             "permission request dialog appeared unexpectedly");
+    }
+
+    private static string SitePermissionsLegacyAudit()
+    {
+        OpenSitePermissionsDialog();
+        var audit = FindById("SitePermissionAuditState")?.Current.Name ?? "";
+        Require(audit.Contains("Reconciled", StringComparison.OrdinalIgnoreCase),
+            $"legacy WebView2 audit not reconciled: {audit}");
+        Require(audit.Contains("1 legacy setting", StringComparison.OrdinalIgnoreCase),
+            $"legacy WebView2 audit did not reset the seeded setting: {audit}");
+        CloseSitePermissionsDialog();
+
+        ClearAllSitePermissions();
+        var beforeTabs = CountTabs();
+        OpenNewTabAndWait(beforeTabs + 1);
+        try
+        {
+            OpenPermissionPage("permissions.html?auto=0");
+            TriggerPermissionRequest();
+            WaitPermissionRequestDialog();
+            InvokeDialogButton("Permission request", "Not now");
+            WaitFor(() => FindByName("Permission request") is null,
+                TimeSpan.FromSeconds(10), "legacy audit dialog denied");
+            return "legacy WebView2 allow was reconciled and AMARE consent is still required";
+        }
+        finally
+        {
+            CloseActiveTabAndWait(beforeTabs);
+        }
     }
 
     private static string SitePermissionsDenyOnce()

@@ -1009,6 +1009,12 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("WebView2 environment is not ready.");
             }
             await webView.EnsureCoreWebView2Async(_environment);
+            var audit = await EnsurePermissionAuditAsync(
+                webView.CoreWebView2!, _profileId, useStore: true, allowTestSeed: true);
+            if (!PermissionAuditGate.CanServePermissionRequests(audit.State))
+            {
+                StatusText.Text = "Site permissions are blocked: the WebView2 legacy permission audit did not reconcile.";
+            }
             await ConfigureWebViewVaultAsync(host);
             AttachWebViewEvents(host);
             if (url.Equals("amare://newtab", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(url))
@@ -2021,6 +2027,8 @@ public sealed partial class MainWindow : Window
         await ReaderWebView.EnsureCoreWebView2Async(_environment);
         if (ReaderWebView.CoreWebView2 is { } readerCore)
         {
+            await EnsurePermissionAuditAsync(
+                readerCore, _profileId, useStore: true, allowTestSeed: false);
             ApplyBuiltInAutofillPolicy(readerCore);
             AttachDenyAllPermissions(readerCore);
             readerCore.NavigationStarting += (_, args) =>
@@ -2149,6 +2157,8 @@ public sealed partial class MainWindow : Window
             await AiWebView.EnsureCoreWebView2Async(_aiEnvironment);
             if (AiWebView.CoreWebView2 is { } core)
             {
+                await EnsurePermissionAuditAsync(
+                    core, "ai-webview2", useStore: false, allowTestSeed: false);
                 ApplyBuiltInAutofillPolicy(core);
                 AttachDenyAllPermissions(core);
                 core.NewWindowRequested += (_, args) =>
@@ -3171,6 +3181,7 @@ public sealed partial class MainWindow : Window
             await ResetVaultForProfileChangeAsync();
             CloseAllTabs();
             await _profiles.DeleteAsync(current.Id);
+            ForgetPermissionAudit(current.Id);
             var active = await _profiles.GetActiveAsync();
             _context = active is null ? await _profiles.InitializeAsync() : await _profiles.SwitchAsync(active.Id);
             _profileId = _context.ProfileId;

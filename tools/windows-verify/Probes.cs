@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using System.Windows.Forms;
 
@@ -73,6 +74,81 @@ internal static class Probes
             WebViewHelpers.DisposeView(host, second);
             WebViewHelpers.DisposeView(host, first);
         }
+    }
+
+    public static async Task<ProbeResult> PermissionReconciliationAsync(Control host, string root)
+    {
+        var folder = Path.Combine(root, "permission-reconciliation");
+        var (_, view) = await WebViewHelpers.CreateViewAsync(host, folder);
+        const string origin = "https://amare-permission-probe.test";
+        try
+        {
+            var profile = view.CoreWebView2.Profile;
+            await profile.SetPermissionStateAsync(
+                CoreWebView2PermissionKind.Notifications,
+                origin,
+                CoreWebView2PermissionState.Allow);
+            await profile.SetPermissionStateAsync(
+                CoreWebView2PermissionKind.Geolocation,
+                origin,
+                CoreWebView2PermissionState.Deny);
+
+            var before = (await profile.GetNonDefaultPermissionSettingsAsync()).ToList();
+            var allowSeen = before.Any(setting =>
+                setting.PermissionKind == CoreWebView2PermissionKind.Notifications
+                && setting.PermissionState == CoreWebView2PermissionState.Allow
+                && MatchesOrigin(setting.PermissionOrigin, origin));
+            var denySeen = before.Any(setting =>
+                setting.PermissionKind == CoreWebView2PermissionKind.Geolocation
+                && setting.PermissionState == CoreWebView2PermissionState.Deny
+                && MatchesOrigin(setting.PermissionOrigin, origin));
+
+            foreach (var setting in before)
+            {
+                await profile.SetPermissionStateAsync(
+                    setting.PermissionKind,
+                    setting.PermissionOrigin,
+                    CoreWebView2PermissionState.Default);
+            }
+            var after = (await profile.GetNonDefaultPermissionSettingsAsync()).ToList();
+            var passed = allowSeen && denySeen && after.Count == 0;
+            return Result(
+                "webview2_permission_reconciliation",
+                passed ? ProbeStatus.Pass : ProbeStatus.Fail,
+                true,
+                passed
+                    ? $"legacy allow/deny settings were removed via SetPermissionStateAsync(Default); before={before.Count} after=0"
+                    : $"permission reconciliation failed: allowSeen={allowSeen} denySeen={denySeen} " +
+                      $"before={before.Count} after={after.Count}",
+                new
+                {
+                    beforeCount = before.Count,
+                    afterCount = after.Count,
+                    allowSeen,
+                    denySeen
+                });
+        }
+        catch (Exception exception)
+        {
+            return Result(
+                "webview2_permission_reconciliation",
+                ProbeStatus.Fail,
+                true,
+                $"permission reconciliation probe failed: {exception.GetType().Name}:0x{exception.HResult:X8}");
+        }
+        finally
+        {
+            WebViewHelpers.DisposeView(host, view);
+        }
+    }
+
+    private static bool MatchesOrigin(string value, string expected)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var actual)
+               && Uri.TryCreate(expected, UriKind.Absolute, out var wanted)
+               && actual.Scheme == wanted.Scheme
+               && string.Equals(actual.IdnHost, wanted.IdnHost, StringComparison.OrdinalIgnoreCase)
+               && actual.Port == wanted.Port;
     }
 
     public static async Task<ProbeResult> ProfileIsolationAsync(Control host, string root)

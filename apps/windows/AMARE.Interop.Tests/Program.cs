@@ -50,6 +50,7 @@ internal static class Program
         Phase28Tests.Register();
         Phase29Tests.Register();
         Phase30Tests.Register(coreOnly);
+        Phase31Tests.Register();
 
         if (coreOnly)
         {
