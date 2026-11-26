@@ -509,31 +509,32 @@ username 후보:
 
 ## 7. 백업 / 복구
 
-현재:
+### 7.1 Phase 2.6 구현 정책
 
-- `BackupData.secrets` 기본 true → profile DB의 `secrets`(Vault ciphertext) 포함
-- key file은 backup 대상이 아님
-- 따라서 “DB backup만 복원”하면 Vault는 복호화 불가
+- 일반 profile backup은 `BackupData.secrets=false`를 사용한다. DPAPI key file은
+  절대 backup에 포함하지 않는다.
+- Vault를 포함하려면 사용자가 명시적으로 선택하고 Vault backup password를
+  입력해야 한다.
+- Vault는 `VaultService::export_backup`의 기존
+  **Argon2id + XChaCha20-Poly1305** 포맷을 그대로 사용한다.
+- Vault export는 `vault/<profile>.amarevault`로 container에 포함되고,
+  manifest에 `contains_vault`/`vault_profiles`를 기록한다.
+- DPAPI key file(`vault/<profile>.key`)은 backup/restore에서 복사하지 않는다.
+- 복원 시 target profile에 새 DPAPI key를 생성하고(없는 경우) export를 import한 뒤
+  Vault를 lock한다.
+- Vault를 포함하지 않은 backup은 기존 `secrets` table과 key file을 보존한다.
+- 잘못된 password/손상 ciphertext는 verify 단계에서 거부하고 기존 Vault를
+  변경하지 않는다.
+- Vault import 실패 시 DB recovery와 이전 key file을 복원한다.
+- backup file 자체는 사용자가 지정한 password로 container 전체를 암호화할 수 있다.
+- SHA-256은 무결성만 의미하며 Vault export의 기밀성은 Argon2id/XChaCha20이 담당한다.
 
-권장:
+### 7.2 남은 한계
 
-1. **일반 자동 백업에서는 Vault를 제외**하거나, key를 포함한 별도 export만 허용.
-2. Vault export:
-   - 사용자가 지정한 Master Password로 Argon2id KEK 유도
-   - `vault blob + metadata`를 XChaCha20-Poly1305로 암호화
-   - 파일에 format/version/KDF parameter/salt/nonce 포함
-   - key file은 포함하지 않음 (export 자체가 key를 wrap)
-3. 복구:
-   - Master Password로 export를 복호화
-   - 새 key file 생성 후 Vault blob 재암호화
-   - 실패 시 기존 Vault 보존
-4. DPAPI-only 사용자는 “Windows 계정/프로필을 잃으면 복구 불가”를 명시적으로 동의.
-5. 백업 파일에도 secret이 포함될 수 있음을 manifest에 표시 (`contains_secrets`).
-
-v1 최소안:
-
-- 자동 백업에서 Vault를 **명시적으로 제외**하고, “Vault 내보내기”를 별도 기능으로 제공.
-- 이 결정은 구현 전 승인 필요.
+- 실제 Windows 11 실기기와 다른 Windows 계정/PC에서의 Vault 복원은 UNVERIFIED.
+- Vault import 도중 프로세스 종료 시 DB는 journal로 rollback되지만, key file
+  crash window는 별도 실기기 검증이 필요하다.
+- DPAPI-only Vault는 Windows 계정/프로필을 잃으면 복구할 수 없다.
 
 ---
 

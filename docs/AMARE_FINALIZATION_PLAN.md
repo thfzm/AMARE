@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.5 Portable Updater E2E & Rollback)
-- 기준: `feature/phase-2-portable-updater`, 제품/테스트 `fcf1ded`
+- 최신 갱신: 2026-11-27 (Phase 2.6 Profile Backup & Restore)
+- 기준: `feature/phase-2-profile-backup-restore`, 제품/테스트 `6ff6e4b`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -206,6 +206,22 @@
 - 상세: `docs/AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`,
   `docs/PORTABLE_UPDATER_DESIGN.md`
 
+### Phase 2.6 진행 상태
+
+- **Profile Backup & Restore 구현/CI** (`6ff6e4b`)
+- Settings → Backup & restore UI, `AMARE.Backup.exe` Rust helper
+- profile DB + app-wide downloads/preferences + optional portable Vault export
+- verify states: Valid/ValidWithWarnings/UnsupportedVersion/IncompatibleSchema/
+  InvalidPassword/UnsafeArchive/Corrupt
+- restore: staging → integrity/schema → recovery → atomic swap → app files →
+  Vault import (locked). 실패 시 DB/key/app files rollback
+- restore journal + startup `recover`로 도중 종료 rollback
+- concurrent create/restore exclusive lock
+- UNVERIFIED: 실제 Windows 11 실기기, 전원 손실, multi-window race,
+  다른 PC Vault 복원
+- 상세: `docs/AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`,
+  `docs/PROFILE_BACKUP_RESTORE_DESIGN.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -232,6 +248,10 @@
   hash/manifest/ZIP 정책, staging/apply/rollback/recovery, recovery cap,
   portable ZIP/helper E2E, user data/Vault/Credential Manager 보존. 실제
   Windows 11/공개 Release/전원 손실은 UNVERIFIED.
+- **Phase 2.6 완료(CI)**: Profile Backup & Restore — Settings UI, Rust helper,
+  profile DB/app files/optional portable Vault, verify/restore/recovery journal,
+  concurrent lock. Windows 199/0/8/8, UI 85/85, interop 127/127, Linux SUCCESS.
+  실제 Windows 11/전원 손실/cross-PC Vault는 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,

@@ -392,6 +392,24 @@ multiwindow lock 일관성의 실제 OS 조건.
 
 ---
 
+## 3.5 Phase 2.6 Profile Backup / Vault Export 결과
+
+| 항목 | 결과 |
+|---|---|
+| Vault export 포함 profile backup 생성 | **PASS (local Rust helper)** |
+| DPAPI key file 미포함 | **PASS (code/path 검증)** |
+| 잘못된 Vault password 거부 | **PASS (local Rust)** |
+| Vault ciphertext 손상 거부 | **PASS (local Rust/verify)** |
+| Vault export import 후 locked | **PASS (Windows-only test, CI 예정)** |
+| Vault 미포함 backup 복원 시 기존 Vault 보존 | **PASS (local Rust helper)** |
+| restore 실패 시 DB/key 보존 | **PASS (local Rust helper/journal)** |
+| 다른 Windows PC 이식 | **UNVERIFIED (format 설계만)** |
+
+상세: `docs/AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`,
+`docs/PROFILE_BACKUP_RESTORE_DESIGN.md`.
+
+---
+
 ## 4. 추가 보안 테스트
 
 | ID | 테스트 | 기대 |

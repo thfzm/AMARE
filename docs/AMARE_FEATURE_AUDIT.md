@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.5 Portable Updater E2E & Rollback)
-- 기준: `feature/phase-2-portable-updater`, 제품/테스트 `fcf1ded`
+- 최신 갱신: 2026-11-27 (Phase 2.6 Profile Backup & Restore)
+- 기준: `feature/phase-2-profile-backup-restore`, 제품/테스트 `6ff6e4b`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -18,9 +18,11 @@
 > Phase 2.4 Vault/WebView2는
 > [`AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`](AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md),
 > Phase 2.5 Portable Updater는
-> [`AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`](AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md)에
+> [`AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`](AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md),
+> Phase 2.6 Profile Backup & Restore는
+> [`AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`](AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1~2.5 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~2.6 갱신을 함께 표시한다.
 
 ---
 
@@ -52,9 +54,9 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **84/84** (Phase 2.5 회귀) |
-| Windows 통합 검증 (최신) | **195 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (211 total, portable E2E 11/11 포함) |
-| C#↔Rust interop (최신) | **125/125** (Phase 2.5) |
+| WinUI UI smoke (최신) | **85/85** (Phase 2.6, backup create/verify 포함) |
+| Windows 통합 검증 (최신) | **199 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (215 total) |
+| C#↔Rust interop (최신) | **127/127** (Phase 2.6) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
@@ -595,6 +597,32 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ---
 
+### 4.15.1 프로필 백업 / 복원 (Phase 2.6)
+
+**WinUI — `IMPLEMENTED_BUT_UNVERIFIED` (구현/로컬 Rust PASS, CI pending)**
+
+- Settings → Backup & restore에서 current/target profile, file path, Vault 포함,
+  password, create/verify/restore/restore-as-new을 제공한다.
+- `AMARE.Backup.exe` Rust helper가 create/verify/restore/recover를 수행한다.
+- 백업 범위: profile DB(bookmarks/history/settings/site permissions/sessions/
+  downloads metadata/Library/conversations/workspaces) + app-wide downloads/
+  preferences + optional Vault export.
+- 제외: WebView2 cache/cookies, logs, binaries, updater staging, API key,
+  DPAPI Vault key file.
+- restore는 staging → integrity/schema 검증 → recovery → atomic profile swap →
+  app files → Vault import 후 locked. 실패 시 DB/key/app files rollback.
+- journal + `recover` helper로 restore 도중 종료를 다음 시작에서 rollback한다.
+- `data/backups/.backup.lock`으로 동시 create/restore를 막는다.
+- UNVERIFIED: 실제 Windows 11 실기기, 전원 손실, multi-window race,
+  다른 PC에서의 실제 Vault 복원.
+
+**GPUI — `NOT_IMPLEMENTED`**
+
+**판정**
+
+- 기존 Rust backup과 Vault export/import를 재사용해 Settings E2E를 연결했다.
+- 실제 Windows 11 실기기 검증이 남아 있다.
+
 ### 4.16 자동 업데이트
 
 **WinUI — `IMPLEMENTED_AND_VERIFIED` (portable ZIP CI E2E; real Windows 11 UNVERIFIED)**
@@ -702,11 +730,11 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | P1-5 | WinUI 멀티윈도우 독립 navigation 미검증 | 0.93 A/B는 GPUI 대상 | WinUI A/B fixture test 추가 |
 | P1-6 | GPUI 11~13 FAIL | 3회 반복 | 동결 대상, 결과만 보존 |
 | P1-7 | First-click 6/6 최신 재실행 없음 | 0.89 결과만 유지 | WinUI first-click 재실행 |
-| P1-8 | Backup/Restore UI 없음 | Rust backup 테스트만 PASS | 사용자 백업/복구 UI 검토 |
+| P1-8 | Backup/Restore UI 없음 | Phase 2.6에서 Settings backup/restore, Rust helper, 검증/복원 구현 | **RESOLVED (구현/로컬 Rust)**; 실제 Windows 11 실기기 UNVERIFIED |
 | P1-9 | 기본 브라우저 등록 없음 | 코드 없음 | Phase 3 |
 | P1-10 | 한국어 UI/IME | UI 영어 중심, IME UNVERIFIED | Phase 2/3 |
 | P1-11 | WebView2 내장 autofill 데이터 | `IsGeneralAutofillEnabled` 기본 true, 기존 password autofill 가능 | 명시적 비활성 + 동의 후 clear |
-| P1-12 | Vault 백업/복구 키 정책 부재 | DB backup에 ciphertext만 포함, key file 제외 | Master Password export 또는 key 포함 백업 |
+| P1-12 | Vault 백업/복구 키 정책 부재 | Phase 2.6에서 DPAPI key 미포함 + Argon2id/XChaCha20 portable export | **RESOLVED (구현/로컬 Rust)**; cross-PC 실기기 UNVERIFIED |
 | P1-13 | Windows 계정/DPAPI 손실 복구 | DPAPI-only는 복구 불가 | 복구 정책/UX 승인 |
 
 ### P2 — 품질/자동화
