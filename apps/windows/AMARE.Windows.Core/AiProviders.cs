@@ -340,11 +340,11 @@ public sealed class OpenAiResponsesProvider : IAiProvider
             {
                 break;
             }
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
                 continue;
             }
-            var data = line[6..].Trim();
+            var data = line[5..].Trim();
             if (data.Length == 0)
             {
                 continue;
@@ -471,11 +471,11 @@ public sealed class OpenAiChatProvider : IAiProvider
             {
                 break;
             }
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
                 continue;
             }
-            var data = line[6..].Trim();
+            var data = line[5..].Trim();
             if (data.Length == 0)
             {
                 continue;

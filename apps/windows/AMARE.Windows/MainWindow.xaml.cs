@@ -1405,7 +1405,10 @@ public sealed partial class MainWindow : Window
 
     private void CloseHost(BrowserTab host)
     {
-        CancelAiRequest();
+        if (_aiRequestHostId == host.Model.Id)
+        {
+            CancelAiRequest();
+        }
         if (host.Closed)
         {
             return;
