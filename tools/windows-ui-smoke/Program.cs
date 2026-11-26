@@ -1101,8 +1101,12 @@ internal static class Program
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("API AI settings…");
         WaitFor(() => FindByName("API AI settings") is not null, TimeSpan.FromSeconds(8), "API AI settings dialog");
+        Require(FindById("AiModeBox") is not null, "AI mode control missing");
+        Require(FindById("AiKeyBox") is not null, "AI key control missing");
+        Require(FindById("AiModelBox") is not null, "AI model control missing");
+        Require(FindById("AiTestStatus") is not null, "AI test status missing");
         EscapeDialog("API AI settings");
-        return "API AI settings dialog opened";
+        return "API AI settings dialog opened with mode/key/model/test controls";
     }
 
     private static string OpenAndCloseApiAiNoKey()

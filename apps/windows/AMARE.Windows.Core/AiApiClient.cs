@@ -6,11 +6,25 @@ using System.Text.Json;
 namespace Amare.Windows.Core;
 
 public sealed record AiApiSettings(
-    string Model = "gpt-4o-mini",
+    string Model = "gpt-6-luna",
     string BaseUrl = "https://api.openai.com/v1",
-    string Provider = AiProviderCatalog.OpenAiId);
+    string Provider = AiProviderCatalog.OpenAiId,
+    bool Enabled = true,
+    AiExecutionMode Mode = AiExecutionMode.Actual);
 
-public sealed record AiProviderDescriptor(string Id, string Name, string BaseUrl, string DefaultModel, string Description);
+public enum AiProtocol
+{
+    Responses,
+    ChatCompletions
+}
+
+public sealed record AiProviderDescriptor(
+    string Id,
+    string Name,
+    string BaseUrl,
+    string DefaultModel,
+    string Description,
+    AiProtocol Protocol = AiProtocol.Responses);
 
 public static class AiProviderCatalog
 {
@@ -18,10 +32,11 @@ public static class AiProviderCatalog
     public const string CompatibleId = "openai-compatible";
     public static readonly IReadOnlyList<AiProviderDescriptor> All =
     [
-        new(OpenAiId, "OpenAI", "https://api.openai.com/v1", "gpt-4o-mini",
-            "OpenAI Chat Completions API."),
-        new(CompatibleId, "OpenAI-compatible endpoint", "https://api.openai.com/v1", "gpt-4o-mini",
-            "A user-approved endpoint that implements the OpenAI Chat Completions request shape.")
+        new(OpenAiId, "OpenAI", "https://api.openai.com/v1", "gpt-6-luna",
+            "OpenAI Responses API.", AiProtocol.Responses),
+        new(CompatibleId, "OpenAI-compatible endpoint", "https://api.openai.com/v1", "gpt-6-luna",
+            "A user-approved endpoint that implements the OpenAI Chat Completions request shape.",
+            AiProtocol.ChatCompletions)
     ];
 
     public static AiProviderDescriptor Resolve(string? id) =>
@@ -33,7 +48,7 @@ public sealed record AiApiChunk(string Text, bool Done);
 
 public static class AiApiClient
 {
-    public const string DefaultModel = "gpt-4o-mini";
+    public const string DefaultModel = "gpt-6-luna";
     public const string DefaultBaseUrl = "https://api.openai.com/v1";
 
     public static string BuildRequest(string model, string prompt, string? pageContext)

@@ -1405,6 +1405,7 @@ public sealed partial class MainWindow : Window
 
     private void CloseHost(BrowserTab host)
     {
+        CancelAiRequest();
         if (host.Closed)
         {
             return;
@@ -1574,6 +1575,7 @@ public sealed partial class MainWindow : Window
 
     private void SelectTab(BrowserTabModel model)
     {
+        CancelAiRequest();
         _tabs.Activate(model.Id);
         TabList.SelectedItem = model;
         UpdateWebViewVisibility();
@@ -2653,229 +2655,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async Task ShowAiApiSettingsAsync()
-    {
-        var existingKey = AiCredentialStore.GetKey();
-        var keyBox = new PasswordBox { Password = existingKey ?? "", PlaceholderText = "OpenAI API key" };
-        var providerCombo = new ComboBox
-        {
-            ItemsSource = AiProviderCatalog.All,
-            DisplayMemberPath = nameof(AiProviderDescriptor.Name),
-            SelectedItem = AiProviderCatalog.Resolve(_aiApiSettings.Provider)
-        };
-        var modelBox = new TextBox { Text = _aiApiSettings.Model, PlaceholderText = AiApiClient.DefaultModel };
-        var baseUrlBox = new TextBox { Text = _aiApiSettings.BaseUrl, PlaceholderText = AiApiClient.DefaultBaseUrl };
-        var testResult = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-        var testButton = new Button { Content = "Test connection" };
-        testButton.Click += async (_, _) =>
-        {
-            try
-            {
-                testResult.Text = "Testing…";
-                var provider = providerCombo.SelectedItem as AiProviderDescriptor ?? AiProviderCatalog.All[0];
-                var settings = new AiApiSettings(
-                    modelBox.Text.Trim(), baseUrlBox.Text.Trim(), provider.Id);
-                var answer = await AiApiClient.CompleteAsync(
-                    keyBox.Password, settings, "Reply with OK only.", null);
-                testResult.Text = $"Connection OK: {answer[..Math.Min(answer.Length, 80)]}";
-            }
-            catch (Exception exception)
-            {
-                testResult.Text = $"Connection failed: {exception.Message}";
-            }
-        };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Optional API mode. The API key is stored only in Windows Credential Manager and is never written to logs or settings files.",
-            TextWrapping = TextWrapping.Wrap
-        });
-        panel.Children.Add(new TextBlock { Text = "Provider" });
-        panel.Children.Add(providerCombo);
-        panel.Children.Add(new TextBlock { Text = "API key" });
-        panel.Children.Add(keyBox);
-        panel.Children.Add(new TextBlock { Text = "Model" });
-        panel.Children.Add(modelBox);
-        panel.Children.Add(new TextBlock { Text = "Base URL" });
-        panel.Children.Add(baseUrlBox);
-        panel.Children.Add(testButton);
-        panel.Children.Add(testResult);
-        var dialog = new ContentDialog
-        {
-            Title = "API AI settings",
-            Content = new ScrollViewer { MaxHeight = 520, Content = panel },
-            PrimaryButtonText = "Save",
-            SecondaryButtonText = "Delete key",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = RootGrid.XamlRoot
-        };
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Secondary)
-        {
-            AiCredentialStore.Delete();
-            StatusText.Text = "API key removed.";
-            return;
-        }
-        if (result != ContentDialogResult.Primary) return;
-        if (!string.IsNullOrWhiteSpace(keyBox.Password) && !AiCredentialStore.Save(keyBox.Password))
-        {
-            await ShowMessageAsync("API key", "Windows Credential Manager could not store the key.");
-            return;
-        }
-        var selectedProvider = providerCombo.SelectedItem as AiProviderDescriptor ?? AiProviderCatalog.All[0];
-        _aiApiSettings = new AiApiSettings(
-            modelBox.Text.Trim().Length == 0 ? selectedProvider.DefaultModel : modelBox.Text.Trim(),
-            baseUrlBox.Text.Trim().Length == 0 ? selectedProvider.BaseUrl : baseUrlBox.Text.Trim(),
-            selectedProvider.Id);
-        SaveAiApiSettings();
-        StatusText.Text = "API AI settings saved. Web AI remains the default.";
-    }
-
-    private async Task AskApiAiAsync()
-    {
-        var key = AiCredentialStore.GetKey();
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            await ShowMessageAsync("API AI", "Configure an API key first from the browser menu → API AI settings.");
-            return;
-        }
-        var host = ActiveHost;
-        if (host?.View.CoreWebView2 is null)
-        {
-            await ShowMessageAsync("API AI", "Open a page before asking API AI.");
-            return;
-        }
-        var promptBox = new TextBox
-        {
-            Text = "Summarize this page.",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 90
-        };
-        var includeArticle = new CheckBox { Content = "Include extracted article text (user-approved)", IsChecked = true };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"Current page: {host.Model.Title}\n{host.Model.Url}",
-            TextWrapping = TextWrapping.Wrap
-        });
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Page content is untrusted data. It is sent only after you press Send.",
-            TextWrapping = TextWrapping.Wrap
-        });
-        panel.Children.Add(promptBox);
-        panel.Children.Add(includeArticle);
-        var dialog = new ContentDialog
-        {
-            Title = "Ask API AI",
-            Content = new ScrollViewer { MaxHeight = 520, Content = panel },
-            PrimaryButtonText = "Send",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = RootGrid.XamlRoot
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        var prompt = promptBox.Text.Trim();
-        if (prompt.Length == 0) return;
-        try
-        {
-            StatusText.Text = "API AI request in progress…";
-            var context = $"Title: {host.Model.Title}\nURL: {host.Model.Url}";
-            var selection = JsonSerializer.Deserialize<string>(
-                await host.View.CoreWebView2.ExecuteScriptAsync(
-                    "window.getSelection ? window.getSelection().toString() : ''"));
-            if (!string.IsNullOrWhiteSpace(selection))
-            {
-                context += "\nSelected text:\n" + selection.Trim();
-            }
-            if (includeArticle.IsChecked == true)
-            {
-                var raw = await host.View.CoreWebView2.ExecuteScriptAsync(ReaderExtractionScript.Script);
-                var pageJson = JsonSerializer.Deserialize<string>(raw);
-                var page = string.IsNullOrWhiteSpace(pageJson)
-                    ? null
-                    : JsonSerializer.Deserialize<ReaderExtractedPage>(
-                        pageJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (page is not null)
-                {
-                    var text = string.Join("\n\n", page.Blocks
-                        .Where(block => block.Tag != "img")
-                        .Select(block => block.Text)
-                        .Where(text => !string.IsNullOrWhiteSpace(text)));
-                    if (text.Length > 20000) text = text[..20000];
-                    context += "\nArticle (untrusted data):\n" + text;
-                }
-            }
-            var responseBuilder = new StringBuilder();
-            var responseBox = new TextBox
-            {
-                Text = "Waiting for the response…",
-                IsReadOnly = true,
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap,
-                MinHeight = 220
-            };
-            var streamStatus = new TextBlock { Text = "Streaming…", TextWrapping = TextWrapping.Wrap };
-            var copyButton = new Button { Content = "Copy" };
-            var responsePanel = new StackPanel { Spacing = 8 };
-            responsePanel.Children.Add(responseBox);
-            responsePanel.Children.Add(streamStatus);
-            copyButton.Click += (_, _) =>
-            {
-                if (responseBuilder.Length == 0) return;
-                var data = new DataPackage();
-                data.SetText(responseBuilder.ToString());
-                Clipboard.SetContent(data);
-                streamStatus.Text = "Response copied.";
-            };
-            responsePanel.Children.Add(copyButton);
-            using var streamCancellation = new CancellationTokenSource();
-            var responseDialog = new ContentDialog
-            {
-                Title = "API AI response",
-                Content = new ScrollViewer { MaxHeight = 560, Content = responsePanel },
-                CloseButtonText = "Cancel / Close",
-                XamlRoot = RootGrid.XamlRoot
-            };
-            responseDialog.Opened += async (_, _) =>
-            {
-                try
-                {
-                    await foreach (var chunk in AiApiClient.StreamAsync(
-                        key, _aiApiSettings, prompt, context, streamCancellation.Token))
-                    {
-                        responseBuilder.Append(chunk);
-                        responseBox.Text = responseBuilder.ToString();
-                        responseBox.SelectionStart = responseBox.Text.Length;
-                    }
-                    streamStatus.Text = responseBuilder.Length == 0
-                        ? "The API returned an empty response."
-                        : "Response complete.";
-                    StatusText.Text = "API AI response received.";
-                }
-                catch (OperationCanceledException)
-                {
-                    streamStatus.Text = "Request cancelled.";
-                    StatusText.Text = "API AI request cancelled.";
-                }
-                catch (Exception exception)
-                {
-                    streamStatus.Text = $"API AI failed: {exception.Message}";
-                    StatusText.Text = "API AI failed.";
-                }
-            };
-            responseDialog.Closed += (_, _) => streamCancellation.Cancel();
-            await responseDialog.ShowAsync();
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = $"API AI failed: {exception.Message}";
-            await ShowMessageAsync("API AI", $"API AI failed: {exception.Message}");
-        }
-    }
-
     private void ChangeZoom(double delta) => _ = ChangeZoomAsync(delta);
 
     private void SetZoom(double value) => _ = SetZoomAsync(value);
@@ -2937,6 +2716,88 @@ public sealed partial class MainWindow : Window
             managePermissions = true;
             settingsDialog?.Hide();
         };
+        var aiExistingKey = AiCredentialStore.GetKey();
+        var aiKeyBox = new PasswordBox
+        {
+            PlaceholderText = aiExistingKey is null
+                ? "OpenAI API key"
+                : "Configured — leave blank to keep the current key"
+        };
+        AutomationProperties.SetAutomationId(aiKeyBox, "SettingsAiKeyBox");
+        var aiEnabledBox = new CheckBox
+        {
+            Content = "Enable AMARE API assistant",
+            IsChecked = _aiApiSettings.Enabled
+        };
+        AutomationProperties.SetAutomationId(aiEnabledBox, "SettingsAiEnabledBox");
+        var aiModeBox = new ComboBox
+        {
+            ItemsSource = new[] { "Mock (offline)", "Actual API" },
+            SelectedIndex = _aiApiSettings.Mode == AiExecutionMode.Mock ? 0 : 1,
+            MinWidth = 220
+        };
+        AutomationProperties.SetAutomationId(aiModeBox, "SettingsAiModeBox");
+        var aiModelBox = new TextBox
+        {
+            Text = _aiApiSettings.Model,
+            PlaceholderText = AiApiClient.DefaultModel
+        };
+        AutomationProperties.SetAutomationId(aiModelBox, "SettingsAiModelBox");
+        var aiKeyStatus = new TextBlock
+        {
+            Text = aiExistingKey is null
+                ? "No API key configured."
+                : "API key configured in Windows Credential Manager (masked).",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12
+        };
+        var aiTestStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        AutomationProperties.SetAutomationId(aiTestStatus, "SettingsAiTestStatus");
+        var aiKeyRejected = false;
+        aiKeyBox.PasswordChanged += (_, _) => aiKeyRejected = false;
+        var aiTestButton = new Button { Content = "Test connection" };
+        aiTestButton.Click += async (_, _) =>
+        {
+            try
+            {
+                aiTestStatus.Text = "Testing…";
+                var settings = new AiApiSettings(
+                    aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
+                    _aiApiSettings.BaseUrl,
+                    _aiApiSettings.Provider,
+                    aiEnabledBox.IsChecked == true,
+                    aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
+                var key = aiKeyBox.Password.Trim().Length > 0 ? aiKeyBox.Password : aiExistingKey;
+                aiTestStatus.Text = await TestAiConnectionAsync(settings, key);
+                aiKeyRejected = settings.Mode == AiExecutionMode.Actual
+                                && aiTestStatus.Text.StartsWith("The OpenAI API key was rejected", StringComparison.Ordinal);
+            }
+            catch (Exception exception)
+            {
+                aiTestStatus.Text = $"Connection test failed: {exception.GetType().Name}";
+            }
+        };
+        var aiDeleteButton = new Button { Content = "Delete stored key" };
+        aiDeleteButton.Click += (_, _) =>
+        {
+            if (AiCredentialStore.Delete())
+            {
+                aiExistingKey = null;
+                aiKeyStatus.Text = "API key deleted.";
+                aiTestStatus.Text = "Stored key deleted.";
+            }
+            else
+            {
+                aiTestStatus.Text = "The stored key could not be deleted.";
+            }
+        };
+        var aiHint = new TextBlock
+        {
+            Text = "Actual API requests are sent only when you press Send. They may incur charges on your OpenAI account. " +
+                   "Page content is included only when you explicitly enable it for a request.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12
+        };
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(new TextBlock { Text = "Appearance theme" });
         stack.Children.Add(themeBox);
@@ -2944,12 +2805,25 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(engineBox);
         stack.Children.Add(restoreBox);
         stack.Children.Add(updateBox);
+        stack.Children.Add(new TextBlock { Text = "AI assistant", Margin = new Thickness(0, 8, 0, 0) });
+        stack.Children.Add(aiEnabledBox);
+        stack.Children.Add(new TextBlock { Text = "Execution mode" });
+        stack.Children.Add(aiModeBox);
+        stack.Children.Add(new TextBlock { Text = "Model (editable)" });
+        stack.Children.Add(aiModelBox);
+        stack.Children.Add(new TextBlock { Text = "API key" });
+        stack.Children.Add(aiKeyBox);
+        stack.Children.Add(aiKeyStatus);
+        stack.Children.Add(aiTestButton);
+        stack.Children.Add(aiTestStatus);
+        stack.Children.Add(aiDeleteButton);
+        stack.Children.Add(aiHint);
         stack.Children.Add(new TextBlock { Text = "Site permissions", Margin = new Thickness(0, 8, 0, 0) });
         stack.Children.Add(permissionsButton);
         settingsDialog = new ContentDialog
         {
             Title = "Settings",
-            Content = stack,
+            Content = new ScrollViewer { MaxHeight = 620, Content = stack },
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -2981,11 +2855,34 @@ public sealed partial class MainWindow : Window
             _themeId = theme;
             _updatePreferences = _updatePreferences with { CheckOnStartup = updateBox.IsChecked == true };
             SaveUpdatePreferences();
+            if (aiKeyRejected && aiKeyBox.Password.Trim().Length > 0)
+            {
+                await ShowMessageAsync(
+                    "AI settings",
+                    "The new API key was rejected. The previously stored key was not replaced.");
+                return;
+            }
+            var newAiKey = aiKeyBox.Password.Trim();
+            if (newAiKey.Length > 0 && !AiCredentialStore.Save(newAiKey))
+            {
+                await ShowMessageAsync("AI settings", "Windows Credential Manager could not store the key.");
+                return;
+            }
+            _aiApiSettings = new AiApiSettings(
+                aiModelBox.Text.Trim().Length == 0 ? AiApiClient.DefaultModel : aiModelBox.Text.Trim(),
+                _aiApiSettings.BaseUrl,
+                _aiApiSettings.Provider,
+                aiEnabledBox.IsChecked == true,
+                aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
+            SaveAiApiSettings();
             ApplyTheme(theme);
             _initializingSettings = true;
             SearchEngineBox.SelectedItem = engine;
             _initializingSettings = false;
-            StatusText.Text = "Settings saved";
+            StatusText.Text = _aiApiSettings.Mode == AiExecutionMode.Actual
+                              && string.IsNullOrWhiteSpace(AiCredentialStore.GetKey())
+                ? "Settings saved. Actual API requests are blocked until an API key is added."
+                : "Settings saved";
         }
         catch (Exception exception)
         {
@@ -3454,6 +3351,7 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        CancelAiRequest();
         CancelPendingPermissionRequest();
         CancelSitePermissionsDialog();
         UnwireVaultLifetime();
