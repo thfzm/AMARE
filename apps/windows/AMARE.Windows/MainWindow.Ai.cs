@@ -602,6 +602,7 @@ public sealed partial class MainWindow
             modeCombo.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
         _aiApiSettings = settings;
         SaveAiApiSettings();
+        AppLog.Info($"AI settings saved mode={settings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");
         StatusText.Text = settings.Mode == AiExecutionMode.Actual
                           && string.IsNullOrWhiteSpace(AiCredentialStore.GetKey())
             ? "AI settings saved. Actual API requests are blocked until a key is added."

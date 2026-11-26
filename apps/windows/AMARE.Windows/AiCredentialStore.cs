@@ -73,6 +73,10 @@ internal static class AiCredentialStore
             {
                 AppLog.Warn($"AI credential save failed code={Marshal.GetLastWin32Error()}");
             }
+            else
+            {
+                AppLog.Info("AI credential saved");
+            }
             return written;
         }
         finally

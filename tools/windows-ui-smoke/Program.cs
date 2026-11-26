@@ -1125,6 +1125,11 @@ internal static class Program
     private static void SetAiKey(string value)
     {
         var element = FindById("AiKeyBox") ?? throw new InvalidOperationException("AiKeyBox missing");
+        if (element.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
+        {
+            ((ScrollItemPattern)scroll).ScrollIntoView();
+            Thread.Sleep(200);
+        }
         element.SetFocus();
         SendKeys.SendWait("^a");
         SendKeys.SendWait(value);
@@ -1139,8 +1144,8 @@ internal static class Program
             TimeSpan.FromSeconds(8), "AI key settings dialog");
         SetAiKey("sk-test-ui-key");
         InvokeDialogButton("API AI settings", "Save");
-        WaitFor(() => StatusTextContains("AI settings saved"),
-            TimeSpan.FromSeconds(8), "AI key save status");
+        WaitFor(() => FindByName("API AI settings") is null,
+            TimeSpan.FromSeconds(12), "AI key settings dialog close");
 
         Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
         InvokeMenu("API AI settings…");

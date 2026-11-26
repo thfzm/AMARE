@@ -2884,6 +2884,7 @@ public sealed partial class MainWindow : Window
                 aiEnabledBox.IsChecked == true,
                 aiModeBox.SelectedIndex == 0 ? AiExecutionMode.Mock : AiExecutionMode.Actual);
             SaveAiApiSettings();
+            AppLog.Info($"AI settings saved mode={_aiApiSettings.Mode} keyConfigured={AiCredentialStore.GetKey() is not null}");
             ApplyTheme(theme);
             _initializingSettings = true;
             SearchEngineBox.SelectedItem = engine;
