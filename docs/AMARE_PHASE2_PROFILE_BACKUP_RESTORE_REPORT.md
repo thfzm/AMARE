@@ -6,7 +6,7 @@
 - 기준 제품/테스트 HEAD: **`fcf1ded`**
 - 기준 문서 HEAD: **`89fc451`**
 - 최종 제품/테스트 HEAD: **`6ff6e4b`**
-- 최종 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 문서 내용 HEAD: **`7f6b5bd`** (이 보고서, design, audit/plan/Vault 문서 포함)
 - DB schema 변경: **없음** (profile schema v6 유지)
 - MSIX/서명/공개 Release: **없음**
 
