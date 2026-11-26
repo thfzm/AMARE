@@ -52,6 +52,34 @@ public sealed partial class MainWindow
         }
     }
 
+    private async Task<string> ReadTextSettingAsync(string key, string fallback)
+    {
+        try
+        {
+            var value = await _settings!.GetAsync(_context!, key);
+            return string.IsNullOrWhiteSpace(value.Value.AsText()) ? fallback : value.Value.AsText();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"Setting {key} is corrupt; using default: {exception.GetType().Name}");
+            return fallback;
+        }
+    }
+
+    private async Task<bool> ReadBooleanSettingAsync(string key, bool fallback)
+    {
+        try
+        {
+            var value = await _settings!.GetAsync(_context!, key);
+            return value.Value.AsBoolean();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"Setting {key} is corrupt; using default: {exception.GetType().Name}");
+            return fallback;
+        }
+    }
+
     private string ResolveDownloadDirectory()
     {
         var configured = _appPreferences.DownloadDirectory;

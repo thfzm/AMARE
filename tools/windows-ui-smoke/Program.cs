@@ -388,6 +388,7 @@ internal static class Program
             Check("reader_mode", OpenAndCloseReader);
             Check("ai_panel", OpenAndCloseAiPanel);
             Check("settings_dialog", OpenAndCloseSettings);
+            Check("settings_categories_and_scope", SettingsCategories);
             Check("settings_shortcut_actions", SettingsShortcutActions);
             Check("api_ai_settings_dialog", OpenAndCloseApiAiSettings);
             Check("api_ai_no_key", OpenAndCloseApiAiNoKey);
@@ -437,6 +438,7 @@ internal static class Program
             Check("site_permissions_settings_entry", SitePermissionsSettingsEntry);
             Check("site_permissions_profile_isolation", SitePermissionsProfileIsolation);
             Check("site_permissions_audit_failure_fail_closed", SitePermissionsAuditFailure);
+            Check("settings_persistence_restart", SettingsPersistenceRestart);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -1066,6 +1068,30 @@ internal static class Program
         CaptureWindow("02-settings");
         EscapeDialog("Settings");
         return "Settings dialog opened";
+    }
+
+    private static string SettingsCategories()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Settings");
+        WaitFor(() => FindByName("Settings") is not null,
+            TimeSpan.FromSeconds(8), "Settings categories dialog");
+        foreach (var id in new[]
+                 {
+                     "SettingsLanguageBox", "SettingsThemeBox", "SettingsEngineBox",
+                     "SettingsRestoreBox", "SettingsSaveHistoryBox",
+                     "SettingsPasswordAutofillBox", "SettingsPasswordSaveBox",
+                     "ManageSitePermissionsButton", "SettingsOpenVaultButton",
+                     "SettingsClearWebPasswordsButton", "SettingsAiEnabledBox",
+                     "SettingsAiModeBox", "SettingsAiModelBox", "SettingsAiKeyBox",
+                     "SettingsDownloadPathBox", "SettingsUpdateChannelBox",
+                     "SettingsCheckNowButton"
+                 })
+        {
+            Require(FindById(id) is not null, $"Settings control missing: {id}");
+        }
+        EscapeDialog("Settings");
+        return "General/Appearance/Privacy/AI/Downloads/Updates settings present";
     }
 
     private static string SettingsShortcutActions()
@@ -3383,6 +3409,88 @@ internal static class Program
                 "notifications|https://amare-vault.test|allow");
             RestartForPermissionAudit();
         }
+    }
+
+    private static void OpenSettings()
+    {
+        Invoke(FindById("MenuButton") ?? throw new InvalidOperationException("MenuButton missing"));
+        InvokeMenu("Settings");
+        WaitFor(() => FindByName("Settings") is not null,
+            TimeSpan.FromSeconds(8), "Settings dialog");
+    }
+
+    private static void SetToggle(string id, bool value)
+    {
+        var element = FindById(id) ?? throw new InvalidOperationException($"{id} missing");
+        if (!element.TryGetCurrentPattern(TogglePattern.Pattern, out var pattern))
+        {
+            throw new InvalidOperationException($"{id} has no TogglePattern");
+        }
+        var toggle = (TogglePattern)pattern;
+        var target = value ? ToggleState.On : ToggleState.Off;
+        if (toggle.Current.ToggleState != target)
+        {
+            toggle.Toggle();
+        }
+    }
+
+    private static bool GetToggle(string id)
+    {
+        var element = FindById(id) ?? throw new InvalidOperationException($"{id} missing");
+        if (!element.TryGetCurrentPattern(TogglePattern.Pattern, out var pattern))
+        {
+            throw new InvalidOperationException($"{id} has no TogglePattern");
+        }
+        return ((TogglePattern)pattern).Current.ToggleState == ToggleState.On;
+    }
+
+    private static void SelectComboBoxIndex(string id, int index)
+    {
+        var element = FindById(id) ?? throw new InvalidOperationException($"{id} missing");
+        element.SetFocus();
+        Thread.Sleep(150);
+        SendKeys.SendWait("{HOME}");
+        for (var i = 0; i < index; i++)
+        {
+            SendKeys.SendWait("{DOWN}");
+        }
+        SendKeys.SendWait("{ENTER}");
+        Thread.Sleep(250);
+    }
+
+    private static string ComboBoxSelection(string id)
+    {
+        var element = FindById(id) ?? throw new InvalidOperationException($"{id} missing");
+        if (!element.TryGetCurrentPattern(SelectionPattern.Pattern, out var pattern))
+        {
+            return "";
+        }
+        var selection = ((SelectionPattern)pattern).Current.GetSelection();
+        return selection.Length == 0 ? "" : selection[0].Current.Name;
+    }
+
+    private static string SettingsPersistenceRestart()
+    {
+        OpenSettings();
+        SetToggle("SettingsSaveHistoryBox", false);
+        SelectComboBoxIndex("SettingsUpdateChannelBox", 1);
+        InvokeDialogButton("Settings", "Save");
+        WaitFor(() => FindByName("Settings") is null,
+            TimeSpan.FromSeconds(10), "settings save close");
+
+        RestartForPermissionAudit();
+        OpenSettings();
+        Require(!GetToggle("SettingsSaveHistoryBox"), "history setting was not restored");
+        Require(ComboBoxSelection("SettingsUpdateChannelBox").Contains(
+                "Prerelease", StringComparison.OrdinalIgnoreCase),
+            $"update channel was not restored: {ComboBoxSelection("SettingsUpdateChannelBox")}");
+
+        SetToggle("SettingsSaveHistoryBox", true);
+        SelectComboBoxIndex("SettingsUpdateChannelBox", 0);
+        InvokeDialogButton("Settings", "Save");
+        WaitFor(() => FindByName("Settings") is null,
+            TimeSpan.FromSeconds(10), "settings restore close");
+        return "history/update channel persisted across restart";
     }
 
     private static string SitePermissionsPopup()

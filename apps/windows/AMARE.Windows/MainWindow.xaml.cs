@@ -608,19 +608,14 @@ public sealed partial class MainWindow : Window
         _initializingSettings = true;
         try
         {
-            var engine = await _settings.GetAsync(_context, "engine");
-            _engineId = SearchEngineCatalog.Resolve(engine.Value.AsText()).Id;
+            _engineId = SearchEngineCatalog.Resolve(
+                await ReadTextSettingAsync("engine", "duckduckgo")).Id;
             SearchEngineBox.SelectedItem = SearchEngineCatalog.Resolve(_engineId);
-            var restore = await _settings.GetAsync(_context, "restore_session");
-            _restoreSession = restore.Value.AsBoolean();
-            var theme = await _settings.GetAsync(_context, "theme");
-            _themeId = theme.Value.AsText().ToLowerInvariant();
-            var saveHistory = await _settings.GetAsync(_context, "save_history");
-            _saveHistory = saveHistory.Value.AsBoolean();
-            var autofill = await _settings.GetAsync(_context, "password_autofill_enabled");
-            _passwordAutofillEnabled = autofill.Value.AsBoolean();
-            var savePrompt = await _settings.GetAsync(_context, "password_save_prompt_enabled");
-            _passwordSavePromptEnabled = savePrompt.Value.AsBoolean();
+            _restoreSession = await ReadBooleanSettingAsync("restore_session", true);
+            _themeId = (await ReadTextSettingAsync("theme", "system")).ToLowerInvariant();
+            _saveHistory = await ReadBooleanSettingAsync("save_history", true);
+            _passwordAutofillEnabled = await ReadBooleanSettingAsync("password_autofill_enabled", true);
+            _passwordSavePromptEnabled = await ReadBooleanSettingAsync("password_save_prompt_enabled", true);
             ApplyTheme(_themeId);
         }
         catch (Exception exception)
