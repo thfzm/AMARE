@@ -7,6 +7,7 @@ namespace Amare.Windows;
 public sealed partial class MainWindow
 {
     private const string TestLegacyPermissionEnv = "AMARE_TEST_LEGACY_PERMISSION";
+    private const string TestAuditFailureEnv = "AMARE_TEST_PERMISSION_AUDIT_FAIL";
     private static readonly TimeSpan PermissionAuditRetryDelay = TimeSpan.FromSeconds(30);
     private static readonly object PermissionAuditSync = new();
     private static readonly Dictionary<string, PermissionAuditEntry> PermissionAudits =
@@ -157,6 +158,15 @@ public sealed partial class MainWindow
         ProfileContextDto? context,
         AmareVaultClient? client)
     {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(TestVaultRootEnv))
+            && string.Equals(
+                Environment.GetEnvironmentVariable(TestAuditFailureEnv),
+                "1",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("test-only permission audit failure");
+        }
+
         List<CoreWebView2PermissionSetting> settings;
         try
         {

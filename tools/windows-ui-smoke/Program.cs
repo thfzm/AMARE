@@ -435,6 +435,7 @@ internal static class Program
             Check("site_permissions_popup", SitePermissionsPopup);
             Check("site_permissions_settings_entry", SitePermissionsSettingsEntry);
             Check("site_permissions_profile_isolation", SitePermissionsProfileIsolation);
+            Check("site_permissions_audit_failure_fail_closed", SitePermissionsAuditFailure);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -3274,6 +3275,56 @@ internal static class Program
             {
                 CloseActiveTabAndWait(beforeTabs);
             }
+        }
+    }
+
+    private static void RestartForPermissionAudit()
+    {
+        TryClose(graceful: true);
+        WaitFor(() => _process?.HasExited == true, TimeSpan.FromSeconds(15),
+            "permission audit restart exit");
+        _process = null;
+        _window = null;
+        Launch(_exePath!);
+        WaitFor(() => CountTabs() > 0, TimeSpan.FromSeconds(15),
+            "permission audit restart tabs");
+    }
+
+    private static string SitePermissionsAuditFailure()
+    {
+        Environment.SetEnvironmentVariable("AMARE_TEST_LEGACY_PERMISSION", null);
+        Environment.SetEnvironmentVariable("AMARE_TEST_PERMISSION_AUDIT_FAIL", "1");
+        RestartForPermissionAudit();
+        try
+        {
+            OpenSitePermissionsDialog();
+            var audit = FindById("SitePermissionAuditState")?.Current.Name ?? "";
+            Require(audit.Contains("Failed", StringComparison.OrdinalIgnoreCase),
+                $"audit failure was not surfaced: {audit}");
+            CloseSitePermissionsDialog();
+
+            var beforeTabs = CountTabs();
+            OpenNewTabAndWait(beforeTabs + 1);
+            try
+            {
+                OpenPermissionPage("permissions.html?auto=0");
+                TriggerPermissionRequest();
+                Thread.Sleep(1500);
+                AssertNoPermissionRequestDialog();
+                return "failed legacy audit blocks permission requests";
+            }
+            finally
+            {
+                CloseActiveTabAndWait(beforeTabs);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AMARE_TEST_PERMISSION_AUDIT_FAIL", null);
+            Environment.SetEnvironmentVariable(
+                "AMARE_TEST_LEGACY_PERMISSION",
+                "notifications|https://amare-vault.test|allow");
+            RestartForPermissionAudit();
         }
     }
 
