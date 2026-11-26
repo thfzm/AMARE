@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace Amare.Windows;
 
@@ -122,7 +123,7 @@ public sealed partial class MainWindow
         try
         {
             var page = await _profiles.ListAsync(100);
-            foreach (var profile in page.Items)
+            foreach (var profile in page.Profiles)
             {
                 if (!profileIds.Contains(profile.Id)) profileIds.Add(profile.Id);
             }
