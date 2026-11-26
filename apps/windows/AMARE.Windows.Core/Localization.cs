@@ -25,6 +25,7 @@ public static class L10n
     {
         // Settings shell
         ["settings.title"] = ("Settings", "설정"),
+        ["settings.application"] = ("Application", "애플리케이션"),
         ["settings.general"] = ("General", "일반"),
         ["settings.appearance"] = ("Appearance", "모양"),
         ["settings.privacy"] = ("Privacy & Security", "개인정보 및 보안"),

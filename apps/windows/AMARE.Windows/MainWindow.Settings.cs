@@ -367,7 +367,7 @@ public sealed partial class MainWindow
             }
         }
 
-        Heading(L10n.T("settings.general"), L10n.T("settings.scopeProfile"));
+        Heading(L10n.T("settings.application"), L10n.T("settings.scopeApp"));
         stack.Children.Add(new TextBlock { Text = L10n.T("settings.language") });
         stack.Children.Add(languageBox);
         stack.Children.Add(new TextBlock
@@ -376,6 +376,7 @@ public sealed partial class MainWindow
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap
         });
+        Heading(L10n.T("settings.general"), L10n.T("settings.scopeProfile"));
         stack.Children.Add(new TextBlock { Text = L10n.T("settings.searchEngine") });
         stack.Children.Add(engineBox);
         stack.Children.Add(restoreBox);
