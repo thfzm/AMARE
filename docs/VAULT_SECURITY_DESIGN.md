@@ -139,6 +139,21 @@
 - UI 64/64, Windows 167/0, interop 99/99, Linux SUCCESS. Real 5-minute idle,
   session lock, and Windows 11 hardware remain UNVERIFIED.
 
+### 1.3.4 Phase 2.4 integration hardening
+
+- `login_save_prompt_enabled` now gates login candidate handling; OFF means no
+  prompt and no Vault write.
+- `login_autofill_enabled` now gates explicit Fill; OFF means no Fill request.
+- Vault lock epoch is captured at the start of capture/fill and checked after
+  dialog, detect, list, and secret retrieval. A lock invalidates in-flight
+  operations even if the UI state changes asynchronously.
+- Settings are rechecked before the final save/fill step; a setting turned OFF
+  in another window cannot be bypassed by an already-open dialog.
+- Added UI fixtures/tests: save prompt OFF, fill OFF, fill while locked,
+  cross-origin form action, cross-origin iframe login, other-origin fill,
+  hidden/disabled password fields, duplicate account no-overwrite.
+- UI **84/84**, Windows **182/0/8/8**, interop **113/113**, Linux SUCCESS.
+
 ### 1.4 GPUI Vault (참고, 복사 금지)
 
 `apps/amare-gpui/src/password_vault.rs`:
@@ -430,10 +445,12 @@ username 후보:
 
 - top-level login form submit만 감지.
 - `source`와 `form.action`이 같은 origin일 때만 후보 생성.
-- 비밀번호는 즉시 native로 전달하되, 자동 저장하지 않는다.
-- native UI에서 “저장/업데이트/건너뛰기”를 사용자가 선택한다.
-- 저장 후 원본 메시지/문자열은 가능한 한 빨리 폐기한다.
-- status JSON/log에는 username/origin도 기본적으로 넣지 않는다.
+- 최초 후보 메시지는 username/form metadata만 포함하며 password를 포함하지 않는다.
+- 사용자가 Save를 승인한 뒤에만 native read command로 password를 읽는다.
+- 승인 후 Vault lock/settings/context를 다시 검증하고, 중복 origin+username은
+  덮어쓰지 않는다.
+- 원본 secret은 저장 직후 best-effort로 지우고, status JSON/log에는
+  username/origin/password를 넣지 않는다.
 
 ### 5.7 클립보드
 

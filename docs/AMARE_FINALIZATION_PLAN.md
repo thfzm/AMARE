@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.3 Settings & Localization)
-- 기준: `feature/phase-2-settings-localization`, 제품/테스트 `e548a1f`
+- 최신 갱신: 2026-11-26 (Phase 2.4 Vault WebView Integration)
+- 기준: `feature/phase-2-vault-webview-integration`, 제품/테스트 `e1b9cbf`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -177,6 +177,18 @@
   failure, multiwindow profile live sync
 - 상세: `docs/AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`
 
+### Phase 2.4 진행 상태
+
+- **Vault/WebView2 통합 보안 hardening 완료** (`e1b9cbf`)
+- login_save_prompt/login_autofill 설정을 실제 capture/fill에 연결
+- Vault lock epoch와 async context/settings/lock 재검증
+- cross-origin action/iframe, other-origin fill, hidden/disabled field,
+  duplicate account, settings OFF, locked Fill UI tests
+- UI **84/84**, interop **113/113**, Windows **182/0/8/8**, Linux SUCCESS
+- UNVERIFIED: 실제 Windows 11 실기기, 실제 5분 idle/session lock,
+  force-kill/async close race, multiwindow lock의 실제 OS 조건
+- 상세: `docs/AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -196,6 +208,9 @@
 - **Phase 2.3 완료(CI)**: Settings/현지화 — General/Appearance/Privacy/AI/
   Downloads/Updates 연결, Korean/English resource, restart persistence.
   Windows 11 Korean IME/DPI/layout는 UNVERIFIED.
+- **Phase 2.4 완료(CI)**: Vault/WebView2 — login settings wiring, lock epoch,
+  exact-origin capture/fill, cross-origin/iframe/hidden/duplicate/settings OFF
+  security tests. 실제 Windows 11/OS lock은 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
@@ -484,7 +499,7 @@ Phase 1.2 Vault 감사로 P0-2의 실제 구현 범위(키 보호/자동완성/�
 | 5 | 북마크/방문 기록 유지 | 재시작 후 확인 |
 | 6 | 다운로드 정상 | 실제 파일 다운로드 |
 | 7 | 세션 복원/충돌 복구 | 2·3창 + 강제 종료 |
-| 8 | 비밀번호 저장/자동완성 보안 | unit + 실기기 |
+| 8 | 비밀번호 저장/자동완성 보안 | unit + UI + 실기기 (Phase 2.4 CI PASS; 실기기 UNVERIFIED) |
 | 9 | AI Web Panel 정상 | 실제 서비스 + API provider contract (Phase 2.2); real API E2E UNVERIFIED |
 | 10 | Reader/Find 정상 | UI smoke + 실기기 |
 | 11 | 사이트 권한 설정 가능 | UI smoke 73/73 + Store/FFI + legacy audit (Phase 2.1/2.1.1); 실제 Windows 11은 UNVERIFIED |

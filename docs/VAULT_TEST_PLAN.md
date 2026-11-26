@@ -227,6 +227,30 @@ javascript/file 차단, hidden/disabled field 개별 UI fixture.
 
 ---
 
+## 1.5 Phase 2.4 실제 결과 (settings/lock/security integration)
+
+| 항목 | 결과 |
+|---|---|
+| `login_save_prompt_enabled` OFF → prompt/storage 없음 | **PASS** (UI) |
+| `login_autofill_enabled` OFF → explicit Fill 없음 | **PASS** (UI) |
+| Vault locked explicit Fill 차단 | **PASS** (UI) |
+| cross-origin form action capture 차단 | **PASS** (UI) |
+| cross-origin iframe login capture 차단 | **PASS** (UI) |
+| 다른 origin Fill 거부 | **PASS** (UI) |
+| hidden/disabled password field Fill 거부 | **PASS** (UI) |
+| 동일 origin+username 중복 저장 덮어쓰기 없음 | **PASS** (UI) |
+| 기존 approval/fill/forged/locked/idle 회귀 | **PASS** (UI) |
+| Windows / UI / interop | **182/0/8/8 / 84/84 / 113/113** |
+| Linux | **SUCCESS** |
+
+UNVERIFIED: 실제 Windows 11 실기기에서의 저장/Fill, 실제 5분 idle,
+Windows session lock, 강제 프로세스 종료, async window close/cancel race,
+multiwindow lock 일관성의 실제 OS 조건.
+
+상세: `docs/AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`.
+
+---
+
 ## 2. 테스트 픽스처
 
 - `vault-v1-fixture.bin`: format 1, entry 2개, tombstone 1개
@@ -238,7 +262,9 @@ javascript/file 차단, hidden/disabled field 개별 UI fixture.
 - `login-cross-action.html`: form action이 다른 origin
 - `login-lookalike.html`: `example.com.evil.test` / punycode 유사 도메인
 - `login-http.html`: HTTP 로그인
-- `login-hidden.html`: hidden/readonly password field
+- `login-hidden.html`: hidden/disabled password field
+- `login-cross-action.html`: cross-origin form action
+- `login-cross-frame.html`: cross-origin iframe login
 - `vault-backup-password.bin`: Master Password export fixture
 
 픽스처에는 실제 사용자 비밀번호를 넣지 않는다. 테스트 전용 값만 사용한다.

@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-26 (Phase 2.3 Settings & Localization)
-- 기준: `feature/phase-2-settings-localization`, 제품/테스트 `e548a1f`
+- 최신 갱신: 2026-11-26 (Phase 2.4 Vault WebView Integration)
+- 기준: `feature/phase-2-vault-webview-integration`, 제품/테스트 `e1b9cbf`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -14,9 +14,11 @@
 > Phase 2.2 actual AI API는
 > [`AMARE_PHASE2_ACTUAL_AI_API_REPORT.md`](AMARE_PHASE2_ACTUAL_AI_API_REPORT.md),
 > Phase 2.3 Settings/localization은
-> [`AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`](AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md)에
+> [`AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`](AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md),
+> Phase 2.4 Vault/WebView2는
+> [`AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`](AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1~2.3 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~2.4 갱신을 함께 표시한다.
 
 ---
 
@@ -48,14 +50,14 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **76/76** (Phase 2.3, 기존 74 + settings categories + restart persistence) |
+| WinUI UI smoke (최신) | **84/84** (Phase 2.4, 기존 76 + Vault settings/lock/security 8) |
 | Windows 통합 검증 (최신) | **182 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (198 total, package 단계 skip) |
-| C#↔Rust interop (최신) | **113/113** (Phase 2.3) |
+| C#↔Rust interop (최신) | **113/113** (Phase 2.4) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.3, `e548a1f`) |
+| Linux CI | SUCCESS (Phase 2.4, `e1b9cbf`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -102,8 +104,8 @@ WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 | 5 | 방문 기록 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 6 | 다운로드 | `IMPLEMENTED_AND_VERIFIED` | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
 | 7 | 세션 복원/충돌 복구 | `IMPLEMENTED_AND_VERIFIED` (멀티윈도우 P0 해결) | `IMPLEMENTED_BUT_UNVERIFIED` | P1 |
-| 8 | 비밀번호 저장/자동완성 | `PARTIALLY_IMPLEMENTED` (저장/UI, 자동완성 미구현) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
-| 9 | Vault 보안 | `IMPLEMENTED_AND_VERIFIED` (관리 UI/CI) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 8 | 비밀번호 저장/자동완성 | `IMPLEMENTED_AND_VERIFIED` (CI; real Windows 11 UNVERIFIED) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
+| 9 | Vault 보안 | `IMPLEMENTED_AND_VERIFIED` (관리 UI/CI; real Windows 11 UNVERIFIED) | `IMPLEMENTED_BUT_UNVERIFIED` | **P0** |
 | 10 | AI Web Panel | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P1 |
 | 11 | AI API 모드 | `IMPLEMENTED_AND_VERIFIED` (CI/contract; real E2E UNVERIFIED) | `NOT_IMPLEMENTED` | P1 |
 | 12 | Reader | `IMPLEMENTED_AND_VERIFIED` | `NOT_IMPLEMENTED` | P2 |
@@ -377,6 +379,14 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   `data:`/`javascript:`/`file:` 차단은 그대로다. UI 60/60, Windows 151/0,
   interop 84/84.
 - AI 키는 Windows Credential Manager에 저장된다.
+
+- Phase 2.4에서 `login_save_prompt_enabled`/`login_autofill_enabled`를 실제
+  capture/fill에 연결하고, Vault lock epoch와 async 재검증을 추가했다.
+  cross-origin action/iframe, other-origin fill, hidden/disabled field,
+  duplicate account, settings OFF, locked Fill UI tests를 추가했다.
+- 최종 UI smoke **84/84**: 기존 Vault tests + Phase 2.4 8 tests.
+- UNVERIFIED: 실제 Windows 11 실기기, 실제 5분 idle/session lock,
+  강제 종료/async close race, multiwindow lock의 실제 OS 조건.
 
 **GPUI — `IMPLEMENTED_BUT_UNVERIFIED`**
 
@@ -666,7 +676,7 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | ID | 항목 | 상태 | 근거/조치 |
 |---|---|---|---|
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
-| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — capture/autofill 구현·CI 검증, 실기기/5분 idle/session lock UNVERIFIED (1.3D)** | Windows 11 실기기와 실제 session lock 검증 필요 |
+| P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — capture/autofill 구현·CI 검증, 실기기/5분 idle/session lock UNVERIFIED (1.3D+2.4)** | Windows 11 실기기와 실제 session lock 검증 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포
@@ -778,5 +788,11 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   default browser, home/new-tab, tracking은 구현하지 않았고 노출하지 않았다.
   실제 Windows 11 Korean IME/DPI/layout는 UNVERIFIED다. 상세:
   `docs/AMARE_PHASE2_SETTINGS_LOCALIZATION_REPORT.md`.
+- Vault/WebView2(P0)는 Phase 2.4에서 login_save_prompt/login_autofill 실제
+  연결, Vault lock epoch, async 재검증, cross-origin/iframe/hidden/duplicate/
+  settings OFF UI tests를 추가했다. UI 84/84, Windows 182/0, interop 113/113,
+  Linux SUCCESS. 실제 Windows 11 실기기/5분 idle/session lock/force-kill
+  race는 UNVERIFIED다. 상세:
+  `docs/AMARE_PHASE2_VAULT_WEBVIEW_INTEGRATION_REPORT.md`.
 - GPUI는 기능적으로 일부 앞선 부분(창 세션, vault)이 있으나, 최신 반복에서
   11~13 FAIL이고 기본 전환 조건을 충족하지 못했다. **동결·보존**한다.
