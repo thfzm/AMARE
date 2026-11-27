@@ -2,8 +2,8 @@
 
 - 문서 상태: **Phase 0 감사 결과 + Phase 2.1~2.7 + Phase 3.0 전체 감사 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 3.0 Full Feature Audit)
-- 기준: `feature/phase-3-full-audit-windows-validation`, 제품/테스트 `9cb93f7`
+- 최신 갱신: 2026-11-27 (Phase 3.1 Self-contained Package & Validation Handoff)
+- 기준: `feature/phase-3-1-self-contained-validation-package`, 제품/테스트 `7c7c6c3`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -59,13 +59,13 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | 증거 | 결과 |
 |---|---|
 | WinUI UI smoke (최신) | **86/86** (Phase 2.7, backup full restore dialog 포함) |
-| Windows 통합 검증 (최신) | **200 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (216 total, personal package step 포함) |
+| Windows 통합 검증 (최신) | **203 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (219 total, self-contained steps 포함) |
 | C#↔Rust interop (최신) | **127/127** (Phase 3.0) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 3.0, `9cb93f7`) |
+| Linux CI | Phase 3.1 final run 기록 |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -78,7 +78,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | GPUI 반복 3회 | **11/13**, **12/10**, **13/10** |
 | GPUI titlebar | full **3/5**, crash **0/5** |
 | GPUI A/B | A reload PASS, B load/reload/close/exit UNVERIFIED |
-| 패키지 | 0.92.0 WinUI unsigned validation ZIP (360 files, SHA-256 `795d...`) + GPUI ZIP 유지 |
+| 패키지 | 0.92.0 WinUI self-contained unsigned ZIP (527 files, SHA-256 `24d123...`) + framework ZIP + GPUI ZIP 유지 |
 
 WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 
@@ -752,7 +752,9 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 - category 단위 partial restore는 의도적으로 **미지원**.
 - personal ZIP은 구조/무결성 검증 가능하나 **unsigned + framework-dependent .NET 8**
   이며 실기기 launch/update 검증 전에는 최종 배포 불가.
-- P0 code defect는 새로 발견되지 않았고, P0 validation gate 5개가 OPEN.
+- Phase 3.1에서 .NET 8/Windows App SDK/VC++ self-contained ZIP과 WinUI resources를
+  실제 publish/CI/clean launch로 검증했다.
+- P0 code defect는 새로 발견되지 않았고, 실제 Windows 11 validation gate는 OPEN.
 
 ## 5. P0 / P1 / P2 결함 및 격차
 

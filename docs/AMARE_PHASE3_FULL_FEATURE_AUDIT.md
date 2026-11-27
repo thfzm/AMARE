@@ -3,7 +3,8 @@
 - Phase 2.7 제품/테스트 HEAD: `3fff704`
 - Phase 2.7 문서 HEAD: `9780e8b`
 - Phase 3 감사/패키징 app HEAD: `9cb93f7`
-- Phase 3 final branch HEAD: `b869f8f`
+- Phase 3 final branch HEAD: `b869f8f` (Phase 3.0)
+- Phase 3.1 self-contained HEAD: `7c7c6c3`
 - 감사 branch: `feature/phase-3-full-audit-windows-validation`
 - 감사 기준: 실제 코드, 테스트 코드, CI 결과, 설계/검증 문서 대조
 - 원칙: **문서에 PASS라고 적혀 있다는 이유만으로 완료로 판정하지 않는다.**
@@ -44,7 +45,9 @@ Phase 2.7 기준점과 일치한다. Phase 3.0은 `d18f45b`에서
 | C#↔Rust interop | **127/127** | C# + Rust DLL |
 | Backup CI | **10/10** | Rust backup integration |
 | Portable updater E2E | **11/11** | 실제 ZIP + helper process |
-| Personal package step | **PASS** | 360 files, 153,863,831 bytes, SHA-256 `795d...` |
+| Personal package step | **PASS** | framework + self-contained ZIP |
+| Self-contained ZIP | **PASS (Windows CI)** | 527 files, 155,316,668 bytes, SHA-256 `24d123...` |
+| Self-contained clean launch | **PASS (Windows Server CI)** | 8s alive; real Windows 11 UNVERIFIED |
 | Linux CI | **SUCCESS** | Linux Rust/C# interop |
 | Rust store/services/vault | store/services/vault tests PASS | host tests |
 | UI smoke 범위 | window/tab/address/cert/Reader/AI/settings/vault/permissions/backup/updater check | Windows Server 2025 runner |
@@ -244,7 +247,7 @@ Phase 2.7 기준점과 일치한다. Phase 3.0은 `d18f45b`에서
 |---|---|---|---|
 | P0-1 | 실제 Windows 11 핵심 브라우저/입력 미검증 | **OPEN** | Windows 11 실기기에서 launch/navigation/tabs/IME/DPI 검증 |
 | P0-2 | Vault 실제 로그인/5분 idle/session lock/force-kill 미검증 | **OPEN** | 실제 Windows 11 Vault gate |
-| P0-3 | 개인용 ZIP이 framework-dependent .NET 8 | **OPEN** | .NET 8 prerequisite 명시 또는 self-contained publish |
+| P0-3 | 개인용 ZIP runtime/signing | **PARTIALLY RESOLVED** | self-contained .NET 8/VC++ ZIP 구현·CI launch PASS; 실제 Win11/signing UNVERIFIED |
 | P0-4 | backup full/partial restore 실제 Windows 11 미검증 | **OPEN** | 실기기 full/partial restore + power-loss |
 | P0-5 | portable updater 실제 download/apply/restart/rollback 미검증 | **OPEN** | 실기기 updater gate |
 

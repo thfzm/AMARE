@@ -5,6 +5,7 @@
 - 검증 branch: `feature/phase-3-full-audit-windows-validation`
 - Phase 2.7 제품/테스트 HEAD: `3fff704`
 - Phase 3 감사/패키징 HEAD: `9cb93f7`
+- Phase 3.1 self-contained CI HEAD: `7c7c6c3`
 - Phase 2.7 문서 HEAD: `9780e8b`
 - 실기기 결과: **UNVERIFIED (아직 수행하지 않음)**
 - 원칙: 실기기에서 확인하지 않은 항목을 PASS로 표시하지 않는다.
@@ -13,24 +14,36 @@
 
 ## 1. 검증 패키지
 
-Validation-only ZIP:
+권장 validation-only ZIP:
 
 ```text
-artifacts/phase3-personal-package/AMARE-0.92.0-win-x64-unsigned.zip
+artifacts/phase3-personal-package/AMARE-0.92.0-win-x64-self-contained-unsigned.zip
 ```
 
-- SHA-256: `795d92eb42f94a71690ae893d7f668c6be52542de24af1794ec1efca59d147e8`
-- size: 153,863,831 bytes / 360 files
+- SHA-256: `24d123bbd2fbb466fd40a69c33f10f23be1b0dd2679939c9a44b6ebaa3c38f0f`
+- size: 155,316,668 bytes / 527 files
 - unsigned
-- framework-dependent .NET 8 runtime
-- WebView2 Evergreen 필요
+- **self-contained .NET 8** (`hostfxr.dll`, `hostpolicy.dll`, `coreclr.dll`)
 - Windows App SDK self-contained 포함
+- VC++ runtime 포함 (`vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`)
+- WinUI resources 포함 (`App.xbf`, `MainWindow.xbf`, `AMARE.Windows.pri`)
+- **WebView2 Evergreen Runtime은 별도 prerequisite**
 - `AMARE.Updater.exe`, `AMARE.Backup.exe` 포함
 - PDB 제외
 - user data/Vault key/API key/backup 미포함
 
-SHA-256과 파일 수는 `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`와
-`package-report.json`에 기록한다.
+기존 framework-dependent ZIP:
+
+```text
+artifacts/phase3-personal-package/AMARE-0.92.0-win-x64-unsigned.zip
+SHA-256 795d92eb...
+size 153,863,831 / 360 files
+```
+
+검증 스크립트는 ZIP 내용(manifest runtime / hostfxr/coreclr)으로 패키지
+유형을 자동 판별한다. self-contained이면 .NET 8 설치를 요구하지 않고,
+framework-dependent이면 .NET 8이 없을 때 BLOCKED로 중단한다.
+WebView2 Evergreen이 없으면 두 유형 모두 BLOCKED다.
 
 ---
 
@@ -80,7 +93,8 @@ powershell -ExecutionPolicy Bypass -File `
 | 단계 | 내용 | 성공 기준 | 실패 시 |
 |---|---|---|---|
 | P1 환경 | Windows 11 build 22000+, x64, PowerShell, WebView2, .NET 8, disk, display | 필수 조건 충족 | BLOCKED/FAIL 기록, destructive test 중단 |
-| P2 패키지 | ZIP SHA-256, sidecar, required/forbidden entries, manifest, runtime config | 모두 일치/존재 | FAIL, 앱 실행 중단 |
+| P2 패키지 | ZIP SHA-256, sidecar, required/forbidden entries, manifest, runtime config, package type | 모두 일치/존재 | FAIL, 앱 실행 중단 |
+| P2b runtime | self-contained runtime files 또는 framework-dependent .NET 8; WebView2; VC++/WinUI resources | self-contained이면 .NET 불필요, WebView2 필수 | BLOCKED/FAIL |
 | P3 격리 | `AMARE_DATA_ROOT` marker/channel 확인 | `portable-unsigned-validation` | BLOCKED, 앱/backup/updater 중단 |
 | P4 앱 실행 | test root로 앱 시작, 25초 생존, screenshot, 종료 | process alive/window | FAIL, 로그/스크린샷 보존 |
 | P5 데이터 루트 | test root에 `amare.db` 생성 | 존재 | FAIL |
@@ -182,7 +196,11 @@ artifacts/windows11-validation/run-<timestamp>/
   실기기에서 첫 실행 결과를 별도로 기록해야 한다.
 - UI smoke를 포함하려면 저장소와 .NET SDK가 필요하다. 패키지만 있는 사용자 PC는
   앱 launch/backup/updater 자동 검증만 수행한다.
-- framework-dependent .NET 8과 WebView2 Evergreen이 없으면 앱 launch는 FAIL한다.
+- self-contained ZIP은 .NET 8이 없어도 실행 가능해야 하지만 실제 Windows 11에서는
+  아직 검증하지 않았다.
+- WebView2 Evergreen이 없으면 self-contained ZIP도 앱 launch가 불가능하므로
+  스크립트는 BLOCKED로 중단한다.
+- framework-dependent ZIP은 .NET 8이 없으면 BLOCKED로 중단한다.
 - 실제 Windows 11에서 스크립트를 실행하지 않았으므로 현재 상태는 **UNVERIFIED**다.
 - 코드 서명/publisher authentication은 구현되어 있지 않다. SHA-256은 무결성만
   의미한다.

@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1~2.7 + Phase 3.0 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1~2.7 + Phase 3.0/3.1 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 3.0 Full Feature Audit & Windows 11 Validation Preparation)
-- 기준: `feature/phase-3-full-audit-windows-validation`, 제품/테스트 `9cb93f7`
+- 최신 갱신: 2026-11-27 (Phase 3.1 Self-contained Package & Validation Handoff)
+- 기준: `feature/phase-3-1-self-contained-validation-package`, 제품/테스트 `7c7c6c3`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -250,6 +250,21 @@
   backup/restore, updater, framework-dependent .NET 8
 - 상세: 위 Phase 3.0 문서
 
+### Phase 3.1 진행 상태
+
+- **Self-contained ZIP 구현/CI 검증** (`7c7c6c3`)
+- .NET 8 self-contained + Windows App SDK self-contained + VC++ runtime 포함
+- WinUI XBF/PRI 리소스 포함, clean launch PASS (Windows Server CI)
+- self-contained updater apply/data preservation PASS
+- validation script: package type 자동 판별, WebView2 누락 BLOCKED,
+  framework-dependent .NET 8 누락 BLOCKED
+- Windows **203 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED**, UI 86/86,
+  interop 127/127
+- UNVERIFIED: 실제 Windows 11 launch/IME/DPI/Vault/restore/updater,
+  WebView2 Evergreen 실제 설치
+- 상세: `docs/AMARE_PHASE3_1_SELF_CONTAINED_PACKAGE_REPORT.md`,
+  `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -288,6 +303,9 @@
 - **Phase 3.0 완료(감사/준비)**: Full feature audit, Windows 11 validation
   bundle/script/checklist, unsigned validation ZIP, package readiness.
   실제 Win11 실기기 검증은 UNVERIFIED이며 최종 배포 판정은 보류.
+- **Phase 3.1 완료(패키징/CI)**: .NET 8 + Windows App SDK + VC++ self-contained
+  validation ZIP, WinUI resources, clean launch, updater compatibility.
+  실제 Windows 11 실기기 검증은 여전히 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,

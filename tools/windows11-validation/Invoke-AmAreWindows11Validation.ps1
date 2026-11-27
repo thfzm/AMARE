@@ -323,7 +323,6 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot "manual-checklist.md") -Destinat
 Write-Result "os_windows11" $(if ($isWindows11) { "PASS" } elseif ($AllowNonWindows11) { "UNVERIFIED" } else { "BLOCKED" }) "build=$build"
 Write-Result "arch_x64" $(if ($env:PROCESSOR_ARCHITECTURE -match 'AMD64|x86_64') { "PASS" } else { "BLOCKED" }) $env:PROCESSOR_ARCHITECTURE
 Write-Result "webview2_runtime" $(if ($webview2) { "PASS" } else { "BLOCKED" }) $(if ($webview2) { $webview2 } else { "not found" })
-Write-Result "dotnet_8_runtime" $(if ($dotnet8) { "PASS" } else { "UNVERIFIED" }) $(if ($dotnet8) { "Microsoft.NETCore.App 8.x found" } else { "not found; self-contained ZIP may not require it" })
 Write-Result "package_present" $(if ($packageAvailable) { "PASS" } else { "BLOCKED" }) $(if ($packageAvailable) { $PackageZip } else { "No AMARE validation ZIP found. Pass -PackageZip." })
 Write-Result "admin_not_required" "PASS" "Validation runs unelevated; admin=$isAdmin"
 
@@ -404,6 +403,7 @@ Invoke-Check "package_manifest" {
 Invoke-Check "package_type" {
     if ($script:IsSelfContained) { "self-contained" } else { "framework-dependent" }
 }
+Write-Result "dotnet_8_runtime" $(if ($script:IsSelfContained -or $dotnet8) { "PASS" } else { "BLOCKED" }) $(if ($script:IsSelfContained) { "not required; self-contained runtime included" } elseif ($dotnet8) { "Microsoft.NETCore.App 8.x found" } else { ".NET 8 required by framework-dependent package" })
 Invoke-Check "package_runtime_prerequisite" {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($PackageZip)
     try {

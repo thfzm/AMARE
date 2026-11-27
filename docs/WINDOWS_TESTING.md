@@ -51,6 +51,14 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 ## 5. 현재 상태 (2026-11-05, Windows Runner)
 
+> **Phase 3.1 (2026-11-27) 추가:** self-contained ZIP.
+> Windows run 46012944076 at `7c7c6c3`: **203 PASS / 0 FAIL / 8 UNVERIFIED /
+> 8 SKIPPED**, UI 86/86, interop 127/127, self-contained publish/package/clean
+> launch PASS, self-contained updater apply/data preservation PASS.
+> ZIP: `AMARE-0.92.0-win-x64-self-contained-unsigned.zip`, 527 files,
+> 155,316,668 bytes, SHA-256 `24d123bb...`. WebView2 Evergreen is still required.
+> Linux CI: final run recorded separately.
+>
 > **Phase 3.0 (2026-11-27) 추가:** Windows 11 실기기 검증 번들.
 > Windows CI run 45961967631: **200 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED**,
 > UI **86/86**, interop **127/127**, backup **10/10**, updater E2E **11/11**,
