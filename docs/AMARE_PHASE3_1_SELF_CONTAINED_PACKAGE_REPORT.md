@@ -4,7 +4,7 @@
 - 작업 branch: `feature/phase-3-1-self-contained-validation-package`
 - Phase 3.0 기준: app/package code `9cb93f7`, CI `b869f8f`, final docs `93a5548`
 - Phase 3.1 CI 검증 HEAD: `7c7c6c3`
-- 최종 branch HEAD: `a24fb6b` (docs/validation script evidence)
+- 최종 branch HEAD: `56f13b6` (docs/validation script evidence)
 - DB schema/Vault crypto/backup format 변경: **없음**
 - MSIX/코드 서명/공개 Release: **없음**
 
@@ -168,7 +168,7 @@ self-contained publish/package/clean launch PASS
 self-contained updater apply/data preservation PASS
 ```
 
-Linux run: [46016969061](https://github.com/thfzm/AMARE/actions/runs/46016969061) at `a24fb6b` — **SUCCESS**.
+Linux run: [46017616583](https://github.com/thfzm/AMARE/actions/runs/46017616583) at `56f13b6` — **SUCCESS**.
 
 ---
 
