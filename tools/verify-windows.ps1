@@ -537,6 +537,37 @@ if ($SkipWinUI) {
         if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
         Copy-Item $backup (Join-Path $exe.Directory.FullName "AMARE.Backup.exe") -Force
     }
+    Invoke-Step "self_contained_clean_launch" {
+        $zip = Join-Path $OutputDir "personal-package\AMARE-$Version-win-x64-self-contained-unsigned.zip"
+        if (-not (Test-Path $zip)) { throw "Self-contained ZIP is missing." }
+        $root = Join-Path $env:TEMP ("AMARE-self-contained-launch-" + [guid]::NewGuid().ToString("N"))
+        $process = $null
+        try {
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+            $exe = Join-Path $root "AMARE.Windows.exe"
+            if (-not (Test-Path $exe)) { throw "Self-contained extraction did not contain AMARE.Windows.exe." }
+            $dataRoot = Join-Path $root "data-root"
+            New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+            $env:AMARE_DATA_ROOT = $dataRoot
+            $process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru
+            Start-Sleep -Seconds 8
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw "Self-contained AMARE.Windows.exe exited during startup (exit $($process.ExitCode))."
+            }
+            Write-Host "Self-contained packaged launch: $root; pid=$($process.Id)"
+        }
+        finally {
+            Remove-Item Env:\AMARE_DATA_ROOT -ErrorAction SilentlyContinue
+            if ($null -ne $process -and -not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Milliseconds 500
+            }
+            if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+            $global:LASTEXITCODE = 0
+        }
+    }
     Invoke-Step "portable_updater_e2e" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
