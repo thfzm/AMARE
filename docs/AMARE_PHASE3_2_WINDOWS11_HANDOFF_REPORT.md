@@ -123,7 +123,30 @@ P1/P2 항목도 같은 문서에 정리했다.
 
 ## 6. CI
 
-PENDING_CI
+### Windows
+
+Run [46049891397](https://github.com/thfzm/AMARE/actions/runs/46049891397) at `72618cc`:
+
+```text
+202 PASS / 0 FAIL / 9 UNVERIFIED / 8 SKIPPED (219 total)
+UI 85/86 (tear_off_tab flake)
+interop 127/127
+self-contained publish/package/clean launch PASS
+```
+
+초기 run [46045898113](https://github.com/thfzm/AMARE/actions/runs/46045898113)에서는
+UI 86/2 flake(`new_window_shortcut`, `tear_off_tab`)가 있었고, 동일 HEAD 재실행에서
+`tear_off_tab` 1건만 남았다. 두 run 모두 `failed=0`이며 제품 FAIL이 아니다.
+
+### Linux
+
+Run [46045901795](https://github.com/thfzm/AMARE/actions/runs/46045901795) at `72618cc`:
+
+```text
+SUCCESS
+```
+
+실제 Windows 11 실기기 실행은 아직 수행하지 않았다.
 
 ---
 
@@ -140,6 +163,7 @@ PENDING_CI
 | 4 | bundle script/ZIP 동일 빌드 검증 부족 | wrapper + main script가 bundle manifest SHA-256 검증 |
 | 5 | run directory timestamp 충돌 가능 | run id에 GUID suffix |
 | 6 | WebView2 누락 시 FAIL로 표시 | BLOCKED로 중단 |
+| 7 | Windows CI UI flake (`new_window_shortcut`, `tear_off_tab`) | 제품 FAIL 아님; 동일 HEAD 재실행, 최종 `failed=0` |
 
 ---
 

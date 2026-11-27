@@ -273,6 +273,9 @@
 - wrapper가 ZIP/script SHA-256과 bundle manifest를 검증
 - evidence는 handoff 폴더의 `evidence/run-*`에만 생성, 기존 run 보존
 - WebView2 누락 시 BLOCKED, self-contained이면 .NET 8 불필요
+- Windows CI: **202 PASS / 0 FAIL / 9 UNVERIFIED / 8 SKIPPED** (UI 85/86,
+  `tear_off_tab` pre-existing flake), interop 127/127, self-contained steps PASS
+- Linux CI: SUCCESS
 - 실제 Windows 11 실행 결과: **UNVERIFIED**
 - 상세: `docs/AMARE_PHASE3_2_WINDOWS11_HANDOFF_REPORT.md`
 
