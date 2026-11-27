@@ -2,8 +2,8 @@
 
 - 문서 상태: **Phase 0 감사 결과 + Phase 2.1~2.7 + Phase 3.0 전체 감사 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 3.1 Self-contained Package & Validation Handoff)
-- 기준: `feature/phase-3-1-self-contained-validation-package`, 제품/테스트 `7c7c6c3`
+- 최신 갱신: 2026-11-28 (Phase 3.2 Windows 11 Validation Handoff)
+- 기준: `feature/phase-3-2-windows11-real-validation`, 제품/테스트 `7c7c6c3`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -59,7 +59,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | 증거 | 결과 |
 |---|---|
 | WinUI UI smoke (최신) | **86/86** (Phase 2.7, backup full restore dialog 포함) |
-| Windows 통합 검증 (최신) | **203 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (219 total, self-contained steps 포함) |
+| Windows 통합 검증 (최신) | **202 PASS / 0 FAIL / 9 UNVERIFIED / 8 SKIPPED** (219 total; UI 85/86 `tear_off_tab` flake) |
 | C#↔Rust interop (최신) | **127/127** (Phase 3.0) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
@@ -79,6 +79,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | GPUI titlebar | full **3/5**, crash **0/5** |
 | GPUI A/B | A reload PASS, B load/reload/close/exit UNVERIFIED |
 | 패키지 | 0.92.0 WinUI self-contained unsigned ZIP (527 files, SHA-256 `24d123...`) + framework ZIP + GPUI ZIP 유지 |
+| Windows 11 handoff | `artifacts/phase3.2-windows11-handoff/` (wrapper + package + manual P0/P1/P2 + expected/recovery) |
 
 WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 
@@ -754,6 +755,9 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
   이며 실기기 launch/update 검증 전에는 최종 배포 불가.
 - Phase 3.1에서 .NET 8/Windows App SDK/VC++ self-contained ZIP과 WinUI resources를
   실제 publish/CI/clean launch로 검증했다.
+- Phase 3.2에서 SHA/sidecar/bundle manifest 일치, 실제 user data 비사용,
+  WebView2 BLOCKED, unique evidence, recovery/expected-results를 포함한 단일
+  Windows 11 handoff 폴더를 구성했다.
 - P0 code defect는 새로 발견되지 않았고, 실제 Windows 11 validation gate는 OPEN.
 
 ## 5. P0 / P1 / P2 결함 및 격차
