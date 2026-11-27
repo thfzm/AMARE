@@ -160,9 +160,10 @@ fn create(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
     let _lock = acquire_operation_lock(&root)?;
     let store = Store::open(&root).map_err(|error| error.to_string())?;
     let manager = BackupManager::new(&root).map_err(|error| error.to_string())?;
-    let password = read_password(options, "password-stdin")?;
+    let (container_password, vault_password) =
+        read_passwords(options, flag(options, "include-vault"))?;
     let include_vault = flag(options, "include-vault");
-    if include_vault && password.is_empty() {
+    if include_vault && vault_password.is_empty() {
         return Err("a Vault backup password is required".into());
     }
     let include_root = flag(options, "include-root");
@@ -207,16 +208,16 @@ fn create(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
                 .initialize()
                 .map_err(|error| format!("vault unlock failed: {error}"))?;
             let payload = vault
-                .export_backup(&password)
+                .export_backup(&vault_password)
                 .map_err(|error| format!("vault export failed: {error}"))?;
             vault.lock();
             vault_exports.insert(profile.as_str().to_string(), payload);
         }
     }
-    let encryption = if password.is_empty() {
+    let encryption = if container_password.is_empty() {
         BackupEncryption::None
     } else {
-        BackupEncryption::Password(password.to_string())
+        BackupEncryption::Password(container_password.to_string())
     };
     let backup_options = BackupOptions {
         include_root,
@@ -265,8 +266,8 @@ fn verify(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
             "error": "backup .sha256 sidecar is missing; copy it together with the backup file",
         }));
     }
-    let password = read_password(options, "password-stdin")?;
-    let credential = credential(&password);
+    let (container_password, vault_password) = read_passwords(options, true)?;
+    let credential = credential(&container_password);
     match manager.decode_files(&backup, &credential) {
         Ok((manifest, files)) => {
             let mut vault_summaries = Vec::new();
@@ -275,14 +276,14 @@ fn verify(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
                 let bytes = files
                     .get(&path)
                     .ok_or_else(|| format!("missing vault export: {path}"))?;
-                if password.is_empty() {
+                if vault_password.is_empty() {
                     return Ok(json!({
                         "status": "InvalidPassword",
                         "error": "Vault backup password is required",
                         "manifest": manifest,
                     }));
                 }
-                let summary = match validate_export(bytes, &password) {
+                let summary = match validate_export(bytes, &vault_password) {
                     Ok(summary) => summary,
                     Err(error) => {
                         return Ok(json!({
@@ -332,8 +333,8 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
             "backup .sha256 sidecar is missing; copy it together with the backup file".into(),
         );
     }
-    let password = read_password(options, "password-stdin")?;
-    let credential = credential(&password);
+    let (container_password, vault_password) = read_passwords(options, true)?;
+    let credential = credential(&container_password);
     let (manifest, files) = manager
         .decode_files(&backup, &credential)
         .map_err(|error| error.to_string())?;
@@ -502,7 +503,7 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         warnings.push("Vault was not in the backup; the existing Vault was preserved.");
     }
     if !vault_payloads.is_empty() {
-        if password.is_empty() {
+        if vault_password.is_empty() {
             if let Some(recovery) = &report.recovery_dir {
                 let _ = manager.revert_restore(&root, recovery, &mode);
             }
@@ -512,7 +513,7 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
             }
             return Err("Vault backup password is required".into());
         }
-        if let Err(error) = import_vaults(&root, &mode, &vault_payloads, &password) {
+        if let Err(error) = import_vaults(&root, &mode, &vault_payloads, &vault_password) {
             let _ = restore_vault_keys(&root, &old_keys);
             if let Some(recovery) = &report.recovery_dir {
                 let _ = manager.revert_restore(&root, recovery, &mode);
@@ -783,24 +784,41 @@ fn credential(password: &str) -> BackupCredential {
     }
 }
 
-fn read_password(
+fn read_passwords(
     options: &HashMap<String, Vec<String>>,
-    name: &str,
-) -> Result<Zeroizing<String>, String> {
-    if !flag(options, name) {
-        return Ok(Zeroizing::new(String::new()));
+    allow_single_vault: bool,
+) -> Result<(Zeroizing<String>, Zeroizing<String>), String> {
+    let container_flag = flag(options, "password-stdin");
+    let vault_flag = flag(options, "vault-password-stdin");
+    if !container_flag && !vault_flag {
+        return Ok((Zeroizing::new(String::new()), Zeroizing::new(String::new())));
     }
     let mut input = String::new();
     std::io::stdin()
         .read_to_string(&mut input)
         .map_err(|error| error.to_string())?;
-    let value = input
+    let lines: Vec<String> = input
         .lines()
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches('\r')
-        .to_string();
-    Ok(Zeroizing::new(value))
+        .map(|line| line.trim_end_matches('\r').to_string())
+        .collect();
+    let mut index = 0;
+    let container = if container_flag {
+        let value = lines.get(index).cloned().unwrap_or_default();
+        index += 1;
+        Zeroizing::new(value)
+    } else {
+        Zeroizing::new(String::new())
+    };
+    let vault = if vault_flag {
+        Zeroizing::new(lines.get(index).cloned().unwrap_or_default())
+    } else if allow_single_vault && container_flag && !container.is_empty() {
+        // Backward-compatible single password for callers that only provide
+        // --password-stdin, including the Phase 2.6 helper contract.
+        Zeroizing::new(container.to_string())
+    } else {
+        Zeroizing::new(String::new())
+    };
+    Ok((container, vault))
 }
 
 fn wait_for_parent_exit(pid: u32, seconds: u64) -> Result<(), String> {

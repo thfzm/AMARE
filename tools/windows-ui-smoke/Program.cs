@@ -3770,6 +3770,7 @@ internal static class Program
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };

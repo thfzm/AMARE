@@ -85,6 +85,18 @@ public sealed partial class MainWindow
             MinWidth = 320
         };
         AutomationProperties.SetAutomationId(confirmBox, "BackupPasswordConfirmBox");
+        var vaultPasswordBox = new PasswordBox
+        {
+            PlaceholderText = L10n.T("backup.vaultPasswordPlaceholder"),
+            MinWidth = 320
+        };
+        AutomationProperties.SetAutomationId(vaultPasswordBox, "BackupVaultPasswordBox");
+        var vaultConfirmBox = new PasswordBox
+        {
+            PlaceholderText = L10n.T("backup.vaultPasswordConfirmPlaceholder"),
+            MinWidth = 320
+        };
+        AutomationProperties.SetAutomationId(vaultConfirmBox, "BackupVaultPasswordConfirmBox");
         var encryptionHint = new TextBlock
         {
             Text = L10n.T("backup.encryptionHint"),
@@ -196,6 +208,9 @@ public sealed partial class MainWindow
         var passwordRow = new StackPanel { Spacing = 6 };
         passwordRow.Children.Add(passwordBox);
         passwordRow.Children.Add(confirmBox);
+        var vaultPasswordRow = new StackPanel { Spacing = 6 };
+        vaultPasswordRow.Children.Add(vaultPasswordBox);
+        vaultPasswordRow.Children.Add(vaultConfirmBox);
 
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(profileText);
@@ -218,6 +233,8 @@ public sealed partial class MainWindow
         stack.Children.Add(new TextBlock { Text = L10n.T("backup.password") });
         stack.Children.Add(passwordRow);
         stack.Children.Add(encryptionHint);
+        stack.Children.Add(new TextBlock { Text = L10n.T("backup.vaultPassword") });
+        stack.Children.Add(vaultPasswordRow);
         var buttonRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -287,7 +304,7 @@ public sealed partial class MainWindow
             manifestSummary.Text = builder.ToString().TrimEnd();
             var ids = manifest.Profiles.Select(profile => profile.Id).ToList();
             sourceBox.ItemsSource = ids;
-            sourceBox.SelectedIndex = ids.Count == 1 ? 0 : 0;
+            sourceBox.SelectedIndex = 0;
             fullOpenProfileBox.ItemsSource = ids;
             fullOpenProfileBox.SelectedIndex = 0;
             restoreFullButton.IsEnabled = manifest.Scope == "full";
@@ -295,20 +312,27 @@ public sealed partial class MainWindow
 
         void RefreshBackupList()
         {
-            backupList.Items.Clear();
-            var directory = Path.Combine(DataRoot, "backups");
-            if (!Directory.Exists(directory)) return;
-            foreach (var file in Directory.GetFiles(directory, "*.amarebak")
-                         .OrderByDescending(File.GetLastWriteTimeUtc))
+            try
             {
-                var info = new FileInfo(file);
-                var sidecar = file + ".sha256";
-                var hash = File.Exists(sidecar)
-                    ? File.ReadAllText(sidecar).Trim()
-                    : L10n.T("backup.noSidecar");
-                if (hash.Length > 24) hash = hash[..24] + "…";
-                var display = $"{info.Name}  |  {info.Length:N0} B  |  {info.LastWriteTime:yyyy-MM-dd HH:mm}  |  {hash}  |  {L10n.T("backup.verifyToCheck")}";
-                backupList.Items.Add(new BackupListEntry(info.Name, display, info.FullName));
+                backupList.Items.Clear();
+                var directory = Path.Combine(DataRoot, "backups");
+                if (!Directory.Exists(directory)) return;
+                foreach (var file in Directory.GetFiles(directory, "*.amarebak")
+                             .OrderByDescending(File.GetLastWriteTimeUtc))
+                {
+                    var info = new FileInfo(file);
+                    var sidecar = file + ".sha256";
+                    var hash = File.Exists(sidecar)
+                        ? File.ReadAllText(sidecar).Trim()
+                        : L10n.T("backup.noSidecar");
+                    if (hash.Length > 24) hash = hash[..24] + "…";
+                    var display = $"{info.Name}  |  {info.Length:N0} B  |  {info.LastWriteTime:yyyy-MM-dd HH:mm}  |  {hash}  |  {L10n.T("backup.verifyToCheck")}";
+                    backupList.Items.Add(new BackupListEntry(info.Name, display, info.FullName));
+                }
+            }
+            catch (Exception exception)
+            {
+                AppLog.Warn($"Backup list could not be refreshed: {exception.GetType().Name}");
             }
         }
 
@@ -337,6 +361,8 @@ public sealed partial class MainWindow
         string CurrentPath() => pathBox.Text.Trim();
         string? CurrentPassword() =>
             passwordBox.Password.Length == 0 ? null : passwordBox.Password;
+        string? CurrentVaultPassword() =>
+            vaultPasswordBox.Password.Length == 0 ? null : vaultPasswordBox.Password;
 
         async Task<BackupOperationResult?> VerifyPathAsync()
         {
@@ -352,10 +378,21 @@ public sealed partial class MainWindow
             _backupCancellation = cancellation;
             try
             {
-                var result = await backupClient.VerifyAsync(path, CurrentPassword(), cancellation.Token);
+                var result = await backupClient.VerifyAsync(
+                    path, CurrentPassword(), CurrentVaultPassword(), cancellation.Token);
                 status.Text = DescribeBackupResult(result);
                 lastVerified = result.Valid ? result : null;
                 UpdateManifestUi(lastVerified);
+                if (backupList.SelectedItem is BackupListEntry entry
+                    && string.Equals(Path.GetFullPath(entry.Path), Path.GetFullPath(path),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var index = backupList.SelectedIndex;
+                    var label = result.Valid ? "Valid" : result.Status;
+                    var display = entry.Display.Replace(
+                        L10n.T("backup.verifyToCheck"), label, StringComparison.Ordinal);
+                    backupList.Items[index] = entry with { Display = display };
+                }
                 return result;
             }
             catch (OperationCanceledException)
@@ -377,7 +414,7 @@ public sealed partial class MainWindow
 
         createButton.Click += async (_, _) =>
         {
-            if (includeVaultBox.IsChecked == true && CurrentPassword() == null)
+            if (includeVaultBox.IsChecked == true && CurrentVaultPassword() == null)
             {
                 status.Text = L10n.T("backup.vaultPasswordRequired");
                 return;
@@ -385,6 +422,11 @@ public sealed partial class MainWindow
             if (passwordBox.Password != confirmBox.Password)
             {
                 status.Text = L10n.T("backup.passwordMismatch");
+                return;
+            }
+            if (vaultPasswordBox.Password != vaultConfirmBox.Password)
+            {
+                status.Text = L10n.T("backup.vaultPasswordMismatch");
                 return;
             }
             var path = CurrentPath();
@@ -414,7 +456,8 @@ public sealed partial class MainWindow
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
                 var result = await backupClient.CreateAsync(
-                    path, _profileId, includeVaultBox.IsChecked == true, CurrentPassword(),
+                    path, _profileId, includeVaultBox.IsChecked == true,
+                    CurrentPassword(), CurrentVaultPassword(),
                     cancellationToken: cancellation.Token);
                 if (!result.Succeeded)
                 {
@@ -435,6 +478,8 @@ public sealed partial class MainWindow
             {
                 passwordBox.Password = "";
                 confirmBox.Password = "";
+                vaultPasswordBox.Password = "";
+                vaultConfirmBox.Password = "";
                 _backupCancellation = null;
                 SetBusy(false);
             }
@@ -465,7 +510,7 @@ public sealed partial class MainWindow
                 status.Text = L10n.T("backup.invalid");
                 return;
             }
-            if (manifest.ContainsVault && CurrentPassword() == null)
+            if (manifest.ContainsVault && CurrentVaultPassword() == null)
             {
                 status.Text = L10n.T("backup.vaultPasswordRequired");
                 return;
@@ -534,10 +579,13 @@ public sealed partial class MainWindow
                     AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
                     "AMARE.Windows.exe");
                 _restoreProcess = backupClient.StartRestore(
-                    CurrentPath(), sourceId, targetId, appExe, CurrentPassword(),
+                    CurrentPath(), sourceId, targetId, appExe,
+                    CurrentPassword(), CurrentVaultPassword(),
                     fullRestore: fullRestore, openProfileId: fullRestore ? sourceId : targetId);
                 passwordBox.Password = "";
                 confirmBox.Password = "";
+                vaultPasswordBox.Password = "";
+                vaultConfirmBox.Password = "";
                 var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
                 while (!_restoreProcess.HasExited && DateTimeOffset.UtcNow < deadline)
                 {

@@ -37,6 +37,7 @@ public sealed class BackupClient
         string profileId,
         bool includeVault,
         string? password,
+        string? vaultPassword,
         bool includeRoot = false,
         CancellationToken cancellationToken = default)
     {
@@ -66,15 +67,21 @@ public sealed class BackupClient
         {
             arguments.Add("--password-stdin");
         }
-        return await RunAsync(arguments, password, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(vaultPassword))
+        {
+            arguments.Add("--vault-password-stdin");
+        }
+        return await RunAsync(arguments, password, vaultPassword, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public Task<BackupOperationResult> RecoverAsync(CancellationToken cancellationToken = default) =>
-        RunAsync(new List<string> { "recover", "--root", _root }, null, cancellationToken);
+        RunAsync(new List<string> { "recover", "--root", _root }, null, null, cancellationToken);
 
     public Task<BackupOperationResult> VerifyAsync(
         string backupPath,
         string? password,
+        string? vaultPassword = null,
         CancellationToken cancellationToken = default)
     {
         var arguments = new List<string>
@@ -85,7 +92,11 @@ public sealed class BackupClient
         {
             arguments.Add("--password-stdin");
         }
-        return RunAsync(arguments, password, cancellationToken);
+        if (!string.IsNullOrEmpty(vaultPassword))
+        {
+            arguments.Add("--vault-password-stdin");
+        }
+        return RunAsync(arguments, password, vaultPassword, cancellationToken);
     }
 
     /// <summary>
@@ -98,6 +109,7 @@ public sealed class BackupClient
         string targetProfileId,
         string appExecutable,
         string? password,
+        string? vaultPassword,
         bool fullRestore = false,
         string? openProfileId = null)
     {
@@ -137,21 +149,26 @@ public sealed class BackupClient
         {
             arguments.Add("--password-stdin");
         }
+        if (!string.IsNullOrEmpty(vaultPassword))
+        {
+            arguments.Add("--vault-password-stdin");
+        }
         var process = Start(arguments);
-        WritePassword(process, password);
+        WritePasswords(process, password, vaultPassword);
         return process;
     }
 
     private async Task<BackupOperationResult> RunAsync(
         List<string> arguments,
         string? password,
+        string? vaultPassword,
         CancellationToken cancellationToken)
     {
         var resultPath = ResultPath(arguments[0]);
         arguments.Add("--result");
         arguments.Add(resultPath);
         using var process = Start(arguments);
-        WritePassword(process, password);
+        WritePasswords(process, password, vaultPassword);
         using var registration = cancellationToken.Register(() =>
         {
             try
@@ -218,13 +235,20 @@ public sealed class BackupClient
                ?? throw new InvalidOperationException("The backup helper could not be started.");
     }
 
-    private static void WritePassword(Process process, string? password)
+    private static void WritePasswords(
+        Process process,
+        string? password,
+        string? vaultPassword)
     {
         try
         {
             if (!string.IsNullOrEmpty(password))
             {
                 process.StandardInput.WriteLine(password);
+            }
+            if (!string.IsNullOrEmpty(vaultPassword))
+            {
+                process.StandardInput.WriteLine(vaultPassword);
             }
         }
         finally

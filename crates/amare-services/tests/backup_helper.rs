@@ -11,6 +11,15 @@ fn helper() -> &'static str {
 }
 
 fn run(root: &Path, args: &[&str], password: Option<&str>, result: &Path) -> (i32, Value) {
+    run_with_passwords(root, args, password.into_iter().collect(), result)
+}
+
+fn run_with_passwords(
+    root: &Path,
+    args: &[&str],
+    passwords: Vec<&str>,
+    result: &Path,
+) -> (i32, Value) {
     let mut command = Command::new(helper());
     command.arg(args[0]);
     for argument in &args[1..] {
@@ -24,7 +33,7 @@ fn run(root: &Path, args: &[&str], password: Option<&str>, result: &Path) -> (i3
     let mut child = command.spawn().expect("helper spawn");
     {
         let stdin = child.stdin.as_mut().expect("stdin");
-        if let Some(password) = password {
+        for password in passwords {
             writeln!(stdin, "{password}").unwrap();
         }
     }
@@ -301,8 +310,9 @@ fn helper_vault_export_restore_locks_and_imports() {
             "p1",
             "--include-vault",
             "--password-stdin",
+            "--vault-password-stdin",
         ],
-        Some("vault-backup-pass"),
+        vec!["container-pass", "vault-pass"],
         &source.path().join("create-vault.json"),
     );
     assert_eq!(code, 0, "{create}");
@@ -317,8 +327,9 @@ fn helper_vault_export_restore_locks_and_imports() {
             "--backup",
             backup.to_str().unwrap(),
             "--password-stdin",
+            "--vault-password-stdin",
         ],
-        Some("vault-backup-pass"),
+        vec!["container-pass", "vault-pass"],
         &source.path().join("verify-vault.json"),
     );
     assert_eq!(code, 0, "{verify}");
@@ -341,9 +352,10 @@ fn helper_vault_export_restore_locks_and_imports() {
             "--map",
             "p1:t1",
             "--password-stdin",
+            "--vault-password-stdin",
             "--no-relaunch",
         ],
-        Some("vault-backup-pass"),
+        vec!["container-pass", "vault-pass"],
         &target.path().join("restore-vault.json"),
     );
     assert_eq!(code, 0, "{restore}");

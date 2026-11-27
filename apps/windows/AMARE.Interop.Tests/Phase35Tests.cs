@@ -28,7 +28,7 @@ internal static class Phase35Tests
 
         var client = new BackupClient(root, helper);
         var path = Path.Combine(temp.Root, "manual.amarebak");
-        var created = client.CreateAsync(path, context.ProfileId, includeVault: false, password: null)
+        var created = client.CreateAsync(path, context.ProfileId, includeVault: false, password: null, vaultPassword: null)
             .GetAwaiter().GetResult();
         Require(created.Succeeded, created.Error ?? created.Status);
         Require(File.Exists(path), "backup file missing");
@@ -57,7 +57,8 @@ internal static class Phase35Tests
         var client = new BackupClient(root, helper);
         var path = Path.Combine(temp.Root, "encrypted.amarebak");
         var created = client.CreateAsync(
-            path, context.ProfileId, includeVault: false, password: "correct-pass")
+            path, context.ProfileId, includeVault: false,
+            password: "correct-pass", vaultPassword: null)
             .GetAwaiter().GetResult();
         Require(created.Succeeded, created.Error ?? created.Status);
 
