@@ -660,6 +660,7 @@ public sealed partial class MainWindow
         };
         restoreRow.Children.Add(restoreButton);
         restoreRow.Children.Add(restoreNewButton);
+        restoreRow.Children.Add(restoreFullButton);
         stack.Children.Add(restoreRow);
 
         await dialog.ShowAsync();

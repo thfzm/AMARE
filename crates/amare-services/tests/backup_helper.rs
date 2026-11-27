@@ -298,7 +298,7 @@ fn helper_vault_export_restore_locks_and_imports() {
     vault.lock();
 
     let backup = source.path().join("vault.amarebak");
-    let (code, create) = run(
+    let (code, create) = run_with_passwords(
         source.path(),
         &[
             "create",
@@ -318,7 +318,7 @@ fn helper_vault_export_restore_locks_and_imports() {
     assert_eq!(code, 0, "{create}");
     assert_eq!(create["contains_vault"], true, "{create}");
 
-    let (code, verify) = run(
+    let (code, verify) = run_with_passwords(
         source.path(),
         &[
             "verify",
@@ -339,7 +339,7 @@ fn helper_vault_export_restore_locks_and_imports() {
     let target_store = Store::open(target.path()).unwrap();
     let t1 = ProfileId::new("t1");
     target_store.create_profile(&t1, "Restored", true).unwrap();
-    let (code, restore) = run(
+    let (code, restore) = run_with_passwords(
         target.path(),
         &[
             "restore",
