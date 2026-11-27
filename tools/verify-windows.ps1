@@ -355,14 +355,6 @@ if ($SkipWinUI) {
             throw "HandleForensics self-test did not produce a snapshot."
         }
     }
-    Invoke-Step "backup_helper_stage" {
-        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
-        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
-        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
-        Copy-Item $backup (Join-Path $exe.Directory.FullName "AMARE.Backup.exe") -Force
-    }
     Invoke-Step "personal_package" {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
@@ -467,6 +459,26 @@ if ($SkipWinUI) {
                 throw "Self-contained package is missing $required"
             }
         }
+        $vcRuntime = @()
+        $crtSources = @((Join-Path $env:SystemRoot "System32"))
+        $redistRoot = Join-Path $vsInstallPath "VC\Redist\MSVC"
+        if (Test-Path $redistRoot) {
+            $crtSources += @(Get-ChildItem $redistRoot -Recurse -Directory -Filter "Microsoft.VC*.CRT" |
+                Where-Object { $_.FullName -match '\\x64\\' } | ForEach-Object { $_.FullName })
+        }
+        foreach ($name in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            foreach ($source in $crtSources) {
+                $candidate = Join-Path $source $name
+                if (Test-Path $candidate) {
+                    Copy-Item $candidate (Join-Path $stage $name) -Force
+                    $vcRuntime += $name
+                    break
+                }
+            }
+        }
+        if ($vcRuntime.Count -eq 0) {
+            throw "VC++ runtime DLLs were not found; self-contained package would have an undocumented prerequisite."
+        }
         $zip = Join-Path $packageRoot "AMARE-$Version-win-x64-self-contained-unsigned.zip"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [System.IO.Compression.CompressionLevel]::Fastest, $false)
@@ -484,12 +496,46 @@ if ($SkipWinUI) {
             excluded = @("*.pdb")
             signing = "UNSIGNED"
             package_type = "self-contained"
-            runtime = "self-contained .NET 8; WebView2 Evergreen required"
+            runtime = "self-contained .NET 8; WebView2 Evergreen required; VC++ runtime included"
             runtime_files = @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")
+            vc_runtime = $vcRuntime
         }
         Write-Utf8Json (Join-Path $packageRoot "package-report-self-contained.json") $report
+        $updaterExe = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        $compatRoot = Join-Path $env:TEMP ("AMARE-self-contained-update-" + [guid]::NewGuid().ToString("N"))
+        try {
+            $compatApp = Join-Path $compatRoot "app"
+            $compatData = Join-Path $compatRoot "data"
+            New-Item -ItemType Directory -Force -Path $compatApp, $compatData | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $compatApp "VERSION"), "0.0.1`n")
+            [System.IO.File]::WriteAllText((Join-Path $compatApp "AMARE.Windows.exe"), "old-exe")
+            [System.IO.File]::WriteAllText((Join-Path $compatData "user.txt"), "preserve-me")
+            & $updaterExe apply --package $zip --app-dir $compatApp --data-dir $compatData `
+                --version $Version --sha256 $hash --architecture win-x64 --entry AMARE.Windows.exe --no-launch
+            if ($LASTEXITCODE -ne 0) { throw "Self-contained ZIP was rejected by the updater helper." }
+            if ((Get-Content (Join-Path $compatApp "VERSION") -Raw).Trim() -ne $Version) {
+                throw "Self-contained update did not install the expected version."
+            }
+            if ((Get-Content (Join-Path $compatData "user.txt") -Raw).Trim() -ne "preserve-me") {
+                throw "Self-contained update changed user data."
+            }
+            $state = Get-Content (Join-Path $compatData "update-state.json") -Raw | ConvertFrom-Json
+            if ($state.status -ne "succeeded") { throw "Self-contained update state: $($state.status)" }
+        }
+        finally {
+            if (Test-Path $compatRoot) { Remove-Item $compatRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        }
         Write-Host "Self-contained ZIP: $zip"
         Write-Host "SHA-256: $hash"
+        Write-Host "VC++ runtime: $($vcRuntime -join ', ')"
+    }
+    Invoke-Step "backup_helper_stage" {
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
+        Copy-Item $backup (Join-Path $exe.Directory.FullName "AMARE.Backup.exe") -Force
     }
     Invoke-Step "portable_updater_e2e" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |

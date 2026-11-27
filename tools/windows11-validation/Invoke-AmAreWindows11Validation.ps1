@@ -427,6 +427,20 @@ Invoke-Check "package_runtime_prerequisite" {
     finally { $zip.Dispose() }
 }
 
+Invoke-Check "package_vc_runtime" {
+    if (-not $script:IsSelfContained) { "not required for framework-dependent package; host VC++ runtime check is separate" }
+    else {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($PackageZip)
+        try {
+            foreach ($required in @("vcruntime140.dll")) {
+                if (-not $zip.GetEntry($required)) { throw "self-contained package is missing $required (amare_ffi/AMARE.Backup depend on VC++ runtime)" }
+            }
+            "vcruntime140.dll present"
+        }
+        finally { $zip.Dispose() }
+    }
+}
+
 if ($script:RuntimeBlocked) {
     $script:Results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir "results.json") -Encoding UTF8
     Write-Host "BLOCKED: framework-dependent package needs .NET 8. Use the self-contained ZIP for a clean Windows 11 PC." -ForegroundColor Yellow

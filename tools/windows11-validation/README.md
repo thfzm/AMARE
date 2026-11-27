@@ -8,10 +8,11 @@ temporary root via `AMARE_DATA_ROOT`.
 Two ZIP types are supported and auto-detected:
 
 - `AMARE-0.92.0-win-x64-self-contained-unsigned.zip` — recommended; includes
-  .NET 8 runtime files, so a clean Windows 11 PC does not need a separate .NET
-  installation.
+  .NET 8 runtime files and VC++ runtime DLLs, so a clean Windows 11 PC does not
+  need separate .NET/VC++ installation.
 - `AMARE-0.92.0-win-x64-unsigned.zip` — framework-dependent; requires .NET 8
-  Runtime. The script records `BLOCKED` if it is missing.
+  Runtime (and host VC++ runtime). The script records `BLOCKED` if .NET 8 is
+  missing.
 
 Both still require **WebView2 Evergreen Runtime**. The script records `BLOCKED`
 if WebView2 is missing.
