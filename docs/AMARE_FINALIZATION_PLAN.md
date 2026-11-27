@@ -242,8 +242,8 @@
 - `docs/AMARE_WINDOWS11_VALIDATION_PLAN.md`
 - `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`
 - `tools/windows11-validation/` 단일 진입점 + manual checklist
-- unsigned validation ZIP: 360 files, 153,863,774 bytes,
-  SHA-256 `6f2d606b...`
+- unsigned validation ZIP: 360 files, 153,863,831 bytes,
+  SHA-256 `795d92eb...`
 - Windows 200/0/8/8, UI 86/86, interop 127/127, backup 10/10, updater E2E 11/11,
   Linux SUCCESS
 - 남은 P0 validation gate: Windows 11 실기기 launch/IME/DPI, Vault lifecycle,

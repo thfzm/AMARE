@@ -2,7 +2,8 @@
 
 - Phase 2.7 제품/테스트 HEAD: `3fff704`
 - Phase 2.7 문서 HEAD: `9780e8b`
-- Phase 3 감사/패키징 HEAD: `9cb93f7`
+- Phase 3 감사/패키징 app HEAD: `9cb93f7`
+- Phase 3 final branch HEAD: `b869f8f`
 - 감사 branch: `feature/phase-3-full-audit-windows-validation`
 - 감사 기준: 실제 코드, 테스트 코드, CI 결과, 설계/검증 문서 대조
 - 원칙: **문서에 PASS라고 적혀 있다는 이유만으로 완료로 판정하지 않는다.**
@@ -43,13 +44,13 @@ Phase 2.7 기준점과 일치한다. Phase 3.0은 `d18f45b`에서
 | C#↔Rust interop | **127/127** | C# + Rust DLL |
 | Backup CI | **10/10** | Rust backup integration |
 | Portable updater E2E | **11/11** | 실제 ZIP + helper process |
-| Personal package step | **PASS** | 360 files, 153,863,774 bytes, SHA-256 `6f2d...` |
+| Personal package step | **PASS** | 360 files, 153,863,831 bytes, SHA-256 `795d...` |
 | Linux CI | **SUCCESS** | Linux Rust/C# interop |
 | Rust store/services/vault | store/services/vault tests PASS | host tests |
 | UI smoke 범위 | window/tab/address/cert/Reader/AI/settings/vault/permissions/backup/updater check | Windows Server 2025 runner |
 | 실기기 Windows 11 | **UNVERIFIED** | 물리 PC 없음 |
-| Windows run | [45958926226](https://github.com/thfzm/AMARE/actions/runs/45958926226) at `9cb93f7` |
-| Linux run | [45958930227](https://github.com/thfzm/AMARE/actions/runs/45958930227) at `9cb93f7` |
+| Windows run | [45961967631](https://github.com/thfzm/AMARE/actions/runs/45961967631) at `b869f8f` |
+| Linux run | [45961970830](https://github.com/thfzm/AMARE/actions/runs/45961970830) at `b869f8f` |
 
 주의:
 

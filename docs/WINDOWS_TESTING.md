@@ -52,10 +52,10 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 ## 5. 현재 상태 (2026-11-05, Windows Runner)
 
 > **Phase 3.0 (2026-11-27) 추가:** Windows 11 실기기 검증 번들.
-> Windows CI run 45958926226: **200 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED**,
+> Windows CI run 45961967631: **200 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED**,
 > UI **86/86**, interop **127/127**, backup **10/10**, updater E2E **11/11**,
-> personal package **360 files / 153,863,774 bytes / SHA-256 6f2d...**.
-> Linux CI run 45958930227: SUCCESS.
+> personal package **360 files / 153,863,831 bytes / SHA-256 795d...**.
+> Linux CI run 45961970830: SUCCESS.
 > `tools/windows11-validation/Invoke-AmAreWindows11Validation.ps1`가
 > 환경/패키지 무결성/앱 launch/backup/restore/updater test/evidence를
 > `AMARE_DATA_ROOT` 격리 test root에서 수행한다. unsigned validation ZIP은

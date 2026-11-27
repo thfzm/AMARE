@@ -1,10 +1,10 @@
 # AMARE Personal Package Readiness — Phase 3.0
 
 - 기준 제품/테스트 HEAD: `3fff704`
-- 패키지 생성 CI: Windows run `45958926226` at `9cb93f7`
+- 패키지 생성 CI: Windows run `45961967631` at `b869f8f` (app code `9cb93f7`)
 - 패키지 형식: unsigned portable ZIP, WinUI 3 + WebView2 Evergreen
 - 상태: **VALIDATION-READY / FINAL-RELEASE NOT READY**
-- Windows CI package step: run [45958926226](https://github.com/thfzm/AMARE/actions/runs/45958926226) at `9cb93f7`
+- Windows CI package step: run [45961967631](https://github.com/thfzm/AMARE/actions/runs/45961967631) at `b869f8f` (app code `9cb93f7`)
 - `AMARE_DATA_ROOT` validation isolation marker: **included** (`portable-unsigned-validation`)
 - 실기기 Windows 11: **UNVERIFIED**
 - MSIX/코드 서명/공개 Release: **없음**
@@ -15,8 +15,8 @@
 
 ```text
 AMARE-0.92.0-win-x64-unsigned.zip
-size:     153,863,774 bytes
-SHA-256:  6f2d606bb4c85f89e16383e0c353cfdc91b589ea012db5146cc15a6443a42d76
+size:     153,863,831 bytes
+SHA-256:  795d92eb42f94a71690ae893d7f668c6be52542de24af1794ec1efca59d147e8
 files:    360
 signed:   NO (unsigned)
 ```

@@ -19,8 +19,8 @@ Validation-only ZIP:
 artifacts/phase3-personal-package/AMARE-0.92.0-win-x64-unsigned.zip
 ```
 
-- SHA-256: `6f2d606bb4c85f89e16383e0c353cfdc91b589ea012db5146cc15a6443a42d76`
-- size: 153,863,774 bytes / 360 files
+- SHA-256: `795d92eb42f94a71690ae893d7f668c6be52542de24af1794ec1efca59d147e8`
+- size: 153,863,831 bytes / 360 files
 - unsigned
 - framework-dependent .NET 8 runtime
 - WebView2 Evergreen 필요

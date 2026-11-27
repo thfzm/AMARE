@@ -78,7 +78,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | GPUI 반복 3회 | **11/13**, **12/10**, **13/10** |
 | GPUI titlebar | full **3/5**, crash **0/5** |
 | GPUI A/B | A reload PASS, B load/reload/close/exit UNVERIFIED |
-| 패키지 | 0.92.0 WinUI unsigned validation ZIP (360 files, SHA-256 `6f2d...`) + GPUI ZIP 유지 |
+| 패키지 | 0.92.0 WinUI unsigned validation ZIP (360 files, SHA-256 `795d...`) + GPUI ZIP 유지 |
 
 WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 
