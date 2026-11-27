@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6/2.7 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.6 Profile Backup & Restore)
-- 기준: `feature/phase-2-profile-backup-restore`, 제품/테스트 `6ff6e4b`
+- 최신 갱신: 2026-11-27 (Phase 2.7 Backup & Restore UI Completion)
+- 기준: `feature/phase-2-backup-restore-ui`, 제품/테스트 `3fff704`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -20,9 +20,11 @@
 > Phase 2.5 Portable Updater는
 > [`AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md`](AMARE_PHASE2_PORTABLE_UPDATER_REPORT.md),
 > Phase 2.6 Profile Backup & Restore는
-> [`AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`](AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md)에
+> [`AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`](AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md),
+> Phase 2.7 Backup & Restore UI Completion은
+> [`AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`](AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1~2.6 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~2.7 갱신을 함께 표시한다.
 
 ---
 
@@ -54,9 +56,9 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 
 | 증거 | 결과 |
 |---|---|
-| WinUI UI smoke (최신) | **85/85** (Phase 2.6, backup create/verify 포함) |
+| WinUI UI smoke (최신) | **86/86** (Phase 2.7, backup full restore dialog 포함) |
 | Windows 통합 검증 (최신) | **199 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (215 total) |
-| C#↔Rust interop (최신) | **127/127** (Phase 2.6) |
+| C#↔Rust interop (최신) | **127/127** (Phase 2.7) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
@@ -621,6 +623,31 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 **판정**
 
 - 기존 Rust backup과 Vault export/import를 재사용해 Settings E2E를 연결했다.
+- 실제 Windows 11 실기기 검증이 남아 있다.
+
+### 4.15.2 Backup & Restore UI 완성 (Phase 2.7)
+
+**WinUI — `IMPLEMENTED_AND_VERIFIED` (CI UI flow; real Windows 11 UNVERIFIED)**
+
+- Settings → Backup & Restore에서 full backup manifest, source/target profile,
+  full restore, profile 단위 partial restore, restore-as-new를 제공한다.
+- Full restore는 root registry + 모든 profile을 교체하며, 기존 데이터는 recovery
+  directory에 보존한다.
+- category 단위 partial restore는 엔진이 profile DB 전체를 교체하므로 노출하지 않는다.
+- helper restore를 prepare/apply로 분리해 `staging`/`staged`/`applying` progress를
+  실제 단계와 연결했다. apply 이후에는 취소하지 않는다.
+- backup 목록(filename/size/time/sidecar hash/status)을 제공한다.
+- backup encryption password와 Vault password를 분리했다.
+- full restore 후 `open-profile.json`으로 선택 profile을 연다.
+- UNVERIFIED: 실제 Windows 11 실기기, 전원 손실, multi-window race,
+  다른 PC Vault restore, category 단위 partial restore.
+
+**GPUI — `NOT_IMPLEMENTED`**
+
+**판정**
+
+- Full Profile Restore가 Settings UI에서 verify/confirm/progress/restart 흐름으로
+  연결되었다.
 - 실제 Windows 11 실기기 검증이 남아 있다.
 
 ### 4.16 자동 업데이트

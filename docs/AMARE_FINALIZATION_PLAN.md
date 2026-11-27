@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6/2.7 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.6 Profile Backup & Restore)
-- 기준: `feature/phase-2-profile-backup-restore`, 제품/테스트 `6ff6e4b`
+- 최신 갱신: 2026-11-27 (Phase 2.7 Backup & Restore UI Completion)
+- 기준: `feature/phase-2-backup-restore-ui`, 제품/테스트 `3fff704`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -222,6 +222,19 @@
 - 상세: `docs/AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`,
   `docs/PROFILE_BACKUP_RESTORE_DESIGN.md`
 
+### Phase 2.7 진행 상태
+
+- **Backup & Restore UI Completion 구현** (`3fff704`)
+- Full Profile Restore UI: full manifest, source/target/open profile, confirmation
+- full backup에서 profile 단위 partial restore, restore-as-new
+- helper prepare/apply 분리 + progress file + 안전 취소
+- backup 목록, manifest summary, SHA-256 표시
+- backup encryption password / Vault password 분리
+- full restore 후 open-profile로 선택 profile open
+- UNVERIFIED: 실제 Windows 11 실기기, 전원 손실, multi-window race,
+  cross-PC Vault, category 단위 partial restore
+- 상세: `docs/AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -252,6 +265,11 @@
   profile DB/app files/optional portable Vault, verify/restore/recovery journal,
   concurrent lock. Windows 199/0/8/8, UI 85/85, interop 127/127, Linux SUCCESS.
   실제 Windows 11/전원 손실/cross-PC Vault는 UNVERIFIED.
+- **Phase 2.7 완료(CI)**: Backup & Restore UI Completion — full profile restore,
+  profile partial restore, staged progress/cancel, backup list, separate Vault
+  password, open-profile restart. Windows 199/0/8/8, UI 86/86, interop 127/127,
+  Linux SUCCESS. 실제 Windows 11/전원 손실/multi-window race/category partial
+  restore는 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,

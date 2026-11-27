@@ -148,9 +148,48 @@ verify (no mutation)
 
 - `profile`: 기존 target profile에 source profile DB를 매핑
 - `mapped`: source → target mapping (새 프로필 복원)
-- `full`: root DB + 모든 profile 교체 (helper API, UI에서는 단일 profile만 노출)
+- `full`: root DB + 모든 profile 교체. Phase 2.7부터 Settings UI에서 지원한다.
+- full backup에서 source profile 하나만 선택해 기존/새 profile로 복원하는
+  profile 단위 partial restore를 지원한다.
+- category 단위 partial restore(bookmarks만, settings만 등)는 엔진이 profile DB
+  전체를 교체하므로 UI에 노출하지 않는다.
 
 ---
+
+## 5.1 Prepare / Apply progress
+
+- restore helper는 verify/decode/Vault validation 후 staging을 만들고
+  integrity/schema를 검증한다.
+- 이 단계는 target을 변경하지 않으며 `backups/restore-progress.json`에
+  `staging`, `staged`를 기록한다.
+- UI는 progress file을 polling해 실제 stage를 표시한다.
+- `staged` 이후 app 종료를 기다린 뒤 `applying`으로 전환하고 atomic apply한다.
+- atomic apply 이후에는 취소하지 않는다.
+- journal status:
+  - `preparing`: staging 중. recover는 staging만 정리
+  - `prepared`: apply 전. recover는 staging만 정리
+  - `applying`: target 변경 중. recover는 recovery로 rollback
+  - `succeeded`: 결과 표시 후 정리
+
+## 5.2 Password separation
+
+- Backup encryption password: container 전체 암호화(선택)
+- Vault password: Vault export/import 전용(필수, Vault 포함 시)
+- 두 password는 별도 UI field와 별도 stdin line/flag로 전달한다.
+- 하위 호환을 위해 `--password-stdin`만 제공된 경우 Vault password로도 사용한다.
+
+## 5.3 Full restore / open profile
+
+- full restore는 root DB와 모든 profile DB를 교체한다.
+- 기존 root/profiles는 recovery directory에 보존한다.
+- helper는 성공 후 `backups/open-profile.json`을 기록하고 app을 재시작한다.
+- app은 시작 시 이 파일을 읽어 target profile로 switch하고 파일을 삭제한다.
+
+## 5.4 Backup 목록
+
+- 기본 folder의 `.amarebak` 목록을 filename/size/time/sidecar hash/status와 함께 표시한다.
+- 목록 선택은 path field만 채우며 자동 복원하지 않는다.
+- 자동 삭제/자동 백업은 하지 않는다.
 
 ## 6. 동시성 / multi-window
 

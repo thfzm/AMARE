@@ -51,6 +51,12 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 ## 5. 현재 상태 (2026-11-05, Windows Runner)
 
+> **Phase 2.7 (2026-11-27) 추가:** Backup & Restore UI completion.
+> `backup_create_verify_dialog`, `backup_full_restore_dialog` UI smoke와
+> Rust helper full/partial restore, staged progress/journal, separate Vault
+> password를 검증한다. 실제 Windows 11 실기기 full restore/cross-PC Vault는
+> UNVERIFIED다. 상세: `docs/AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`.
+>
 > **Phase 2.5 (2026-11-27) 추가:** portable ZIP/helper E2E를
 > `tools/verify-portable-updater.ps1`로 추가했다. 실제 WinUI build output과
 > `AMARE.Updater.exe`로 ZIP을 만들고 apply/duplicate/wrong-hash/locked-file/
