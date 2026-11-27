@@ -322,8 +322,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot "manual-checklist.md") -Destinat
 
 Write-Result "os_windows11" $(if ($isWindows11) { "PASS" } elseif ($AllowNonWindows11) { "UNVERIFIED" } else { "BLOCKED" }) "build=$build"
 Write-Result "arch_x64" $(if ($env:PROCESSOR_ARCHITECTURE -match 'AMD64|x86_64') { "PASS" } else { "BLOCKED" }) $env:PROCESSOR_ARCHITECTURE
-Write-Result "webview2_runtime" $(if ($webview2) { "PASS" } else { "FAIL" }) $(if ($webview2) { $webview2 } else { "not found" })
-Write-Result "dotnet_8_runtime" $(if ($dotnet8) { "PASS" } else { "FAIL" }) $(if ($dotnet8) { "Microsoft.NETCore.App 8.x found" } else { "Microsoft.NETCore.App 8.x not found; this ZIP is framework-dependent" })
+Write-Result "webview2_runtime" $(if ($webview2) { "PASS" } else { "BLOCKED" }) $(if ($webview2) { $webview2 } else { "not found" })
+Write-Result "dotnet_8_runtime" $(if ($dotnet8) { "PASS" } else { "UNVERIFIED" }) $(if ($dotnet8) { "Microsoft.NETCore.App 8.x found" } else { "not found; self-contained ZIP may not require it" })
 Write-Result "package_present" $(if ($packageAvailable) { "PASS" } else { "BLOCKED" }) $(if ($packageAvailable) { $PackageZip } else { "No AMARE validation ZIP found. Pass -PackageZip." })
 Write-Result "admin_not_required" "PASS" "Validation runs unelevated; admin=$isAdmin"
 
@@ -385,6 +385,7 @@ Invoke-Check "package_manifest" {
             if (-not $zip.GetEntry($required)) { throw "manifest required file missing: $required" }
         }
         $script:PackageChannel = $manifest.channel
+        $script:IsSelfContained = ($manifest.runtime -match 'self-contained') -or ($zip.GetEntry('hostfxr.dll') -and $zip.GetEntry('coreclr.dll'))
         $script:PackageInfo = [ordered]@{
             name = (Split-Path $PackageZip -Leaf)
             sha256 = $packageHash
@@ -400,19 +401,41 @@ Invoke-Check "package_manifest" {
     }
     finally { $zip.Dispose() }
 }
+Invoke-Check "package_type" {
+    if ($script:IsSelfContained) { "self-contained" } else { "framework-dependent" }
+}
 Invoke-Check "package_runtime_prerequisite" {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($PackageZip)
     try {
-        $entry = $zip.GetEntry("AMARE.Windows.runtimeconfig.json")
-        $reader = New-Object System.IO.StreamReader($entry.Open())
-        try { $runtime = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
-        $framework = $runtime.runtimeOptions.framework
-        if ($framework -and $framework.name -eq "Microsoft.NETCore.App" -and -not $dotnet8) {
-            throw "package is framework-dependent on Microsoft.NETCore.App $($framework.version); install .NET 8 or publish self-contained"
+        if ($script:IsSelfContained) {
+            foreach ($required in @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")) {
+                if (-not $zip.GetEntry($required)) { throw "self-contained runtime file missing: $required" }
+            }
+            "self-contained .NET runtime files present; .NET 8 system runtime not required"
+        } else {
+            $entry = $zip.GetEntry("AMARE.Windows.runtimeconfig.json")
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            try { $runtime = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+            $framework = $runtime.runtimeOptions.framework
+            if ($framework -and $framework.name -eq "Microsoft.NETCore.App" -and -not $dotnet8) {
+                $script:RuntimeBlocked = $true
+                throw "package is framework-dependent on Microsoft.NETCore.App $($framework.version); install .NET 8 or use the self-contained ZIP"
+            }
+            "framework=$($framework.name) $($framework.version); .NET 8 detected=$dotnet8"
         }
-        "framework=$($framework.name) $($framework.version); .NET 8 detected=$dotnet8"
     }
     finally { $zip.Dispose() }
+}
+
+if ($script:RuntimeBlocked) {
+    $script:Results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir "results.json") -Encoding UTF8
+    Write-Host "BLOCKED: framework-dependent package needs .NET 8. Use the self-contained ZIP for a clean Windows 11 PC." -ForegroundColor Yellow
+    exit 2
+}
+if (-not $webview2) {
+    $script:Results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir "results.json") -Encoding UTF8
+    Write-Host "BLOCKED: WebView2 Evergreen Runtime is required; install it and rerun." -ForegroundColor Yellow
+    exit 2
 }
 
 Invoke-Check "package_isolation_marker" {

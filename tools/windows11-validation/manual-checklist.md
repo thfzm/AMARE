@@ -7,6 +7,29 @@ user profile, Vault, backups or existing ZIP packages.
 Record each item as `PASS`, `FAIL`, `UNVERIFIED` or `BLOCKED`, with the actual
 Windows build, WebView2 version, DPI and display layout in `environment.json`.
 
+## Priority and evidence rules
+
+Use the self-contained ZIP by default. The script marks a framework-dependent ZIP
+`BLOCKED` when .NET 8 is missing, and any ZIP `BLOCKED` when WebView2 Evergreen is
+missing. Record every item as `PASS`/`FAIL`/`UNVERIFIED`/`BLOCKED`.
+
+| Priority | IDs | Success evidence | Failure recovery |
+|---|---|---|---|
+| P0 | A1, A3, B1, B3, C1, C3, C5, G3, G4, G5, G7, G8, J2, J3, J9, K2, K4 | screenshot + app/helper log + `results.json` | keep test root; re-run in a new evidence dir; restore test profile from backup |
+| P1 | B2, B4, C2, C4, C6, D1-D5, E1-E5, F1-F4, H1-H5, I1-I6, J4-J8, K1, K3, K5-K7, L1-L4 | screenshot + log + environment JSON | do not delete failing evidence; record exact OS/build/DPI/WebView2 |
+| P2 | B5, E3, J10, L2-L4, Reader complex sites, UI density/font, diagnostics/crash dump | log + screenshot + package report | keep recovery/staging directories; record manual recovery steps |
+
+**P0 must pass before calling the package usable.** A failure must be reported with
+the original evidence; do not overwrite it with a later successful run.
+
+**Data safety:** use only the validation test root created by the script. Never
+select or delete the real user's `%LOCALAPPDATA%\AMARE` profile, Vault, backups or
+existing ZIPs. The script sets `AMARE_DATA_ROOT`; verify `environment.json` and
+`hosts/README.txt` before manual tests.
+
+**Runtime:** self-contained ZIP includes .NET 8 runtime files; WebView2 Evergreen is
+still required. The framework-dependent ZIP needs .NET 8 Runtime.
+
 ## A. First launch / shutdown
 
 | ID | Procedure | Expected | Status |

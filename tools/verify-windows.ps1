@@ -415,6 +415,82 @@ if ($SkipWinUI) {
         Write-Host "Personal validation ZIP: $zip"
         Write-Host "SHA-256: $hash"
     }
+    Invoke-Step "self_contained_publish" {
+        dotnet publish apps/windows/AMARE.Windows/AMARE.Windows.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:Platform=x64 -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishSingleFile=false -p:PublishTrimmed=false `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o "$OutputDir\self-contained-publish"
+        if ($LASTEXITCODE -ne 0) { throw "Self-contained WinUI publish failed." }
+        $publishExe = Join-Path $OutputDir "self-contained-publish\AMARE.Windows.exe"
+        if (-not (Test-Path $publishExe)) { throw "Self-contained publish did not produce AMARE.Windows.exe." }
+        $ffi = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter amare_ffi.dll -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($ffi -and -not (Test-Path (Join-Path $OutputDir "self-contained-publish\amare_ffi.dll"))) {
+            Copy-Item $ffi.FullName (Join-Path $OutputDir "self-contained-publish\amare_ffi.dll") -Force
+        }
+    }
+    Invoke-Step "self_contained_package" {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $publish = Join-Path $OutputDir "self-contained-publish"
+        if (-not (Test-Path (Join-Path $publish "AMARE.Windows.exe"))) { throw "Self-contained publish output is missing." }
+        $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe is missing." }
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe is missing." }
+        $packageRoot = Join-Path $OutputDir "personal-package"
+        $stage = Join-Path $OutputDir "self-contained-package-stage"
+        if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $stage, $packageRoot | Out-Null
+        Copy-Item (Join-Path $publish "*") -Destination $stage -Recurse -Force
+        Copy-Item $updater (Join-Path $stage "AMARE.Updater.exe") -Force
+        Copy-Item $backup (Join-Path $stage "AMARE.Backup.exe") -Force
+        [System.IO.File]::WriteAllText((Join-Path $stage "VERSION"), "$Version`n", [System.Text.UTF8Encoding]::new($false))
+        $manifest = [ordered]@{
+            schema = 1
+            product = "AMARE"
+            version = $Version
+            architecture = "win-x64"
+            entryPoint = "AMARE.Windows.exe"
+            runtime = "win-x64-self-contained"
+            channel = "portable-unsigned-validation"
+            requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe", "AMARE.Backup.exe")
+        }
+        Write-Utf8Json (Join-Path $stage "amare-update.json") $manifest
+        $notes = Join-Path (Get-Location) "docs\releases\AMARE-$Version.md"
+        if (Test-Path $notes) { Copy-Item $notes (Join-Path $stage "RELEASE_NOTES.md") -Force }
+        Get-ChildItem $stage -Recurse -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
+        foreach ($required in @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll", "AMARE.Windows.runtimeconfig.json")) {
+            if (-not (Test-Path (Join-Path $stage $required))) {
+                throw "Self-contained package is missing $required"
+            }
+        }
+        $zip = Join-Path $packageRoot "AMARE-$Version-win-x64-self-contained-unsigned.zip"
+        if (Test-Path $zip) { Remove-Item $zip -Force }
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [System.IO.Compression.CompressionLevel]::Fastest, $false)
+        $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $(Split-Path $zip -Leaf)`n", [System.Text.UTF8Encoding]::new($false))
+        $files = @(Get-ChildItem $stage -Recurse -File | ForEach-Object {
+            $_.FullName.Substring($stage.Length).TrimStart('\','/').Replace('\','/')
+        })
+        $report = [ordered]@{
+            package = (Split-Path $zip -Leaf)
+            size = (Get-Item $zip).Length
+            sha256 = $hash
+            file_count = $files.Count
+            files = $files
+            excluded = @("*.pdb")
+            signing = "UNSIGNED"
+            package_type = "self-contained"
+            runtime = "self-contained .NET 8; WebView2 Evergreen required"
+            runtime_files = @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")
+        }
+        Write-Utf8Json (Join-Path $packageRoot "package-report-self-contained.json") $report
+        Write-Host "Self-contained ZIP: $zip"
+        Write-Host "SHA-256: $hash"
+    }
     Invoke-Step "portable_updater_e2e" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1

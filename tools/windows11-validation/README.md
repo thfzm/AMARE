@@ -5,15 +5,26 @@ Windows 11 validation run. It never uses the normal `%LOCALAPPDATA%\AMARE`
 profile: every app launch, backup, restore and updater test runs under a unique
 temporary root via `AMARE_DATA_ROOT`.
 
+Two ZIP types are supported and auto-detected:
+
+- `AMARE-0.92.0-win-x64-self-contained-unsigned.zip` — recommended; includes
+  .NET 8 runtime files, so a clean Windows 11 PC does not need a separate .NET
+  installation.
+- `AMARE-0.92.0-win-x64-unsigned.zip` — framework-dependent; requires .NET 8
+  Runtime. The script records `BLOCKED` if it is missing.
+
+Both still require **WebView2 Evergreen Runtime**. The script records `BLOCKED`
+if WebView2 is missing.
+
 ## Usage
 
 ```powershell
 # From the repository (recommended)
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\windows11-validation\Invoke-AmAreWindows11Validation.ps1 `
-  -PackageZip .\artifacts\phase3-personal-package\AMARE-0.92.0-win-x64-unsigned.zip
+  -PackageZip .\artifacts\phase3-personal-package\AMARE-0.92.0-win-x64-self-contained-unsigned.zip
 
 # From a folder containing the ZIP and this script
-powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Validation.ps1 -PackageZip .\AMARE-0.92.0-win-x64-unsigned.zip
+powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Validation.ps1 -PackageZip .\AMARE-0.92.0-win-x64-self-contained-unsigned.zip
 ```
 
 No administrator elevation is requested. Preflight runs unelevated. If a check
@@ -38,12 +49,14 @@ the first failing run is retained.
 
 Automated (attempted by the script):
 
-- package integrity, manifest, required/forbidden files, runtime prerequisites
+- package integrity, manifest, required/forbidden files, package type and runtime prerequisites
 - app launch/stay-alive/graceful close with isolated data root
 - full backup create/verify and full restore to an empty test root
 - single-profile backup/verify/restore to a separate test profile root
 - updater success, wrong-hash rejection, locked-file rejection, launch-failure rollback
 - evidence and SHA-256 collection
+- self-contained runtime files (`hostfxr.dll`, `hostpolicy.dll`, `coreclr.dll`)
+  or framework-dependent .NET 8 detection
 
 Manual (must be performed by a person on Windows 11):
 
