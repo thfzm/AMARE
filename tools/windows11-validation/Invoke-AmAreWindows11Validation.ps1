@@ -427,6 +427,17 @@ Invoke-Check "package_runtime_prerequisite" {
     finally { $zip.Dispose() }
 }
 
+Invoke-Check "package_winui_resources" {
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($PackageZip)
+    try {
+        foreach ($required in @("App.xbf", "MainWindow.xbf", "AMARE.Windows.pri")) {
+            if (-not $zip.GetEntry($required)) { throw "WinUI resource missing: $required" }
+        }
+        "App.xbf, MainWindow.xbf, AMARE.Windows.pri present"
+    }
+    finally { $zip.Dispose() }
+}
+
 Invoke-Check "package_vc_runtime" {
     if (-not $script:IsSelfContained) { "not required for framework-dependent package; host VC++ runtime check is separate" }
     else {

@@ -437,6 +437,13 @@ if ($SkipWinUI) {
         if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $stage, $packageRoot | Out-Null
         Copy-Item (Join-Path $publish "*") -Destination $stage -Recurse -Force
+        $uiSource = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter App.xbf -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $uiSource) { throw "WinUI App.xbf was not found in the build output." }
+        $uiDir = $uiSource.Directory.FullName
+        foreach ($resource in @(Get-ChildItem $uiDir -Filter *.xbf -File) + @(Get-ChildItem $uiDir -Filter *.pri -File)) {
+            Copy-Item $resource.FullName (Join-Path $stage $resource.Name) -Force
+        }
         Copy-Item $updater (Join-Path $stage "AMARE.Updater.exe") -Force
         Copy-Item $backup (Join-Path $stage "AMARE.Backup.exe") -Force
         [System.IO.File]::WriteAllText((Join-Path $stage "VERSION"), "$Version`n", [System.Text.UTF8Encoding]::new($false))
@@ -454,7 +461,7 @@ if ($SkipWinUI) {
         $notes = Join-Path (Get-Location) "docs\releases\AMARE-$Version.md"
         if (Test-Path $notes) { Copy-Item $notes (Join-Path $stage "RELEASE_NOTES.md") -Force }
         Get-ChildItem $stage -Recurse -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
-        foreach ($required in @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll", "AMARE.Windows.runtimeconfig.json")) {
+        foreach ($required in @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll", "AMARE.Windows.runtimeconfig.json", "App.xbf", "MainWindow.xbf", "AMARE.Windows.pri")) {
             if (-not (Test-Path (Join-Path $stage $required))) {
                 throw "Self-contained package is missing $required"
             }
@@ -498,6 +505,7 @@ if ($SkipWinUI) {
             package_type = "self-contained"
             runtime = "self-contained .NET 8; WebView2 Evergreen required; VC++ runtime included"
             runtime_files = @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")
+            ui_resources = @("App.xbf", "MainWindow.xbf", "AMARE.Windows.pri")
             vc_runtime = $vcRuntime
         }
         Write-Utf8Json (Join-Path $packageRoot "package-report-self-contained.json") $report
