@@ -3807,6 +3807,8 @@ internal static class Program
             WaitFor(() => FindByName("Restore profile") is not null,
                 TimeSpan.FromSeconds(10), "full restore confirmation");
             InvokeDialogButton("Restore profile", "Cancel");
+            WaitFor(() => FindByName("Profile backup & restore") is not null,
+                TimeSpan.FromSeconds(10), "backup dialog reopened after cancel");
             InvokeDialogButton("Profile backup & restore", "Close");
             WaitFor(() => FindByName("Profile backup & restore") is null,
                 TimeSpan.FromSeconds(10), "backup dialog close");

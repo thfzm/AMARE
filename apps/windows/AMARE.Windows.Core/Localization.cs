@@ -128,6 +128,8 @@ public static class L10n
         ["backup.corrupt"] = ("The backup is corrupt or its checksum does not match.", "백업이 손상되었거나 체크섬이 일치하지 않습니다."),
         ["backup.invalid"] = ("The backup could not be verified.", "백업을 검증할 수 없습니다."),
         ["backup.singleProfileOnly"] = ("This UI restores a single-profile backup. Full multi-profile backups are not exposed.", "이 UI는 단일 프로필 백업만 복원합니다. 전체 다중 프로필 백업은 노출하지 않습니다."),
+        ["backup.confirmNewGeneric"] = ("Restore backup profile {0} as a new profile? You will choose the new profile ID next. AMARE will close and restart.", "백업 프로필 {0}을(를) 새 프로필로 복원할까요? 다음 단계에서 새 프로필 ID를 선택합니다. AMARE가 종료되고 다시 시작됩니다."),
+        ["backup.overwriteBlocked"] = ("A file already exists at this path. Choose a different backup file name; existing backups are never overwritten automatically.", "이 경로에 파일이 이미 있습니다. 다른 백업 파일 이름을 선택하세요. 기존 백업은 자동으로 덮어쓰지 않습니다."),
         ["backup.confirmCurrent"] = ("Restore into profile {0}? The current profile database will be replaced after validation. A recovery copy of the current data is kept. The app will close and restart.", "프로필 {0}에 복원할까요? 검증 후 현재 프로필 데이터베이스가 교체됩니다. 현재 데이터의 복구 사본이 보관됩니다. 앱이 종료되고 다시 시작됩니다."),
         ["backup.confirmNew"] = ("Restore the backup profile {0} as new profile {1}? The app will close and restart.", "백업 프로필 {0}을(를) 새 프로필 {1}(으)로 복원할까요? 앱이 종료되고 다시 시작됩니다."),
         ["backup.restoreTitle"] = ("Restore profile", "프로필 복원"),

@@ -437,16 +437,8 @@ public sealed partial class MainWindow
             }
             if (File.Exists(path))
             {
-                var overwrite = await new ContentDialog
-                {
-                    Title = L10n.T("backup.title"),
-                    Content = L10n.T("backup.overwrite"),
-                    PrimaryButtonText = L10n.T("backup.overwriteYes"),
-                    CloseButtonText = L10n.T("common.cancel"),
-                    DefaultButton = ContentDialogButton.Close,
-                    XamlRoot = RootGrid.XamlRoot
-                }.ShowAsync();
-                if (overwrite != ContentDialogResult.Primary) return;
+                status.Text = L10n.T("backup.overwriteBlocked");
+                return;
             }
             SetBusy(true);
             status.Text = L10n.T("backup.creating");
@@ -550,16 +542,12 @@ public sealed partial class MainWindow
                     return;
                 }
                 targetId = targetBox.SelectedItem as string ?? _profileId;
-                if (asNew)
-                {
-                    var newId = await PromptForNewProfileAsync();
-                    if (newId == null) return;
-                    targetId = newId;
-                }
                 warning = asNew
-                    ? L10n.T("backup.confirmNew", sourceId, targetId)
+                    ? L10n.T("backup.confirmNewGeneric", sourceId)
                     : L10n.T("backup.confirmCurrent", targetId);
             }
+            dialog.Hide();
+            await Task.Delay(150);
             var confirmed = await new ContentDialog
             {
                 Title = L10n.T("backup.restoreTitle"),
@@ -569,12 +557,49 @@ public sealed partial class MainWindow
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = RootGrid.XamlRoot
             }.ShowAsync();
-            if (confirmed != ContentDialogResult.Primary) return;
+            if (confirmed != ContentDialogResult.Primary)
+            {
+                _ = ShowBackupRestoreAsync();
+                return;
+            }
+            if (asNew)
+            {
+                var newId = await PromptForNewProfileAsync();
+                if (newId == null)
+                {
+                    _ = ShowBackupRestoreAsync();
+                    return;
+                }
+                targetId = newId;
+            }
+            ContentDialog progressDialog;
+            var progressText = new TextBox
+            {
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                MinHeight = 90,
+                Text = L10n.T("backup.stageStaging")
+            };
+            AutomationProperties.SetAutomationId(progressText, "BackupRestoreProgressText");
+            progressDialog = new ContentDialog
+            {
+                Title = L10n.T("backup.restoreTitle"),
+                Content = progressText,
+                CloseButtonText = L10n.T("common.cancel"),
+                DefaultButton = ContentDialogButton.None,
+                XamlRoot = RootGrid.XamlRoot
+            };
+            progressDialog.CloseButtonClick += (_, _) =>
+            {
+                _restoreCancelled = true;
+                try { if (_restoreProcess is { HasExited: false } p) p.Kill(entireProcessTree: true); } catch { }
+            };
+            _ = progressDialog.ShowAsync();
+            await Task.Delay(100);
             try
             {
-                SetBusy(true);
                 _restoreCancelled = false;
-                status.Text = L10n.T("backup.restoreStarted");
                 var appExe = Path.Combine(
                     AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
                     "AMARE.Windows.exe");
@@ -591,27 +616,26 @@ public sealed partial class MainWindow
                 {
                     if (_restoreCancelled)
                     {
-                        status.Text = L10n.T("backup.restoreCancelled");
-                        return;
+                        progressText.Text = L10n.T("backup.restoreCancelled");
+                        break;
                     }
                     var progress = backupClient.ReadRestoreProgress();
                     if (progress != null)
                     {
-                        status.Text = progress.Stage switch
+                        progressText.Text = progress.Stage switch
                         {
                             "staging" => L10n.T("backup.stageStaging"),
                             "staged" => L10n.T("backup.stageStaged"),
                             "applying" => L10n.T("backup.stageApplying"),
                             "finalizing" => L10n.T("backup.stageFinalizing"),
                             "completed" => L10n.T("backup.stageCompleted"),
-                            "failed" => progress.Detail,
                             _ => progress.Detail
                         };
                         if (progress.Stage == "staged")
                         {
-                            cancelButton.IsEnabled = false;
-                            status.Text = L10n.T("backup.applyingRestart");
+                            progressText.Text = L10n.T("backup.applyingRestart");
                             await Task.Delay(500);
+                            progressDialog.Hide();
                             Close();
                             Application.Current.Exit();
                             return;
@@ -621,24 +645,32 @@ public sealed partial class MainWindow
                 }
                 if (_restoreCancelled)
                 {
-                    status.Text = L10n.T("backup.restoreCancelled");
-                    return;
+                    try { await backupClient.RecoverAsync(); } catch { }
+                    progressText.Text = L10n.T("backup.restoreCancelled");
                 }
-                var result = backupClient.ReadRestoreResult();
-                status.Text = result == null
-                    ? L10n.T("backup.restoreFailed")
-                    : result.Succeeded
-                        ? L10n.T("backup.restoreStarted")
-                        : $"{L10n.T("backup.restoreFailed")}: {result.Error}";
+                else
+                {
+                    var result = backupClient.ReadRestoreResult();
+                    progressText.Text = result == null
+                        ? L10n.T("backup.restoreFailed")
+                        : result.Succeeded
+                            ? L10n.T("backup.restoreStarted")
+                            : $"{L10n.T("backup.restoreFailed")}: {result.Error}";
+                }
+                await Task.Delay(2500);
+                progressDialog.Hide();
+                _ = ShowBackupRestoreAsync();
             }
             catch (Exception exception)
             {
-                status.Text = L10n.T("backup.restoreFailed") + ": " + exception.Message;
+                progressText.Text = L10n.T("backup.restoreFailed") + ": " + exception.Message;
+                await Task.Delay(2500);
+                progressDialog.Hide();
+                _ = ShowBackupRestoreAsync();
             }
             finally
             {
                 _restoreProcess = null;
-                SetBusy(false);
             }
         }
 
