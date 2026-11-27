@@ -61,6 +61,14 @@ public sealed class BackupVaultSummaryDto
     public int TombstoneCount { get; init; }
 }
 
+public sealed class BackupProgressDto
+{
+    public string Stage { get; init; } = "";
+    public string Detail { get; init; } = "";
+    public bool Cancellable { get; init; }
+    public long UpdatedAtMs { get; init; }
+}
+
 public sealed class BackupOperationResult
 {
     public string Status { get; init; } = "";

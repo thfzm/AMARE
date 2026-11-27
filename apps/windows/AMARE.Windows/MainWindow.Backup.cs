@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Amare.Windows.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -9,7 +10,14 @@ namespace Amare.Windows;
 
 public sealed partial class MainWindow
 {
+    private sealed record BackupListEntry(string FileName, string Display, string Path)
+    {
+        public override string ToString() => Display;
+    }
+
     private CancellationTokenSource? _backupCancellation;
+    private System.Diagnostics.Process? _restoreProcess;
+    private bool _restoreCancelled;
 
     private string DataRoot =>
         Path.Combine(_appDataRoot, "data");
@@ -115,9 +123,22 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(restoreButton, "BackupRestoreButton");
         var restoreNewButton = new Button { Content = L10n.T("backup.restoreNew") };
         AutomationProperties.SetAutomationId(restoreNewButton, "BackupRestoreAsNewButton");
+        var restoreFullButton = new Button { Content = L10n.T("backup.restoreFull") };
+        AutomationProperties.SetAutomationId(restoreFullButton, "BackupRestoreFullButton");
         var cancelButton = new Button { Content = L10n.T("common.cancel"), IsEnabled = false };
         AutomationProperties.SetAutomationId(cancelButton, "BackupCancelButton");
-        cancelButton.Click += (_, _) => _backupCancellation?.Cancel();
+        cancelButton.Click += async (_, _) =>
+        {
+            _backupCancellation?.Cancel();
+            var process = _restoreProcess;
+            if (process is { HasExited: false })
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                try { await backupClient.RecoverAsync(); } catch { }
+                _restoreCancelled = true;
+                status.Text = L10n.T("backup.restoreCancelled");
+            }
+        };
 
         var profileIds = new List<string> { _profileId };
         try
@@ -146,6 +167,23 @@ public sealed partial class MainWindow
             MinWidth = 220
         };
         AutomationProperties.SetAutomationId(targetBox, "BackupTargetProfileBox");
+        var sourceBox = new ComboBox { MinWidth = 220 };
+        AutomationProperties.SetAutomationId(sourceBox, "BackupSourceProfileBox");
+        var fullOpenProfileBox = new ComboBox { MinWidth = 220 };
+        AutomationProperties.SetAutomationId(fullOpenProfileBox, "BackupFullOpenProfileBox");
+        var manifestSummary = new TextBox
+        {
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            MinHeight = 90,
+            Text = ""
+        };
+        AutomationProperties.SetAutomationId(manifestSummary, "BackupManifestText");
+        var backupList = new ListView { MinHeight = 90, MaxHeight = 160 };
+        AutomationProperties.SetAutomationId(backupList, "BackupListBox");
+        var refreshListButton = new Button { Content = L10n.T("backup.refreshList") };
+        AutomationProperties.SetAutomationId(refreshListButton, "BackupRefreshListButton");
 
         var pathRow = new StackPanel
         {
@@ -161,8 +199,12 @@ public sealed partial class MainWindow
 
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(profileText);
+        stack.Children.Add(new TextBlock { Text = L10n.T("backup.sourceProfile") });
+        stack.Children.Add(sourceBox);
         stack.Children.Add(new TextBlock { Text = L10n.T("backup.targetProfile") });
         stack.Children.Add(targetBox);
+        stack.Children.Add(new TextBlock { Text = L10n.T("backup.fullOpenProfile") });
+        stack.Children.Add(fullOpenProfileBox);
         stack.Children.Add(new TextBlock
         {
             Text = L10n.T("backup.scopeHint"),
@@ -185,8 +227,13 @@ public sealed partial class MainWindow
         buttonRow.Children.Add(verifyButton);
         buttonRow.Children.Add(cancelButton);
         stack.Children.Add(buttonRow);
+        stack.Children.Add(new TextBlock { Text = L10n.T("backup.manifest") });
+        stack.Children.Add(manifestSummary);
         stack.Children.Add(status);
         stack.Children.Add(shaText);
+        stack.Children.Add(new TextBlock { Text = L10n.T("backup.list") });
+        stack.Children.Add(backupList);
+        stack.Children.Add(refreshListButton);
 
         var dialog = new ContentDialog
         {
@@ -197,18 +244,96 @@ public sealed partial class MainWindow
             XamlRoot = RootGrid.XamlRoot
         };
 
+        void UpdateManifestUi(BackupOperationResult? result)
+        {
+            var manifest = result?.Manifest;
+            if (manifest == null)
+            {
+                manifestSummary.Text = "";
+                sourceBox.ItemsSource = null;
+                fullOpenProfileBox.ItemsSource = null;
+                restoreFullButton.IsEnabled = false;
+                return;
+            }
+            var profiles = manifest.Profiles
+                .Select(profile => $"{profile.Id} ({profile.Name}, v{profile.SchemaVersion})")
+                .ToList();
+            var dataKinds = string.Join(", ", manifest.DataKinds);
+            var vault = manifest.ContainsVault
+                ? $"{L10n.T("backup.manifestVault", result!.Vault.Sum(v => v.EntryCount))}"
+                : L10n.T("backup.manifestNoVault");
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine($"{L10n.T("backup.manifestVersion")}: {manifest.FormatVersion} / AMARE {manifest.AppVersion}");
+            builder.AppendLine($"{L10n.T("backup.manifestScope")}: {manifest.Scope}");
+            builder.AppendLine($"{L10n.T("backup.manifestCreated")}: {DateTimeOffset.FromUnixTimeMilliseconds(manifest.CreatedAtMs):yyyy-MM-dd HH:mm:ss zzz}");
+            builder.AppendLine($"{L10n.T("backup.manifestProfiles")}: {string.Join("; ", profiles)}");
+            builder.AppendLine($"{L10n.T("backup.manifestData")}: {dataKinds}");
+            builder.AppendLine(vault);
+            builder.AppendLine($"{L10n.T("backup.manifestEncryption")}: {manifest.Encryption}");
+            builder.AppendLine($"{L10n.T("backup.manifestFiles", manifest.Files.Count)}");
+            try
+            {
+                var path = CurrentPath();
+                if (File.Exists(path))
+                {
+                    using var stream = File.OpenRead(path);
+                    builder.AppendLine($"SHA-256: {Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()}");
+                }
+            }
+            catch
+            {
+                // The helper still verifies the file; display is best effort.
+            }
+            manifestSummary.Text = builder.ToString().TrimEnd();
+            var ids = manifest.Profiles.Select(profile => profile.Id).ToList();
+            sourceBox.ItemsSource = ids;
+            sourceBox.SelectedIndex = ids.Count == 1 ? 0 : 0;
+            fullOpenProfileBox.ItemsSource = ids;
+            fullOpenProfileBox.SelectedIndex = 0;
+            restoreFullButton.IsEnabled = manifest.Scope == "full";
+        }
+
+        void RefreshBackupList()
+        {
+            backupList.Items.Clear();
+            var directory = Path.Combine(DataRoot, "backups");
+            if (!Directory.Exists(directory)) return;
+            foreach (var file in Directory.GetFiles(directory, "*.amarebak")
+                         .OrderByDescending(File.GetLastWriteTimeUtc))
+            {
+                var info = new FileInfo(file);
+                var sidecar = file + ".sha256";
+                var hash = File.Exists(sidecar)
+                    ? File.ReadAllText(sidecar).Trim()
+                    : L10n.T("backup.noSidecar");
+                if (hash.Length > 24) hash = hash[..24] + "…";
+                var display = $"{info.Name}  |  {info.Length:N0} B  |  {info.LastWriteTime:yyyy-MM-dd HH:mm}  |  {hash}  |  {L10n.T("backup.verifyToCheck")}";
+                backupList.Items.Add(new BackupListEntry(info.Name, display, info.FullName));
+            }
+        }
+
+        BackupOperationResult? lastVerified = null;
+        pathBox.TextChanged += (_, _) =>
+        {
+            lastVerified = null;
+            UpdateManifestUi(null);
+        };
+
         void SetBusy(bool busy)
         {
             createButton.IsEnabled = !busy;
             verifyButton.IsEnabled = !busy;
             restoreButton.IsEnabled = !busy;
             restoreNewButton.IsEnabled = !busy;
+            restoreFullButton.IsEnabled = !busy;
+            refreshListButton.IsEnabled = !busy;
+            fullOpenProfileBox.IsEnabled = !busy;
+            sourceBox.IsEnabled = !busy;
             browseSave.IsEnabled = !busy;
             browseOpen.IsEnabled = !busy;
             cancelButton.IsEnabled = busy;
         }
 
-        BackupOperationResult? lastVerified = null;
         string CurrentPath() => pathBox.Text.Trim();
         string? CurrentPassword() =>
             passwordBox.Password.Length == 0 ? null : passwordBox.Password;
@@ -230,6 +355,7 @@ public sealed partial class MainWindow
                 var result = await backupClient.VerifyAsync(path, CurrentPassword(), cancellation.Token);
                 status.Text = DescribeBackupResult(result);
                 lastVerified = result.Valid ? result : null;
+                UpdateManifestUi(lastVerified);
                 return result;
             }
             catch (OperationCanceledException)
@@ -299,6 +425,7 @@ public sealed partial class MainWindow
                 status.Text = L10n.T("backup.created", result.SizeBytes ?? 0);
                 shaText.Text = $"SHA-256: {result.Sha256}";
                 lastVerified = null;
+                RefreshBackupList();
             }
             catch (Exception exception)
             {
@@ -324,7 +451,7 @@ public sealed partial class MainWindow
             }
         };
 
-        async Task StartRestoreAsync(bool asNew)
+        async Task StartRestoreAsync(bool asNew, bool fullRestore = false)
         {
             var verified = lastVerified;
             if (verified == null)
@@ -333,27 +460,61 @@ public sealed partial class MainWindow
                 if (verified == null || !verified.Valid) return;
             }
             var manifest = verified.Manifest;
-            if (manifest == null || manifest.Profiles.Count != 1)
+            if (manifest == null)
             {
-                status.Text = L10n.T("backup.singleProfileOnly");
+                status.Text = L10n.T("backup.invalid");
                 return;
-            }
-            var sourceId = manifest.Profiles[0].Id;
-            string targetId = targetBox.SelectedItem as string ?? _profileId;
-            if (asNew)
-            {
-                var newId = await PromptForNewProfileAsync();
-                if (newId == null) return;
-                targetId = newId;
             }
             if (manifest.ContainsVault && CurrentPassword() == null)
             {
                 status.Text = L10n.T("backup.vaultPasswordRequired");
                 return;
             }
-            var warning = asNew
-                ? L10n.T("backup.confirmNew", sourceId, targetId)
-                : L10n.T("backup.confirmCurrent", targetId);
+            string sourceId;
+            string targetId;
+            string warning;
+            if (fullRestore)
+            {
+                if (manifest.Scope != "full")
+                {
+                    status.Text = L10n.T("backup.fullRequiresFullBackup");
+                    return;
+                }
+                if (manifest.Profiles.Count == 0)
+                {
+                    status.Text = L10n.T("backup.invalid");
+                    return;
+                }
+                sourceId = fullOpenProfileBox.SelectedItem as string ?? manifest.Profiles[0].Id;
+                targetId = sourceId;
+                warning = L10n.T("backup.confirmFull",
+                    string.Join(", ", manifest.Profiles.Select(profile => profile.Id)),
+                    sourceId);
+            }
+            else
+            {
+                if (manifest.Profiles.Count == 0)
+                {
+                    status.Text = L10n.T("backup.invalid");
+                    return;
+                }
+                sourceId = sourceBox.SelectedItem as string ?? manifest.Profiles[0].Id;
+                if (!manifest.Profiles.Any(profile => profile.Id == sourceId))
+                {
+                    status.Text = L10n.T("backup.invalid");
+                    return;
+                }
+                targetId = targetBox.SelectedItem as string ?? _profileId;
+                if (asNew)
+                {
+                    var newId = await PromptForNewProfileAsync();
+                    if (newId == null) return;
+                    targetId = newId;
+                }
+                warning = asNew
+                    ? L10n.T("backup.confirmNew", sourceId, targetId)
+                    : L10n.T("backup.confirmCurrent", targetId);
+            }
             var confirmed = await new ContentDialog
             {
                 Title = L10n.T("backup.restoreTitle"),
@@ -366,26 +527,83 @@ public sealed partial class MainWindow
             if (confirmed != ContentDialogResult.Primary) return;
             try
             {
+                SetBusy(true);
+                _restoreCancelled = false;
+                status.Text = L10n.T("backup.restoreStarted");
                 var appExe = Path.Combine(
                     AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
                     "AMARE.Windows.exe");
-                _ = backupClient.StartRestore(
-                    CurrentPath(), sourceId, targetId, appExe, CurrentPassword());
-                status.Text = L10n.T("backup.restoreStarted");
+                _restoreProcess = backupClient.StartRestore(
+                    CurrentPath(), sourceId, targetId, appExe, CurrentPassword(),
+                    fullRestore: fullRestore, openProfileId: fullRestore ? sourceId : targetId);
                 passwordBox.Password = "";
                 confirmBox.Password = "";
-                await Task.Delay(300);
-                Close();
-                Application.Current.Exit();
+                var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
+                while (!_restoreProcess.HasExited && DateTimeOffset.UtcNow < deadline)
+                {
+                    if (_restoreCancelled)
+                    {
+                        status.Text = L10n.T("backup.restoreCancelled");
+                        return;
+                    }
+                    var progress = backupClient.ReadRestoreProgress();
+                    if (progress != null)
+                    {
+                        status.Text = progress.Stage switch
+                        {
+                            "staging" => L10n.T("backup.stageStaging"),
+                            "staged" => L10n.T("backup.stageStaged"),
+                            "applying" => L10n.T("backup.stageApplying"),
+                            "finalizing" => L10n.T("backup.stageFinalizing"),
+                            "completed" => L10n.T("backup.stageCompleted"),
+                            "failed" => progress.Detail,
+                            _ => progress.Detail
+                        };
+                        if (progress.Stage == "staged")
+                        {
+                            cancelButton.IsEnabled = false;
+                            status.Text = L10n.T("backup.applyingRestart");
+                            await Task.Delay(500);
+                            Close();
+                            Application.Current.Exit();
+                            return;
+                        }
+                    }
+                    await Task.Delay(250);
+                }
+                if (_restoreCancelled)
+                {
+                    status.Text = L10n.T("backup.restoreCancelled");
+                    return;
+                }
+                var result = backupClient.ReadRestoreResult();
+                status.Text = result == null
+                    ? L10n.T("backup.restoreFailed")
+                    : result.Succeeded
+                        ? L10n.T("backup.restoreStarted")
+                        : $"{L10n.T("backup.restoreFailed")}: {result.Error}";
             }
             catch (Exception exception)
             {
                 status.Text = L10n.T("backup.restoreFailed") + ": " + exception.Message;
             }
+            finally
+            {
+                _restoreProcess = null;
+                SetBusy(false);
+            }
         }
+
+        backupList.SelectionChanged += (_, _) =>
+        {
+            if (backupList.SelectedItem is BackupListEntry entry) pathBox.Text = entry.Path;
+        };
+        refreshListButton.Click += (_, _) => RefreshBackupList();
+        RefreshBackupList();
 
         restoreButton.Click += async (_, _) => await StartRestoreAsync(false);
         restoreNewButton.Click += async (_, _) => await StartRestoreAsync(true);
+        restoreFullButton.Click += async (_, _) => await StartRestoreAsync(false, fullRestore: true);
 
         var restoreRow = new StackPanel
         {
@@ -397,6 +615,28 @@ public sealed partial class MainWindow
         stack.Children.Add(restoreRow);
 
         await dialog.ShowAsync();
+    }
+
+    internal async Task ApplyPendingOpenProfileAsync()
+    {
+        try
+        {
+            var path = Path.Combine(DataRoot, "backups", "open-profile.json");
+            if (!File.Exists(path)) return;
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            File.Delete(path);
+            var id = document.RootElement.TryGetProperty("profile_id", out var value)
+                ? value.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(id) || _profiles is null) return;
+            if (!await _profiles.ExistsAsync(id)) return;
+            _context = await _profiles.SwitchAsync(id);
+            _profileId = _context.ProfileId;
+        }
+        catch (Exception exception)
+        {
+            AppLog.Warn($"Pending restore profile could not be opened: {exception.GetType().Name}");
+        }
     }
 
     internal async Task RecoverInterruptedRestoreAsync()

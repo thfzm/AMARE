@@ -43,7 +43,14 @@ fn main() {
         Err(error) => (1, json!({"status": "error", "error": error})),
     };
     write_result(&options, &payload);
-    if command == "restore" && !flag(&options, "no-relaunch") {
+    let parent_pid = values(&options, "parent-pid")
+        .first()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    if command == "restore"
+        && !flag(&options, "no-relaunch")
+        && (parent_pid == 0 || !process_alive(parent_pid))
+    {
         if let Some(exe) = optional_path(&options, "app-exe") {
             let _ = std::process::Command::new(&exe)
                 .current_dir(exe.parent().unwrap_or(Path::new(".")))
@@ -65,6 +72,8 @@ struct RestoreJournal {
     app_backup: String,
     #[serde(default)]
     app_root: String,
+    #[serde(default)]
+    staging: String,
 }
 
 const APP_FILES: [&str; 4] = [
@@ -112,6 +121,16 @@ fn recover(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         return Ok(json!({"status": "ok", "recovered": false}));
     };
     if journal.status == "succeeded" {
+        let _ = fs::remove_file(journal_path(&root));
+        return Ok(json!({"status": "ok", "recovered": false}));
+    }
+    if journal.status == "preparing" || journal.status == "prepared" {
+        if !journal.staging.is_empty() {
+            let _ = fs::remove_dir_all(&journal.staging);
+        }
+        if !journal.app_backup.is_empty() {
+            let _ = fs::remove_dir_all(&journal.app_backup);
+        }
         let _ = fs::remove_file(journal_path(&root));
         return Ok(json!({"status": "ok", "recovered": false}));
     }
@@ -307,7 +326,6 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         .first()
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(0);
-    wait_for_parent_exit(parent_pid, 60)?;
     let manager = BackupManager::new(&root).map_err(|error| error.to_string())?;
     if !sidecar_present(&backup) {
         return Err(
@@ -379,11 +397,11 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         Some(path) => backup_app_files(path, app_payloads.keys())?,
         None => PathBuf::new(),
     };
-    let journal = RestoreJournal {
+    let mut journal = RestoreJournal {
         target_root: target_root.to_string_lossy().to_string(),
         recovery: recovery.to_string_lossy().to_string(),
         mode: mode.clone(),
-        status: "applying".into(),
+        status: "preparing".into(),
         backup: backup.to_string_lossy().to_string(),
         started_at_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -394,8 +412,15 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
             .as_ref()
             .map(|path| path.to_string_lossy().to_string())
             .unwrap_or_default(),
+        staging: staging.to_string_lossy().to_string(),
     };
     write_journal(&root, &journal)?;
+    write_progress(
+        &root,
+        "staging",
+        "Preparing and validating backup staging",
+        true,
+    );
     let target_ids = restore_target_ids(&mode);
     let vault_payloads = vault_payloads(&manifest, &files)?;
 
@@ -407,18 +432,50 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         BTreeMap::new()
     };
     let old_keys = backup_vault_keys(&root, &target_ids)?;
-    let report = manager
-        .restore_with_paths(
-            &backup,
-            &root,
-            &RestoreOptions {
-                credential,
-                mode: mode.clone(),
-            },
-            &staging,
-            &recovery,
-        )
-        .map_err(|error| error.to_string())?;
+    let prepared = match manager.prepare_restore(
+        &backup,
+        &root,
+        &RestoreOptions {
+            credential,
+            mode: mode.clone(),
+        },
+        &staging,
+        &recovery,
+    ) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&staging);
+            let _ = fs::remove_file(journal_path(&root));
+            if let Some(app_root) = &app_root {
+                let _ = restore_app_backup(app_root, &app_backup_dir);
+            }
+            write_progress(&root, "failed", &format!("Staging failed: {error}"), false);
+            return Err(format!("backup preparation failed: {error}"));
+        }
+    };
+    journal.status = "prepared".into();
+    write_journal(&root, &journal)?;
+    write_progress(&root, "staged", "Validated staging is ready to apply", true);
+    wait_for_parent_exit(parent_pid, 60)?;
+    journal.status = "applying".into();
+    write_journal(&root, &journal)?;
+    write_progress(&root, "applying", "Applying the validated restore", false);
+    let report = match manager.apply_prepared_restore(&root, &prepared) {
+        Ok(report) => report,
+        Err(error) => {
+            if let Some(app_root) = &app_root {
+                let _ = restore_app_backup(app_root, &app_backup_dir);
+            }
+            write_progress(&root, "failed", &format!("Apply failed: {error}"), false);
+            return Err(format!("backup apply failed: {error}"));
+        }
+    };
+    write_progress(
+        &root,
+        "finalizing",
+        "Restoring application files and Vault",
+        false,
+    );
     let mut warnings = Vec::new();
     if let (Some(app_root), false) = (&app_root, app_payloads.is_empty()) {
         if let Err(error) = restore_app_files(app_root, &app_payloads) {
@@ -469,9 +526,23 @@ fn restore(options: &HashMap<String, Vec<String>>) -> Result<Value, String> {
         warnings.push("Vault was restored from the encrypted export and is locked.");
     }
     let _ = fs::remove_dir_all(&app_backup_dir);
+    if let Some(profile) = values(options, "open-profile").first() {
+        let path = root.join("backups").join("open-profile.json");
+        let temp = path.with_extension("tmp");
+        let value = json!({"profile_id": profile});
+        if fs::write(&temp, serde_json::to_vec(&value).unwrap_or_default()).is_ok() {
+            let _ = fs::rename(temp, path);
+        }
+    }
     let mut completed = journal;
     completed.status = "succeeded".into();
     let _ = write_journal(&root, &completed);
+    write_progress(
+        &root,
+        "completed",
+        "Restore completed; restarting AMARE",
+        false,
+    );
     let result = json!({
         "status": "ok",
         "restored_profiles": report.restored_profiles,
@@ -736,40 +807,42 @@ fn wait_for_parent_exit(pid: u32, seconds: u64) -> Result<(), String> {
     if pid == 0 {
         return Ok(());
     }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    while std::time::Instant::now() < deadline {
+        if !process_alive(pid) {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err("timed out waiting for the running AMARE process to exit".into())
+}
+
+fn process_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
     #[cfg(windows)]
     {
-        use std::time::{Duration, Instant};
-        // Avoid a platform-specific process API dependency: poll a lock file is
-        // not reliable here, so use tasklist through the Windows shell.
-        let deadline = Instant::now() + Duration::from_secs(seconds);
-        while Instant::now() < deadline {
-            let output = std::process::Command::new("tasklist")
-                .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-                .output();
-            let gone = match output {
-                Ok(output) => {
-                    let text = String::from_utf8_lossy(&output.stdout);
-                    let expected = pid.to_string();
-                    !text.lines().any(|line| {
-                        line.split(',')
-                            .nth(1)
-                            .map(|value| value.trim_matches('"') == expected)
-                            .unwrap_or(false)
-                    })
-                }
-                Err(_) => true,
-            };
-            if gone {
-                return Ok(());
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output();
+        match output {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let expected = pid.to_string();
+                text.lines().any(|line| {
+                    line.split(',')
+                        .nth(1)
+                        .map(|value| value.trim_matches('"') == expected)
+                        .unwrap_or(false)
+                })
             }
-            std::thread::sleep(Duration::from_millis(200));
+            Err(_) => false,
         }
-        Err("timed out waiting for the running AMARE process to exit".into())
     }
     #[cfg(not(windows))]
     {
-        let _ = seconds;
-        Ok(())
+        Path::new(&format!("/proc/{pid}")).exists()
     }
 }
 
@@ -843,6 +916,30 @@ fn restore_app_backup(app_root: &Path, directory: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn progress_path(root: &Path) -> PathBuf {
+    root.join("backups").join("restore-progress.json")
+}
+
+fn write_progress(root: &Path, stage: &str, detail: &str, cancellable: bool) {
+    let path = progress_path(root);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let value = json!({
+        "stage": stage,
+        "detail": detail,
+        "cancellable": cancellable,
+        "updated_at_ms": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64,
+    });
+    let temp = path.with_extension("tmp");
+    if fs::write(&temp, serde_json::to_vec(&value).unwrap_or_default()).is_ok() {
+        let _ = fs::rename(temp, path);
+    }
 }
 
 fn acquire_operation_lock(root: &Path) -> Result<fs::File, String> {

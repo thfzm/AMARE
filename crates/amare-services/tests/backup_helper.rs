@@ -115,6 +115,11 @@ fn helper_create_verify_restore_profile() {
     );
     assert_eq!(code, 0, "{restore}");
     assert_eq!(restore["status"], "ok");
+    let progress: Value = serde_json::from_slice(
+        &std::fs::read(target.path().join("backups/restore-progress.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(progress["stage"], "completed");
     let restored = Store::open(target.path()).unwrap();
     let profile = restored.open_profile(&t1).unwrap();
     assert_eq!(
@@ -507,5 +512,161 @@ fn helper_backs_up_and_restores_application_files() {
     assert_eq!(
         std::fs::read_to_string(target.path().join("unrelated.txt")).unwrap(),
         "keep"
+    );
+}
+
+#[test]
+fn helper_full_backup_and_full_restore_restores_all_profiles() {
+    let source = tempdir().unwrap();
+    let source_root = source.path().join("data");
+    std::fs::create_dir_all(&source_root).unwrap();
+    let store = Store::open(&source_root).unwrap();
+    let p1 = ProfileId::new("p1");
+    let p2 = ProfileId::new("p2");
+    store.create_profile(&p1, "Personal", true).unwrap();
+    store.create_profile(&p2, "Work", false).unwrap();
+    for (id, value) in [(&p1, "one"), (&p2, "two")] {
+        let profile = store.open_profile(id).unwrap();
+        profile
+            .settings()
+            .set("theme", "appearance", SettingValue::Text(value.into()))
+            .unwrap();
+    }
+    drop(store);
+    let backup = source.path().join("full.amarebak");
+    let (code, create) = run(
+        &source_root,
+        &[
+            "create",
+            "--root",
+            source_root.to_str().unwrap(),
+            "--out",
+            backup.to_str().unwrap(),
+            "--include-root",
+            "--app-root",
+            source.path().to_str().unwrap(),
+        ],
+        None,
+        &source.path().join("create-full.json"),
+    );
+    assert_eq!(code, 0, "{create}");
+    let (code, verify) = run(
+        &source_root,
+        &[
+            "verify",
+            "--root",
+            source_root.to_str().unwrap(),
+            "--backup",
+            backup.to_str().unwrap(),
+        ],
+        None,
+        &source.path().join("verify-full.json"),
+    );
+    assert_eq!(code, 0, "{verify}");
+    assert_eq!(verify["manifest"]["scope"], "full", "{verify}");
+
+    let target = tempdir().unwrap();
+    let target_root = target.path().join("data");
+    std::fs::create_dir_all(&target_root).unwrap();
+    let (code, restore) = run(
+        &target_root,
+        &[
+            "restore",
+            "--root",
+            target_root.to_str().unwrap(),
+            "--backup",
+            backup.to_str().unwrap(),
+            "--mode",
+            "full",
+            "--no-relaunch",
+        ],
+        None,
+        &target.path().join("restore-full.json"),
+    );
+    assert_eq!(code, 0, "{restore}");
+    let restored = Store::open(&target_root).unwrap();
+    assert_eq!(restored.profiles().count().unwrap(), 2);
+    for (id, value) in [(&p1, "one"), (&p2, "two")] {
+        let profile = restored.open_profile(id).unwrap();
+        assert_eq!(
+            profile.settings().get("theme").unwrap().unwrap().value,
+            SettingValue::Text(value.into())
+        );
+    }
+}
+
+#[test]
+fn helper_partial_profile_restore_preserves_other_profiles() {
+    let source = tempdir().unwrap();
+    let source_root = source.path().join("data");
+    std::fs::create_dir_all(&source_root).unwrap();
+    let store = Store::open(&source_root).unwrap();
+    let p1 = ProfileId::new("p1");
+    store.create_profile(&p1, "Personal", true).unwrap();
+    let profile = store.open_profile(&p1).unwrap();
+    profile
+        .settings()
+        .set("theme", "appearance", SettingValue::Text("restored".into()))
+        .unwrap();
+    drop(store);
+    let backup = source.path().join("p1.amarebak");
+    let (code, _) = run(
+        &source_root,
+        &[
+            "create",
+            "--root",
+            source_root.to_str().unwrap(),
+            "--out",
+            backup.to_str().unwrap(),
+            "--profiles",
+            "p1",
+        ],
+        None,
+        &source.path().join("create-p1.json"),
+    );
+    assert_eq!(code, 0);
+
+    let target = tempdir().unwrap();
+    let target_root = target.path().join("data");
+    std::fs::create_dir_all(&target_root).unwrap();
+    let target_store = Store::open(&target_root).unwrap();
+    let t1 = ProfileId::new("t1");
+    let t2 = ProfileId::new("t2");
+    target_store.create_profile(&t1, "Target", true).unwrap();
+    target_store.create_profile(&t2, "Keep", false).unwrap();
+    let keep = target_store.open_profile(&t2).unwrap();
+    keep.settings()
+        .set("theme", "appearance", SettingValue::Text("keep".into()))
+        .unwrap();
+    drop(keep);
+    drop(target_store);
+    let (code, restore) = run(
+        &target_root,
+        &[
+            "restore",
+            "--root",
+            target_root.to_str().unwrap(),
+            "--backup",
+            backup.to_str().unwrap(),
+            "--mode",
+            "profile",
+            "--map",
+            "p1:t1",
+            "--no-relaunch",
+        ],
+        None,
+        &target.path().join("restore-partial.json"),
+    );
+    assert_eq!(code, 0, "{restore}");
+    let restored = Store::open(&target_root).unwrap();
+    let t1_profile = restored.open_profile(&t1).unwrap();
+    assert_eq!(
+        t1_profile.settings().get("theme").unwrap().unwrap().value,
+        SettingValue::Text("restored".into())
+    );
+    let t2_profile = restored.open_profile(&t2).unwrap();
+    assert_eq!(
+        t2_profile.settings().get("theme").unwrap().unwrap().value,
+        SettingValue::Text("keep".into())
     );
 }

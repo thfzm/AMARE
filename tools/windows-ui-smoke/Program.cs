@@ -448,6 +448,7 @@ internal static class Program
             Check("site_permissions_audit_failure_fail_closed", SitePermissionsAuditFailure);
             Check("settings_persistence_restart", SettingsPersistenceRestart);
             Check("backup_create_verify_dialog", BackupCreateVerifyDialog);
+            Check("backup_full_restore_dialog", BackupFullRestoreDialog);
             if (int.TryParse(Environment.GetEnvironmentVariable("AMARE_UI_STRESS_SECONDS"), out var stressSeconds)
                 && stressSeconds > 0)
             {
@@ -3751,6 +3752,70 @@ internal static class Program
         {
             try { if (File.Exists(path)) File.Delete(path); } catch { }
             try { if (File.Exists(path + ".sha256")) File.Delete(path + ".sha256"); } catch { }
+        }
+    }
+
+    private static string BackupFullRestoreDialog()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var appRoot = Path.Combine(local, "AMARE");
+        var dataRoot = Path.Combine(appRoot, "data");
+        var helper = Path.Combine(Path.GetDirectoryName(_exePath)!, "AMARE.Backup.exe");
+        Require(File.Exists(helper), "AMARE.Backup.exe missing for full restore UI test");
+        var backup = Path.Combine(Path.GetTempPath(), $"amare-full-ui-{Guid.NewGuid():N}.amarebak");
+        var resultPath = backup + ".result.json";
+        try
+        {
+            var start = new ProcessStartInfo(helper)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            foreach (var arg in new[]
+                     {
+                         "create", "--root", dataRoot, "--out", backup,
+                         "--include-root", "--app-root", appRoot, "--result", resultPath
+                     })
+            {
+                start.ArgumentList.Add(arg);
+            }
+            using var create = Process.Start(start) ?? throw new InvalidOperationException("backup helper start");
+            create.StandardInput.Close();
+            Require(create.WaitForExit(120_000), "full backup helper timeout");
+            Require(create.ExitCode == 0, $"full backup helper exit {create.ExitCode}");
+            Require(File.Exists(backup), "full backup file missing");
+
+            OpenSettings();
+            Invoke(FindById("SettingsBackupRestoreButton")
+                ?? throw new InvalidOperationException("SettingsBackupRestoreButton missing"));
+            WaitFor(() => FindById("BackupPathBox") is not null,
+                TimeSpan.FromSeconds(10), "backup dialog");
+            SetValue(FindById("BackupPathBox")!, backup);
+            Invoke(FindById("BackupVerifyButton")
+                ?? throw new InvalidOperationException("BackupVerifyButton missing"));
+            WaitFor(() => ReadValue("BackupManifestText").Contains(
+                    "full", StringComparison.OrdinalIgnoreCase),
+                TimeSpan.FromSeconds(60), "full manifest text");
+            var fullButton = FindById("BackupRestoreFullButton")
+                ?? throw new InvalidOperationException("BackupRestoreFullButton missing");
+            WaitFor(() => fullButton.Current.IsEnabled,
+                TimeSpan.FromSeconds(10), "full restore button enabled");
+            Invoke(fullButton);
+            WaitFor(() => FindByName("Restore profile") is not null,
+                TimeSpan.FromSeconds(10), "full restore confirmation");
+            InvokeDialogButton("Restore profile", "Cancel");
+            InvokeDialogButton("Profile backup & restore", "Close");
+            WaitFor(() => FindByName("Profile backup & restore") is null,
+                TimeSpan.FromSeconds(10), "backup dialog close");
+            return "full backup manifest and full-restore confirmation are available";
+        }
+        finally
+        {
+            try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+            try { if (File.Exists(backup + ".sha256")) File.Delete(backup + ".sha256"); } catch { }
+            try { if (File.Exists(resultPath)) File.Delete(resultPath); } catch { }
         }
     }
 

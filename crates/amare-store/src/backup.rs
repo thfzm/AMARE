@@ -233,6 +233,18 @@ pub struct RestoreOptions {
     pub mode: RestoreMode,
 }
 
+/// A validated restore staged outside the live target. Applying it is the only
+/// step that mutates the target; a crash before apply can be cleaned up without
+/// recovery.
+#[derive(Debug, Clone)]
+pub struct PreparedRestore {
+    pub manifest: BackupManifest,
+    pub staging: PathBuf,
+    pub recovery: PathBuf,
+    pub mode: RestoreMode,
+    pub backup_name: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RestoreReport {
     pub file_name: String,
@@ -576,6 +588,20 @@ impl BackupManager {
         staging: &Path,
         recovery: &Path,
     ) -> Result<RestoreReport, BackupError> {
+        let target_root = target_root.as_ref();
+        let prepared = self.prepare_restore(backup, target_root, options, staging, recovery)?;
+        self.apply_prepared_restore(target_root, &prepared)
+    }
+
+    /// Decode, extract and validate a backup without modifying the target.
+    pub fn prepare_restore(
+        &self,
+        backup: impl AsRef<Path>,
+        target_root: impl AsRef<Path>,
+        options: &RestoreOptions,
+        staging: &Path,
+        recovery: &Path,
+    ) -> Result<PreparedRestore, BackupError> {
         let backup = backup.as_ref();
         let target_root = target_root.as_ref();
         let bytes = read_container(backup)?;
@@ -639,20 +665,49 @@ impl BackupManager {
                     ));
                 }
             }
+            if matches!(options.mode, RestoreMode::Full) && manifest.scope != BackupScope::Full {
+                return Err(BackupError::InvalidFormat(
+                    "full restore requires a Full backup".into(),
+                ));
+            }
             Ok(())
         })();
         if let Err(error) = validation {
             let _ = fs::remove_dir_all(staging);
             return Err(error);
         }
+        let _ = target_root;
+        Ok(PreparedRestore {
+            manifest,
+            staging: staging.to_path_buf(),
+            recovery: recovery.to_path_buf(),
+            mode: options.mode.clone(),
+            backup_name: backup
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
 
-        let result = match &options.mode {
-            RestoreMode::Full => restore_full(target_root, staging, recovery, &manifest),
+    /// Apply a previously validated staging directory. Atomicity is provided by
+    /// moving the old data to `recovery` before moving the staged data in.
+    pub fn apply_prepared_restore(
+        &self,
+        target_root: impl AsRef<Path>,
+        prepared: &PreparedRestore,
+    ) -> Result<RestoreReport, BackupError> {
+        let target_root = target_root.as_ref();
+        let manifest = &prepared.manifest;
+        let staging = prepared.staging.as_path();
+        let recovery = prepared.recovery.as_path();
+        let result = match &prepared.mode {
+            RestoreMode::Full => restore_full(target_root, staging, recovery, manifest),
             RestoreMode::Profiles(ids) => {
-                restore_profiles(target_root, staging, recovery, ids, &manifest)
+                restore_profiles(target_root, staging, recovery, ids, manifest)
             }
             RestoreMode::ProfilesMapped(map) => {
-                restore_profiles_mapped(target_root, staging, recovery, map, &manifest)
+                restore_profiles_mapped(target_root, staging, recovery, map, manifest)
             }
         };
         let _ = fs::remove_dir_all(staging);
@@ -677,15 +732,11 @@ impl BackupManager {
                     Ok(())
                 })();
                 if let Err(error) = verification {
-                    let _ = rollback_restore(target_root, recovery, &options.mode);
+                    let _ = rollback_restore(target_root, recovery, &prepared.mode);
                     return Err(error);
                 }
                 Ok(RestoreReport {
-                    file_name: backup
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or_default()
-                        .to_string(),
+                    file_name: prepared.backup_name.clone(),
                     restored_profiles: profiles,
                     recovery_dir: if recovery.exists() {
                         Some(recovery.to_path_buf())

@@ -554,6 +554,7 @@ public sealed partial class MainWindow : Window
 
         _context = await _profiles.InitializeAsync();
         _profileId = (await _profiles.GetActiveAsync())?.Id ?? _context.ProfileId;
+        await ApplyPendingOpenProfileAsync();
         _saveTimer = _dispatcher.CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(500);
         _saveTimer.IsRepeating = false;

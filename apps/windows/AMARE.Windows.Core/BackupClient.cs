@@ -98,7 +98,8 @@ public sealed class BackupClient
         string targetProfileId,
         string appExecutable,
         string? password,
-        bool fullRestore = false)
+        bool fullRestore = false,
+        string? openProfileId = null)
     {
         var arguments = new List<string>
         {
@@ -120,6 +121,11 @@ public sealed class BackupClient
         arguments.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         arguments.Add("--app-exe");
         arguments.Add(Path.GetFullPath(appExecutable));
+        if (!string.IsNullOrWhiteSpace(openProfileId))
+        {
+            arguments.Add("--open-profile");
+            arguments.Add(openProfileId);
+        }
         if (_appRoot != null)
         {
             arguments.Add("--app-root");
@@ -243,6 +249,37 @@ public sealed class BackupClient
 
     public string RestoreResultPath =>
         Path.Combine(_root, "backups", "restore-result.json");
+
+    public string RestoreProgressPath =>
+        Path.Combine(_root, "backups", "restore-progress.json");
+
+    public BackupOperationResult? ReadRestoreResult()
+    {
+        try
+        {
+            if (!File.Exists(RestoreResultPath)) return null;
+            return JsonSerializer.Deserialize<BackupOperationResult>(
+                File.ReadAllText(RestoreResultPath), JsonDefaults.Options);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public BackupProgressDto? ReadRestoreProgress()
+    {
+        try
+        {
+            if (!File.Exists(RestoreProgressPath)) return null;
+            return JsonSerializer.Deserialize<BackupProgressDto>(
+                File.ReadAllText(RestoreProgressPath), JsonDefaults.Options);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private string ResultPath(string prefix)
     {
