@@ -1,7 +1,7 @@
 # AMARE Personal Package Readiness — Phase 3.1
 
 - Phase 3.0 app/package code: `9cb93f7`
-- Phase 3.1 CI: Windows run `46012944076` at `7c7c6c3`
+- Phase 3.1 CI: Windows `46012944076` at `7c7c6c3`; Linux `46016969061` at `a24fb6b` (docs/script evidence)
 - 패키지 형식: unsigned portable ZIP, WinUI 3 + WebView2 Evergreen
 - 상태: **SELF-CONTAINED VALIDATION-READY / FINAL RELEASE NOT READY**
 - 실제 Windows 11: **UNVERIFIED**
