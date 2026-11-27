@@ -3,7 +3,7 @@
 - Phase 3.0 app/package code: `9cb93f7`
 - Phase 3.1 CI: Windows `46012944076` at `7c7c6c3`; Linux `46017616583` at `56f13b6` (docs/script evidence)
 - 패키지 형식: unsigned portable ZIP, WinUI 3 + WebView2 Evergreen
-- 상태: **SELF-CONTAINED VALIDATION-READY / FINAL RELEASE NOT READY**
+- 상태: **SELF-CONTAINED VALIDATION HANDOFF READY / FINAL RELEASE NOT READY**
 - 실제 Windows 11: **UNVERIFIED**
 - MSIX/코드 서명/공개 Release: **없음**
 
@@ -28,6 +28,7 @@ artifacts/phase3-personal-package/AMARE-0.92.0-win-x64-self-contained-unsigned.z
 artifacts/phase3-personal-package/package-report-self-contained.json
 artifacts/phase3-personal-package/file-list-self-contained.txt
 artifacts/phase3-validation-bundle/
+artifacts/phase3.2-windows11-handoff/   (single handoff folder)
 ```
 
 포함:
@@ -71,7 +72,35 @@ updater apply/data preservation을 PASS했다. 그러나 Windows CI는 Windows S
 
 ---
 
-## 2. 기존 framework-dependent 패키지
+## 2. Phase 3.2 단일 인계 폴더
+
+```text
+artifacts/phase3.2-windows11-handoff/
+  AMARE-0.92.0-win-x64-self-contained-unsigned.zip
+  AMARE-0.92.0-win-x64-self-contained-unsigned.zip.sha256
+  Invoke-AmAreWindows11Handoff.ps1
+  Invoke-AmAreWindows11Validation.ps1
+  bundle-manifest.json
+  README.md
+  RUN.txt
+  manual-checklist.md
+  EXPECTED-RESULTS.md
+  RECOVERY.md
+```
+
+실행:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Handoff.ps1
+```
+
+- wrapper가 ZIP SHA-256, sidecar, bundle manifest, validation script SHA-256을 먼저 검증한다.
+- 앱/백업/업데이터 테스트는 `AMARE_DATA_ROOT` 격리 test root에서만 실행한다.
+- 실제 `%LOCALAPPDATA%\AMARE` user data/Vault/backups는 사용하지 않는다.
+- evidence는 handoff 폴더의 `evidence\run-*`에 새로 생성되며 기존 run을 덮어쓰지 않는다.
+- WebView2 Evergreen이 없으면 BLOCKED로 중단한다.
+
+## 3. 기존 framework-dependent 패키지
 
 기존 ZIP은 보존했고 덮어쓰지 않았다.
 
@@ -90,7 +119,7 @@ runtime:  framework-dependent .NET 8
 
 ---
 
-## 3. 패키지 검증 결과
+## 4. 패키지 검증 결과
 
 | 항목 | self-contained |
 |---|---|
@@ -114,7 +143,7 @@ runtime:  framework-dependent .NET 8
 
 ---
 
-## 4. 준비 판정
+## 5. 준비 판정
 
 - **구조/무결성**: self-contained ZIP 준비 완료
 - **Windows CI clean launch**: PASS

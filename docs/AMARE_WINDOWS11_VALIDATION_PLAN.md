@@ -164,7 +164,7 @@ UI smoke는 저장소와 .NET SDK가 필요하며, 없으면 FAIL이 아니라 S
 ## 7. 예상 산출물
 
 ```text
-artifacts/windows11-validation/run-<timestamp>/
+<handoff>/evidence/run-<timestamp>-<id>/
   environment.json
   package.json
   results.json
@@ -192,8 +192,10 @@ artifacts/windows11-validation/run-<timestamp>/
 
 ## 8. 알려진 제한
 
-- PowerShell 스크립트는 Ubuntu ARM64 환경에서 실행/검증할 수 없다. Windows 11
+- PowerShell 스크립트는 Ubuntu ARM64 환경에서 실제 실행할 수 없다. Windows 11
   실기기에서 첫 실행 결과를 별도로 기록해야 한다.
+- wrapper는 패키지/스크립트 SHA-256 일치만 검증하며, 실제 Windows 11 실행 결과를
+  대체하지 않는다.
 - UI smoke를 포함하려면 저장소와 .NET SDK가 필요하다. 패키지만 있는 사용자 PC는
   앱 launch/backup/updater 자동 검증만 수행한다.
 - self-contained ZIP은 .NET 8이 없어도 실행 가능해야 하지만 실제 Windows 11에서는

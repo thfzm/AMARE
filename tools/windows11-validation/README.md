@@ -33,7 +33,7 @@ requires elevation, it is recorded as `BLOCKED` instead of prompting.
 
 ## Evidence
 
-Each run creates a new directory under `artifacts/windows11-validation/run-*`:
+Each run creates a new directory under `evidence/run-*`:
 
 - `environment.json` — OS/build/arch/WebView2/.NET/DPI/display/admin/memory
 - `package.json` — ZIP SHA-256, size, file count, required/forbidden entries

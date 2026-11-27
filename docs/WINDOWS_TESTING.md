@@ -51,6 +51,14 @@ Windows Runner는 Windows 11 실기기와 동일하지 않습니다.
 
 ## 5. 현재 상태 (2026-11-05, Windows Runner)
 
+> **Phase 3.2 (2026-11-28) 추가:** Windows 11 실기기 인계.
+> `artifacts/phase3.2-windows11-handoff/`에 self-contained ZIP, sidecar,
+> `Invoke-AmAreWindows11Handoff.ps1`, README, manual checklist, expected results,
+> recovery guide, bundle manifest를 구성했다. 실행은 Windows 11 실기기에서
+> `powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Handoff.ps1`
+> 한 번으로 시작한다. evidence는 handoff 폴더의 `evidence/run-*`에만 생성된다.
+> 실제 Windows 11 실행 결과는 **UNVERIFIED**다.
+>
 > **Phase 3.1 (2026-11-27) 추가:** self-contained ZIP.
 > Windows run 46012944076 at `7c7c6c3`: **203 PASS / 0 FAIL / 8 UNVERIFIED /
 > 8 SKIPPED**, UI 86/86, interop 127/127, self-contained publish/package/clean

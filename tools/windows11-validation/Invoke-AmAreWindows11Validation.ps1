@@ -240,18 +240,33 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$isHandoffBundle = Test-Path -LiteralPath (Join-Path $PSScriptRoot "bundle-manifest.json")
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $OutputRoot = Join-Path $repoRoot "artifacts\windows11-validation"
+    if ($isHandoffBundle) {
+        $OutputRoot = Join-Path $PSScriptRoot "evidence"
+    } else {
+        $OutputRoot = Join-Path $repoRoot "artifacts\windows11-validation"
+    }
 }
 if ([string]::IsNullOrWhiteSpace($TestRoot)) {
     $TestRoot = Join-Path $env:TEMP ("AMARE-Win11-Validation-" + [Guid]::NewGuid().ToString("N"))
 }
-$runDir = Join-Path $OutputRoot ("run-" + $script:RunStamp)
+$runDir = Join-Path $OutputRoot ("run-" + $script:RunStamp + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 $screenshots = Join-Path $runDir "screenshots"
 $logsDir = Join-Path $runDir "logs"
 $hostsDir = Join-Path $runDir "hosts"
 New-Item -ItemType Directory -Force -Path $runDir, $screenshots, $logsDir, $hostsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $TestRoot | Out-Null
+$realUserRoot = Join-Path $env:LOCALAPPDATA "AMARE"
+$testRootFull = [System.IO.Path]::GetFullPath($TestRoot).TrimEnd('\', '/')
+$realUserFull = [System.IO.Path]::GetFullPath($realUserRoot).TrimEnd('\', '/')
+if ($testRootFull -eq $realUserFull -or $testRootFull.StartsWith($realUserFull + "\", [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to run: TestRoot is inside the real AMARE user data directory."
+}
+$realUserBefore = $null
+if (Test-Path -LiteralPath $realUserRoot) {
+    $realUserBefore = (Get-Item -LiteralPath $realUserRoot).LastWriteTimeUtc.Ticks
+}
 
 if ([string]::IsNullOrWhiteSpace($PackageZip)) {
     $candidates = @(
@@ -339,6 +354,19 @@ if (-not $packageAvailable) {
 # ---------- package checks ----------
 $packageHash = Get-Sha256 $PackageZip
 $packageInfo = $null
+Invoke-Check "bundle_manifest" {
+    $bundle = Join-Path $PSScriptRoot "bundle-manifest.json"
+    if (-not (Test-Path -LiteralPath $bundle)) { "no bundle-manifest.json; standalone package mode" }
+    else {
+        $manifest = Get-Content -LiteralPath $bundle -Raw | ConvertFrom-Json
+        if ($manifest.package.sha256 -ne $packageHash) { throw "bundle manifest package SHA-256 does not match the ZIP" }
+        if ($manifest.validation_script_sha256) {
+            $scriptHash = Get-Sha256 (Join-Path $PSScriptRoot "Invoke-AmAreWindows11Validation.ps1")
+            if ($scriptHash -ne $manifest.validation_script_sha256) { throw "validation script SHA-256 does not match bundle manifest" }
+        }
+        "app_head=$($manifest.app_head); package_sha256 matched; script_sha256 matched"
+    }
+}
 Invoke-Check "package_sha256" {
     $sidecar = "$PackageZip.sha256"
     if (Test-Path -LiteralPath $sidecar) {
@@ -484,6 +512,7 @@ $appData = Join-Path $TestRoot "appdata"
 $appRootForBackup = $appData
 $dataRoot = Join-Path $appData "data"
 $appProcess = $null
+$script:AppLaunchPassed = $false
 
 # ---------- app launch / close ----------
 Invoke-Check "app_launch_isolated" {
@@ -492,6 +521,7 @@ Invoke-Check "app_launch_isolated" {
     if ($started.Process.HasExited) {
         throw "AMARE.Windows.exe exited during startup (exit $($started.Process.ExitCode))"
     }
+    $script:AppLaunchPassed = $true
     $shot = Save-Screenshot (Join-Path $screenshots "app-launch.png")
     $detail = "process alive; window=$($started.WindowSeen); data_root=$appData"
     if ($shot) { $detail += "; screenshot=screenshots/app-launch.png" }
@@ -509,6 +539,8 @@ Invoke-Check "app_data_root_isolated" {
         "test root created"
     }
 }
+
+Write-Result "self_contained_runtime_independence" $(if (-not $script:IsSelfContained) { "SKIPPED" } elseif (-not $script:AppLaunchPassed) { "FAIL" } elseif (-not $dotnet8) { "PASS" } else { "UNVERIFIED" }) $(if (-not $script:IsSelfContained) { "framework-dependent package; not applicable" } elseif (-not $script:AppLaunchPassed) { "app launch failed; independence not established" } elseif (-not $dotnet8) { "app launched without system .NET 8 detected" } else { "system .NET 8 is installed; package self-containment is structurally verified but clean-PC independence is not proven" })
 
 if (-not $SkipBackup) {
     Invoke-Check "backup_create_verify_full" {
@@ -711,6 +743,17 @@ if ($RunUiSmoke) {
         if ($r.ExitCode -ne 0) { throw "UI smoke exit $($r.ExitCode)" }
         "UI smoke completed; results=$uiResults"
     }
+}
+
+if (Test-Path -LiteralPath $realUserRoot) {
+    $realUserAfter = (Get-Item -LiteralPath $realUserRoot).LastWriteTimeUtc.Ticks
+    if ($realUserBefore -eq $realUserAfter) {
+        Write-Result "real_user_data_isolated" "PASS" "real AMARE data root timestamp unchanged"
+    } else {
+        Write-Result "real_user_data_isolated" "UNVERIFIED" "real AMARE data root changed during run; verify no other process used it"
+    }
+} else {
+    Write-Result "real_user_data_isolated" "PASS" "real AMARE data root was not created"
 }
 
 # ---------- evidence ----------

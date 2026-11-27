@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1~2.7 + Phase 3.0/3.1 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1~2.7 + Phase 3.0/3.1/3.2 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 3.1 Self-contained Package & Validation Handoff)
-- 기준: `feature/phase-3-1-self-contained-validation-package`, 제품/테스트 `7c7c6c3`
+- 최신 갱신: 2026-11-28 (Phase 3.2 Windows 11 Real-device Validation Handoff)
+- 기준: `feature/phase-3-2-windows11-real-validation`, 제품/테스트 `7c7c6c3`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -265,6 +265,17 @@
 - 상세: `docs/AMARE_PHASE3_1_SELF_CONTAINED_PACKAGE_REPORT.md`,
   `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`
 
+### Phase 3.2 진행 상태
+
+- **Windows 11 실기기 인계 번들 구성** (`artifacts/phase3.2-windows11-handoff/`)
+- self-contained ZIP + sidecar + wrapper + README + manual checklist +
+  expected results + recovery guide + bundle manifest
+- wrapper가 ZIP/script SHA-256과 bundle manifest를 검증
+- evidence는 handoff 폴더의 `evidence/run-*`에만 생성, 기존 run 보존
+- WebView2 누락 시 BLOCKED, self-contained이면 .NET 8 불필요
+- 실제 Windows 11 실행 결과: **UNVERIFIED**
+- 상세: `docs/AMARE_PHASE3_2_WINDOWS11_HANDOFF_REPORT.md`
+
 ---
 
 ## 3. 감사 결과 요약
@@ -306,6 +317,9 @@
 - **Phase 3.1 완료(패키징/CI)**: .NET 8 + Windows App SDK + VC++ self-contained
   validation ZIP, WinUI resources, clean launch, updater compatibility.
   실제 Windows 11 실기기 검증은 여전히 UNVERIFIED.
+- **Phase 3.2 완료(인계 준비)**: 단일 Windows 11 handoff 폴더, wrapper,
+  bundle SHA/manifest, manual P0/P1/P2 checklist, recovery/expected-results.
+  실제 Windows 11 실행은 사용자 인계 후 수행; 아직 UNVERIFIED.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,
