@@ -6,7 +6,7 @@
 - 기준 제품/테스트 HEAD: **`6ff6e4b`**
 - 기준 문서 HEAD: **`0b63fbe`**
 - 최종 제품/테스트 HEAD: **`3fff704`**
-- 최종 문서 HEAD: 이 보고서를 포함한 문서 commit
+- 문서 내용 HEAD: **`9780e8b`** (이 보고서, design, audit/plan/testing 포함)
 - DB schema 변경: **없음** (profile schema v6 유지)
 - 백업 포맷/암호화 방식 변경: **없음** (기존 v2/Argon2id/XChaCha20 유지)
 - MSIX/서명/공개 Release: **없음**
