@@ -363,6 +363,58 @@ if ($SkipWinUI) {
         if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe was not produced by the backup build." }
         Copy-Item $backup (Join-Path $exe.Directory.FullName "AMARE.Backup.exe") -Force
     }
+    Invoke-Step "personal_package" {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $exe) { throw "Release AMARE.Windows.exe was not produced by the WinUI build." }
+        $packageRoot = Join-Path $OutputDir "personal-package"
+        $stage = Join-Path $OutputDir "personal-package-stage"
+        if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $stage, $packageRoot | Out-Null
+        Copy-Item (Join-Path $exe.Directory.FullName "*") -Destination $stage -Recurse -Force
+        $updater = Join-Path $OutputDir "updater-publish\AMARE.Updater.exe"
+        $backup = Join-Path $OutputDir "backup-publish\AMARE.Backup.exe"
+        if (-not (Test-Path $updater)) { throw "AMARE.Updater.exe is missing." }
+        if (-not (Test-Path $backup)) { throw "AMARE.Backup.exe is missing." }
+        Copy-Item $updater (Join-Path $stage "AMARE.Updater.exe") -Force
+        Copy-Item $backup (Join-Path $stage "AMARE.Backup.exe") -Force
+        [System.IO.File]::WriteAllText((Join-Path $stage "VERSION"), "$Version`n", [System.Text.UTF8Encoding]::new($false))
+        $manifest = [ordered]@{
+            schema = 1
+            product = "AMARE"
+            version = $Version
+            architecture = "win-x64"
+            entryPoint = "AMARE.Windows.exe"
+            runtime = "win-x64-framework-dependent"
+            channel = "portable-unsigned-validation"
+            requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe", "AMARE.Backup.exe")
+        }
+        Write-Utf8Json (Join-Path $stage "amare-update.json") $manifest
+        $notes = Join-Path (Get-Location) "docs\releases\AMARE-$Version.md"
+        if (Test-Path $notes) { Copy-Item $notes (Join-Path $stage "RELEASE_NOTES.md") -Force }
+        Get-ChildItem $stage -Recurse -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
+        $zip = Join-Path $packageRoot "AMARE-$Version-win-x64-unsigned.zip"
+        if (Test-Path $zip) { Remove-Item $zip -Force }
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [System.IO.Compression.CompressionLevel]::Fastest, $false)
+        $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $(Split-Path $zip -Leaf)`n", [System.Text.UTF8Encoding]::new($false))
+        $files = @(Get-ChildItem $stage -Recurse -File | ForEach-Object {
+            $_.FullName.Substring($stage.Length).TrimStart('\','/').Replace('\','/')
+        })
+        Write-Utf8Json (Join-Path $packageRoot "package-report.json") ([ordered]@{
+            package = (Split-Path $zip -Leaf)
+            size = (Get-Item $zip).Length
+            sha256 = $hash
+            file_count = $files.Count
+            files = $files
+            excluded = @("*.pdb")
+            signing = "UNSIGNED"
+            runtime = "framework-dependent; requires .NET 8 runtime and WebView2 Evergreen"
+        })
+        Write-Host "Personal validation ZIP: $zip"
+        Write-Host "SHA-256: $hash"
+    }
     Invoke-Step "portable_updater_e2e" {
         $exe = Get-ChildItem apps/windows/AMARE.Windows/bin/x64/Release -Recurse -Filter AMARE.Windows.exe -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
