@@ -10,10 +10,10 @@ temporary root via `AMARE_DATA_ROOT`.
 ```powershell
 # From the repository (recommended)
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\windows11-validation\Invoke-AmAreWindows11Validation.ps1 `
-  -PackageZip .\artifacts\phase3-personal-package\AMARE-0.92.0-win-x64-unsigned-validation.zip
+  -PackageZip .\artifacts\phase3-personal-package\AMARE-0.92.0-win-x64-unsigned.zip
 
 # From a folder containing the ZIP and this script
-powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Validation.ps1 -PackageZip .\AMARE-0.92.0-win-x64-unsigned-validation.zip
+powershell -ExecutionPolicy Bypass -File .\Invoke-AmAreWindows11Validation.ps1 -PackageZip .\AMARE-0.92.0-win-x64-unsigned.zip
 ```
 
 No administrator elevation is requested. Preflight runs unelevated. If a check

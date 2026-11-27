@@ -449,7 +449,7 @@ if ($SkipWinUI) {
             version = $Version
             architecture = "win-x64"
             entryPoint = "AMARE.Windows.exe"
-            runtime = "win-x64-self-contained"
+            runtime = "win-x64-framework-dependent"
             channel = "portable"
             requiredFiles = @("VERSION", "AMARE.Windows.exe", "AMARE.Updater.exe", "AMARE.Backup.exe")
         }

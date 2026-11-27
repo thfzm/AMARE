@@ -103,7 +103,7 @@ function New-PortablePackage([string]$EntrySource, [string]$ZipPath, [string]$St
         version = $Version
         architecture = "win-x64"
         entryPoint = "AMARE.Windows.exe"
-        runtime = "win-x64-self-contained"
+        runtime = "win-x64-framework-dependent"
         channel = "portable"
         requiredFiles = $requiredFiles
     }

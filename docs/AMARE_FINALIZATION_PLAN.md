@@ -1,9 +1,9 @@
 # AMARE Finalization Plan — Phase 0
 
-- 문서 상태: **Phase 0 계획 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6/2.7 갱신**
+- 문서 상태: **Phase 0 계획 + Phase 2.1~2.7 + Phase 3.0 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.7 Backup & Restore UI Completion)
-- 기준: `feature/phase-2-backup-restore-ui`, 제품/테스트 `3fff704`
+- 최신 갱신: 2026-11-27 (Phase 3.0 Full Feature Audit & Windows 11 Validation Preparation)
+- 기준: `feature/phase-3-full-audit-windows-validation`, 제품/테스트 `9cb93f7`
 - 최종 방향: **WinUI 3 + WebView2 Evergreen + C#**, Rust는 공통 모듈에 제한
 - GPUI: **동결·보존**, 기본 패키지 전환 없음
 - Phase 0 당시: **문서만 작성**, 제품 코드/스키마/패키지 변경 없음
@@ -235,6 +235,21 @@
   cross-PC Vault, category 단위 partial restore
 - 상세: `docs/AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`
 
+### Phase 3.0 진행 상태
+
+- **전체 기능 감사 + Windows 11 검증 준비 완료** (`9cb93f7`)
+- `docs/AMARE_PHASE3_FULL_FEATURE_AUDIT.md`
+- `docs/AMARE_WINDOWS11_VALIDATION_PLAN.md`
+- `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`
+- `tools/windows11-validation/` 단일 진입점 + manual checklist
+- unsigned validation ZIP: 360 files, 153,863,774 bytes,
+  SHA-256 `6f2d606b...`
+- Windows 200/0/8/8, UI 86/86, interop 127/127, backup 10/10, updater E2E 11/11,
+  Linux SUCCESS
+- 남은 P0 validation gate: Windows 11 실기기 launch/IME/DPI, Vault lifecycle,
+  backup/restore, updater, framework-dependent .NET 8
+- 상세: 위 Phase 3.0 문서
+
 ---
 
 ## 3. 감사 결과 요약
@@ -270,6 +285,9 @@
   password, open-profile restart. Windows 199/0/8/8, UI 86/86, interop 127/127,
   Linux SUCCESS. 실제 Windows 11/전원 손실/multi-window race/category partial
   restore는 UNVERIFIED.
+- **Phase 3.0 완료(감사/준비)**: Full feature audit, Windows 11 validation
+  bundle/script/checklist, unsigned validation ZIP, package readiness.
+  실제 Win11 실기기 검증은 UNVERIFIED이며 최종 배포 판정은 보류.
 - **미구현**: WinUI 비밀번호 관리자(1.3D capture/autofill은 구현), 실제 Windows
   11 실기기 검증.
 - **미검증**: 실제 Windows 11 IME/DPI/Snap/Alt+Tab, AI 실제 서비스,

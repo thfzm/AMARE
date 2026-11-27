@@ -69,6 +69,20 @@ function Get-TreeHashes {
     return $map
 }
 
+function Get-UserHashes {
+    param([string]$Root)
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $Root)) { return $map }
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object {
+        $relative = $_.FullName.Substring($rootFull.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+        if ($relative -in @('update-state.json', 'update.lock', 'update-health.json')) { return }
+        if ($relative.StartsWith('updates/') -or $relative.StartsWith('logs/updater.') -or $relative.StartsWith('updater/')) { return }
+        $map[$relative] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    return $map
+}
+
 function Compare-TreeHashes {
     param($Expected, $Actual, [string]$Stage)
     if ($Expected.Count -ne $Actual.Count) {
@@ -538,7 +552,7 @@ if (-not $SkipBackup) {
 if (-not $SkipUpdater) {
     Invoke-Check "updater_apply_preserves_data" {
         $fixture = New-UpdaterFixture (Join-Path $TestRoot "updater-success")
-        $before = Get-TreeHashes $fixture.Data
+        $before = Get-UserHashes $fixture.Data
         $version = if ($script:PackageVersion) { $script:PackageVersion } else { "0.92.0" }
         $r = Invoke-Helper $updaterExe @(
             "apply", "--package", $PackageZip, "--app-dir", $fixture.App,
@@ -549,14 +563,14 @@ if (-not $SkipUpdater) {
         if ((Get-Content -LiteralPath (Join-Path $fixture.App "VERSION") -Raw).Trim() -ne $version) {
             throw "installed VERSION mismatch"
         }
-        Compare-TreeHashes $before (Get-TreeHashes $fixture.Data) "updater apply"
+        Compare-TreeHashes $before (Get-UserHashes $fixture.Data) "updater apply"
         $state = Get-Content -LiteralPath (Join-Path $fixture.Data "update-state.json") -Raw | ConvertFrom-Json
         if ($state.status -ne "succeeded") { throw "update state $($state.status)" }
         "version=$version; state=succeeded"
     }
     Invoke-Check "updater_wrong_hash_rejected" {
         $fixture = New-UpdaterFixture (Join-Path $TestRoot "updater-hash")
-        $before = Get-TreeHashes $fixture.Data
+        $before = Get-UserHashes $fixture.Data
         $r = Invoke-Helper $updaterExe @(
             "apply", "--package", $PackageZip, "--app-dir", $fixture.App,
             "--data-dir", $fixture.Data, "--version", $version,
@@ -567,12 +581,12 @@ if (-not $SkipUpdater) {
         if ((Get-Content -LiteralPath (Join-Path $fixture.App "VERSION") -Raw).Trim() -ne "0.0.1") {
             throw "wrong hash changed the app"
         }
-        Compare-TreeHashes $before (Get-TreeHashes $fixture.Data) "wrong hash"
+        Compare-TreeHashes $before (Get-UserHashes $fixture.Data) "wrong hash"
         "wrong hash rejected before apply"
     }
     Invoke-Check "updater_locked_file_rejected" {
         $fixture = New-UpdaterFixture (Join-Path $TestRoot "updater-locked")
-        $before = Get-TreeHashes $fixture.Data
+        $before = Get-UserHashes $fixture.Data
         $lock = [System.IO.File]::Open((Join-Path $fixture.App "AMARE.Windows.exe"),
             [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
         try {
@@ -588,7 +602,7 @@ if (-not $SkipUpdater) {
         if ((Get-Content -LiteralPath (Join-Path $fixture.App "AMARE.Windows.exe") -Raw).Trim() -ne "old-exe") {
             throw "locked fixture changed"
         }
-        Compare-TreeHashes $before (Get-TreeHashes $fixture.Data) "locked file"
+        Compare-TreeHashes $before (Get-UserHashes $fixture.Data) "locked file"
         "locked file rejected before apply"
     }
     Invoke-Check "updater_launch_failure_rollback" {
@@ -596,7 +610,7 @@ if (-not $SkipUpdater) {
         New-Item -ItemType Directory -Force -Path (Split-Path $bad -Parent) | Out-Null
         $badHash = New-BadUpdatePackage $PackageZip $bad (Join-Path $env:SystemRoot "System32\cmd.exe")
         $fixture = New-UpdaterFixture (Join-Path $TestRoot "updater-rollback")
-        $before = Get-TreeHashes $fixture.Data
+        $before = Get-UserHashes $fixture.Data
         $r = Invoke-Helper $updaterExe @(
             "apply", "--package", $bad, "--app-dir", $fixture.App,
             "--data-dir", $fixture.Data, "--version", $version,
@@ -607,7 +621,7 @@ if (-not $SkipUpdater) {
         if ((Get-Content -LiteralPath (Join-Path $fixture.App "VERSION") -Raw).Trim() -ne "0.0.1") {
             throw "previous version was not restored"
         }
-        Compare-TreeHashes $before (Get-TreeHashes $fixture.Data) "launch rollback"
+        Compare-TreeHashes $before (Get-UserHashes $fixture.Data) "launch rollback"
         $state = Get-Content -LiteralPath (Join-Path $fixture.Data "update-state.json") -Raw | ConvertFrom-Json
         if ($state.status -ne "rolled_back") { throw "state $($state.status)" }
         "launch failure rolled back"

@@ -1,9 +1,9 @@
 # AMARE Feature Audit — Phase 0
 
-- 문서 상태: **Phase 0 감사 결과 + Phase 2.1/2.1.1/2.2/2.3/2.4/2.5/2.6/2.7 갱신**
+- 문서 상태: **Phase 0 감사 결과 + Phase 2.1~2.7 + Phase 3.0 전체 감사 갱신**
 - 작성일: 2026-11-23
-- 최신 갱신: 2026-11-27 (Phase 2.7 Backup & Restore UI Completion)
-- 기준: `feature/phase-2-backup-restore-ui`, 제품/테스트 `3fff704`
+- 최신 갱신: 2026-11-27 (Phase 3.0 Full Feature Audit)
+- 기준: `feature/phase-3-full-audit-windows-validation`, 제품/테스트 `9cb93f7`
 - 최신 제품 버전: **0.92.0** (0.93은 test/fixture only)
 - 원칙: **소스 존재 ≠ 검증**. WinUI와 GPUI 결과는 합산하지 않는다.
 
@@ -22,9 +22,11 @@
 > Phase 2.6 Profile Backup & Restore는
 > [`AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md`](AMARE_PHASE2_PROFILE_BACKUP_RESTORE_REPORT.md),
 > Phase 2.7 Backup & Restore UI Completion은
-> [`AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`](AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md)에
+> [`AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md`](AMARE_PHASE2_BACKUP_RESTORE_UI_REPORT.md),
+> Phase 3.0 전체 감사는
+> [`AMARE_PHASE3_FULL_FEATURE_AUDIT.md`](AMARE_PHASE3_FULL_FEATURE_AUDIT.md)에
 > 기록했다. 2장은 최신 CI 증거로 갱신했고, 3장 이하의 Phase 0 수치/판정은
-> 역사적 기록과 Phase 2.1~2.7 갱신을 함께 표시한다.
+> 역사적 기록과 Phase 2.1~3.0 갱신을 함께 표시한다.
 
 ---
 
@@ -57,13 +59,13 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | 증거 | 결과 |
 |---|---|
 | WinUI UI smoke (최신) | **86/86** (Phase 2.7, backup full restore dialog 포함) |
-| Windows 통합 검증 (최신) | **199 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (215 total) |
-| C#↔Rust interop (최신) | **127/127** (Phase 2.7) |
+| Windows 통합 검증 (최신) | **200 PASS / 0 FAIL / 8 UNVERIFIED / 8 SKIPPED** (216 total, personal package step 포함) |
+| C#↔Rust interop (최신) | **127/127** (Phase 3.0) |
 | WebView2 permission reconciliation probe | **PASS** (13 named kinds Allow → reset → 0) |
 | Rust site permissions | **5/5** |
 | Rust `services` | **38/38** |
 | Rust vault | **25/25 Windows**, **24/24 Linux** |
-| Linux CI | SUCCESS (Phase 2.5, `fcf1ded`) |
+| Linux CI | SUCCESS (Phase 3.0, `9cb93f7`) |
 | WinUI UI smoke (Phase 1.1) | 49/49 (역사 기록) |
 | Windows 통합 (Phase 1.1) | 143 PASS / 0 FAIL (역사 기록) |
 | C#↔Rust interop (Phase 1.1) | 76/76 (역사 기록) |
@@ -76,7 +78,7 @@ E3만 있는 경우 `IMPLEMENTED_BUT_UNVERIFIED`로 둔다. 단, 계약/정책 �
 | GPUI 반복 3회 | **11/13**, **12/10**, **13/10** |
 | GPUI titlebar | full **3/5**, crash **0/5** |
 | GPUI A/B | A reload PASS, B load/reload/close/exit UNVERIFIED |
-| 패키지 | 0.92.0 WinUI ZIP/MSIX + GPUI ZIP 유지 |
+| 패키지 | 0.92.0 WinUI unsigned validation ZIP (360 files, SHA-256 `6f2d...`) + GPUI ZIP 유지 |
 
 WinUI UI smoke 48개 항목 (Phase 1.1 기준):
 
@@ -736,6 +738,22 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 
 ---
 
+## 4.19 Phase 3.0 전체 감사 결과
+
+- 상세: `docs/AMARE_PHASE3_FULL_FEATURE_AUDIT.md`
+- Windows 11 실기기 검증 계획: `docs/AMARE_WINDOWS11_VALIDATION_PLAN.md`
+- 개인용 ZIP 준비 상태: `docs/AMARE_PERSONAL_PACKAGE_READINESS.md`
+
+요약:
+
+- 15개 기능 모두 구현 경로는 존재하며, 대부분 Windows CI/UIAutomation에서 PASS.
+- 실제 Windows 11 실기기, Vault lifecycle, backup/restore, updater, IME/DPI,
+  cross-PC Vault는 **UNVERIFIED**.
+- category 단위 partial restore는 의도적으로 **미지원**.
+- personal ZIP은 구조/무결성 검증 가능하나 **unsigned + framework-dependent .NET 8**
+  이며 실기기 launch/update 검증 전에는 최종 배포 불가.
+- P0 code defect는 새로 발견되지 않았고, P0 validation gate 5개가 OPEN.
+
 ## 5. P0 / P1 / P2 결함 및 격차
 
 ### P0 — 개인용 완료를 막는 항목
@@ -745,6 +763,8 @@ Phase 1.1에서 last-writer-wins P0를 수정했다.
 | P0-1 | 멀티윈도우 세션 last-writer-wins | **RESOLVED (Phase 1.1)** | schema v5 + window API, Rust 10/10·UI 49/49·interop 76/76 |
 | P0-2 | WinUI 비밀번호 관리자/Vault 부재 | **OPEN — capture/autofill 구현·CI 검증, 실기기/5분 idle/session lock UNVERIFIED (1.3D+2.4)** | Windows 11 실기기와 실제 session lock 검증 필요 |
 | P0-3 | 실제 Windows 11 핵심 입력 미검증 | **OPEN** | CI는 Windows Server일 수 있음, IME/DPI/Snap/Alt+Tab UNVERIFIED |
+| P0-4 | backup full/partial restore 실제 Win11 미검증 | **OPEN** | 실기기 full/partial restore + power-loss gate |
+| P0-5 | personal ZIP/updater 실제 Win11 미검증 | **OPEN** | framework-dependent .NET 8, unsigned, real download/apply/restart/rollback UNVERIFIED |
 
 ### P1 — 핵심 기능/데이터/배포
 
